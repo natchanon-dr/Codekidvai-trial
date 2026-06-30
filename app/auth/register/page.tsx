@@ -11,19 +11,62 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function handleRegister(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrorMessage(null);
-    try {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) throw error;
-      await createProfileForCurrentUser({ display_name: displayName });
-      router.push("/consent");
-    } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : "Register failed.");
-    }
+  async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  setErrorMessage(null);
+
+  console.log("Register start");
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+  });
+
+  console.log("SignUp data:", data);
+  console.log("SignUp error:", error);
+
+  if (error) {
+    setErrorMessage(error.message || JSON.stringify(error));
+    return;
   }
 
+  if (!data.user) {
+    setErrorMessage("User was not created.");
+    return;
+  }
+
+  if (!data.session) {
+    setErrorMessage(
+      "Account created but no session. Please confirm email or disable email confirmation."
+    );
+    return;
+  }
+
+  console.log("Create profile start");
+
+  const profileResult = await createProfileForCurrentUser({
+    display_name: displayName,
+  }).catch((profileError) => {
+    console.log("Create profile error:", profileError);
+
+    setErrorMessage(
+      profileError?.message ||
+        profileError?.error_description ||
+        profileError?.details ||
+        JSON.stringify(profileError)
+    );
+
+    return null;
+  });
+
+  if (!profileResult) {
+    return;
+  }
+
+  console.log("Create profile success");
+
+  router.push("/consent");
+  }
   return <main style={{ maxWidth: 480, margin: "40px auto", padding: 24 }}>
     <h1>Register</h1>
     <form onSubmit={handleRegister}>
