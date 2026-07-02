@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { dbClient } from "@/lib/db-client";
+import { supabase } from "@/lib/supabase-client";
 import { useRouter } from "next/navigation";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
