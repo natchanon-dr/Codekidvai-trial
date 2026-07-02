@@ -118,13 +118,13 @@ export default function DashboardPage() {
   async function loadDashboard() {
     try {
       // 1. Auth user
-      const { data: authData } = await dbClient.auth.getUser();
+      const { data: authData } = await supabase.auth.getUser();
       console.log("current user:", authData.user);
       if (!authData.user) { router.push("/auth/login"); return; }
       setEmail(authData.user.email ?? "");
 
       // 2. Profile
-      const { data: profileData, error: profileError } = await dbClient
+      const { data: profileData, error: profileError } = await supabase
         .from("mst_profiles")
         .select("profile_id, display_name, role")
         .eq("auth_user_id", authData.user.id)
@@ -135,7 +135,7 @@ export default function DashboardPage() {
       setDisplayName(profileData.display_name);
 
       // 3. Assignments for this profile
-      const { data: assignmentData, error: assignmentError } = await dbClient
+      const { data: assignmentData, error: assignmentError } = await supabase
         .from("trn_task_assignments")
         .select("assignment_id, batch_id, task_id, assigned_order, is_required, is_unlocked, status")
         .eq("profile_id", profileData.profile_id)
@@ -146,7 +146,7 @@ export default function DashboardPage() {
 
       // 4. Batches
       const batchIds = [...new Set((assignmentData as AssignmentRow[]).map((a) => a.batch_id))];
-      const { data: batchData, error: batchError } = await dbClient
+      const { data: batchData, error: batchError } = await supabase
         .from("mst_experiment_batches")
         .select("batch_id, batch_code, batch_name, batch_description, set_type_id, batch_type, status")
         .in("batch_id", batchIds);
@@ -154,7 +154,7 @@ export default function DashboardPage() {
 
       // 5. Tasks
       const taskIds = [...new Set((assignmentData as AssignmentRow[]).map((a) => a.task_id))];
-      const { data: taskData, error: taskError } = await dbClient
+      const { data: taskData, error: taskError } = await supabase
         .from("mst_tasks")
         .select("task_id, task_code, task_title, task_type, difficulty_level")
         .in("task_id", taskIds);
@@ -192,7 +192,7 @@ export default function DashboardPage() {
   }
 
   async function handleLogout() {
-    await dbClient.auth.signOut();
+    await supabase.auth.signOut();
     router.push("/auth/login");
   }
 

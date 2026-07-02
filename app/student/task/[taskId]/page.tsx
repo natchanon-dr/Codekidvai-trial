@@ -115,9 +115,16 @@ export default function StudentTaskPage() {
   const editTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    initializeTask().catch((e: unknown) =>
-      setInitError(e instanceof Error ? e.message : "Failed to load task.")
-    );
+    initializeTask().catch((e: unknown) => {
+      console.error("initializeTask error:", e);
+      const msg =
+        e instanceof Error
+          ? e.message
+          : typeof e === "object" && e !== null && "message" in e
+          ? String((e as Record<string, unknown>).message)
+          : "Failed to load task.";
+      setInitError(msg);
+    });
   }, []);
 
   async function initializeTask() {
