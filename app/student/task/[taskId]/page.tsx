@@ -153,10 +153,8 @@ export default function StudentTaskPage() {
       user_agent: window.navigator.userAgent,
     });
     await markAssignmentInProgress({ task_id: t.task_id, profile_id: p.profile_id });
-    await Promise.all([
-      logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "session_start", event_value: "start_task", duration_from_start: 0 }),
-      logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "question_view", event_value: t.task_code, duration_from_start: 0 }),
-    ]);
+    await logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "session_start", event_value: "start_task", duration_from_start: 0 });
+    await logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "question_view", event_value: t.task_code, duration_from_start: 0 });
 
     sessionRef.current = s; taskRef.current = t; profileRef.current = p;
     setTask(t); setExtra(extraData ?? null); setPolicy(batchData ?? null); setSession(s);
