@@ -180,8 +180,8 @@ export default function DashboardPage() {
       const allGroups = [...groups.values()];
       console.log("grouped sets:", allGroups);
 
-      setAssignmentSets(allGroups.filter((g) => g.batch.set_type_id === 1));
-      setExamSets(allGroups.filter((g) => g.batch.set_type_id === 2));
+      setAssignmentSets(allGroups.filter((g) => g.batch.set_type_id === 1 || g.batch.batch_type === "assignment_set"));
+      setExamSets(allGroups.filter((g) => g.batch.set_type_id === 2 || g.batch.batch_type === "exam_set"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       console.error("loadDashboard error:", e);
