@@ -49,9 +49,8 @@ insert into public.mst_experiment_batches (
 )
 values (
   'AQT0001',
-  'SQL Practice Basic 001',
-  'Practice assignment set covering SQL fundamentals for a school database scenario. '
-  'Students can run their query, see expected output, and retry as many times as needed.',
+  'ชุดแบบฝึกหัด SQL แบบเขียนคำสั่ง ชุดที่ 1',
+  'ชุดแบบฝึกหัดสำหรับฝึกเขียนคำสั่ง SQL พื้นฐาน โดยครอบคลุมการเลือกข้อมูล การกรองข้อมูล การจัดเรียง การรวมตาราง การจัดกลุ่มข้อมูล และการสรุปผลจากตารางตัวอย่าง',
   'assignment_set',
   'active',
   'QT', 1,
@@ -90,9 +89,8 @@ insert into public.mst_experiment_batches (
 )
 values (
   'EQT0001',
-  'SQL Exam Basic 001',
-  'Summative exam covering SQL fundamentals. '
-  'Students have one attempt. Results and expected output are visible to the teacher only until released.',
+  'ชุดแบบทดสอบ SQL แบบเขียนคำสั่ง ชุดที่ 1',
+  'ชุดแบบทดสอบสำหรับประเมินความสามารถในการเขียนคำสั่ง SQL พื้นฐาน ผู้เรียนต้องเขียนคำตอบด้วยตนเองจากโจทย์ที่กำหนด โดยไม่แสดงเฉลยหรือคำใบ้ระหว่างทำแบบทดสอบ',
   'exam_set',
   'active',
   'QT', 1,

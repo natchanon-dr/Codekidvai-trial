@@ -161,7 +161,6 @@ function TaskFamilyIcon({ code }: { code: FamilyCode }) {
 // ─── Circular progress ──────────────────────────────────────────────────────────
 
 function CircularProgress({ done, total }: { done: number; total: number }) {
-  const remaining = total - done;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
   const r = 28;
   const circ = 2 * Math.PI * r;
@@ -184,10 +183,10 @@ function CircularProgress({ done, total }: { done: number; total: number }) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-          <span className="text-[13px] font-bold text-[#0F172A]">{remaining}/{total}</span>
+          <span className="text-[13px] font-bold text-[#0F172A]">{done}/{total}</span>
         </div>
       </div>
-      <span className="text-[10px] text-[#64748B] text-center leading-tight">{pct}% completed</span>
+      <span className="text-[10px] text-[#64748B] text-center leading-tight">ทำแล้ว {done} จาก {total} ข้อ</span>
     </div>
   );
 }

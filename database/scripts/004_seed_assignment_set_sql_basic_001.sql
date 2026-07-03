@@ -1,26 +1,39 @@
 -- =============================================================================
--- Seed: Assignment Set — SQL Basic 001
--- Maps SQL_TEXT_001 through SQL_TEXT_020 as a practice assignment set.
+-- Seed: Exam Set — EQT0001 (SQL Query Text, Basic, Set 1)
 --
--- WARNING: mst_experiment_batches.batch_type has a check constraint that only
--- accepts ('pilot', 'main', 'practice'). The values 'assignment_set' and
--- 'exam_set' are NOT valid. This seed uses batch_type = 'practice' to
--- represent an assignment (practice) set. The new set_type_id column from
--- migration 008 stores the semantic value: 1 = ASSIGNMENT_SET.
+-- NOTE: Script 007 is the canonical seed for EQT0001 and the selected exam tasks.
+-- This script is kept for reference and re-runnable safety.
+--
+-- Batch code   : EQT0001  (E = Exam, QT = Query Text, 0001 = first)
+-- Task codes   : 10 tasks selected from the QT bank
+-- set_type_id  : 2 = EXAM_SET
+--
+-- Selected tasks (easy -> hard):
+--   order 1  -> QT0001  SELECT all
+--   order 2  -> QT0003  WHERE filter by grade
+--   order 3  -> QT0005  ORDER BY name
+--   order 4  -> QT0010  Three-table JOIN
+--   order 5  -> QT0013  HAVING clause
+--   order 6  -> QT0015  WHERE OR
+--   order 7  -> QT0018  SUM per assignment
+--   order 8  -> QT0020  Subquery above-average
+--   order 9  -> QT0025  Top scorers per course
+--   order 10 -> QT0030  Full mixed report
 -- =============================================================================
 
--- Step 1: Insert the experiment batch (assignment set header)
+-- Step 1: Upsert batch header
 insert into public.mst_experiment_batches (
   batch_code,
   batch_name,
-  batch_type,         -- constraint: must be 'pilot' | 'main' | 'practice'
+  batch_type,
   batch_description,
   status,
-  -- new columns from migration 008 (add IF NOT EXISTS guard protects if 008 not yet run)
-  set_type_id,        -- 1 = ASSIGNMENT_SET
-  feedback_policy_id, -- 1 = IMMEDIATE
-  attempt_policy_id,  -- 3 = UNLIMITED
-  visibility_policy_id, -- 1 = VISIBLE_TO_STUDENT
+  task_family_code,
+  batch_running_no,
+  set_type_id,
+  feedback_policy_id,
+  attempt_policy_id,
+  visibility_policy_id,
   allow_run,
   allow_multiple_attempts,
   show_expected_result,
@@ -29,75 +42,71 @@ insert into public.mst_experiment_batches (
   metadata_json
 )
 values (
-  'SQL_ASSIGNMENT_BASIC_001',
-  'SQL Basic Assignment Set 001',
-  'practice',
-  'Practice assignment set covering SQL fundamentals: SELECT, WHERE, ORDER BY, GROUP BY, JOIN, aggregates, and subqueries (tasks 001–020).',
+  'EQT0001',
+  'ชุดแบบทดสอบ SQL แบบเขียนคำสั่ง ชุดที่ 1',
+  'exam_set',
+  'ชุดแบบทดสอบสำหรับประเมินความสามารถในการเขียนคำสั่ง SQL พื้นฐาน ผู้เรียนต้องเขียนคำตอบด้วยตนเองจากโจทย์ที่กำหนด โดยไม่แสดงเฉลยหรือคำใบ้ระหว่างทำแบบทดสอบ',
   'active',
+  'QT',
   1,
-  1,
-  3,
-  1,
+  2,
+  2,
+  2,
+  2,
   true,
-  true,
-  true,
-  true,
-  true,
-  '{"set_category":"sql_text","level":"basic","target_audience":"beginner"}'
+  false,
+  false,
+  false,
+  false,
+  '{"set_category":"sql_text","level":"basic","exam_type":"summative","target_audience":"beginner","task_count":10}'
 )
 on conflict (batch_code) do update set
-  batch_name           = excluded.batch_name,
-  batch_description    = excluded.batch_description,
-  status               = excluded.status,
-  set_type_id          = excluded.set_type_id,
-  feedback_policy_id   = excluded.feedback_policy_id,
-  attempt_policy_id    = excluded.attempt_policy_id,
-  visibility_policy_id = excluded.visibility_policy_id,
-  allow_run            = excluded.allow_run,
+  batch_name              = excluded.batch_name,
+  batch_description       = excluded.batch_description,
+  batch_type              = excluded.batch_type,
+  status                  = excluded.status,
+  task_family_code        = excluded.task_family_code,
+  batch_running_no        = excluded.batch_running_no,
+  set_type_id             = excluded.set_type_id,
+  feedback_policy_id      = excluded.feedback_policy_id,
+  attempt_policy_id       = excluded.attempt_policy_id,
+  visibility_policy_id    = excluded.visibility_policy_id,
+  allow_run               = excluded.allow_run,
   allow_multiple_attempts = excluded.allow_multiple_attempts,
-  show_expected_result = excluded.show_expected_result,
-  show_score_to_student = excluded.show_score_to_student,
-  show_hint            = excluded.show_hint,
-  metadata_json        = excluded.metadata_json,
-  updated_at           = now();
+  show_expected_result    = excluded.show_expected_result,
+  show_score_to_student   = excluded.show_score_to_student,
+  show_hint               = excluded.show_hint,
+  metadata_json           = excluded.metadata_json,
+  updated_at              = now();
 
 
--- Step 2: Map tasks SQL_TEXT_001 through SQL_TEXT_020 into the assignment set
--- mst_assignment_set_tasks(batch_id, task_id, task_order, is_required)
--- Requires mst_assignment_set_tasks from migration 008.
-
-insert into public.mst_assignment_set_tasks (batch_id, task_id, task_order, is_required)
+-- Step 2: Map 10 selected tasks into EQT0001
+insert into public.mst_assignment_set_tasks (batch_id, task_id, task_order, is_required, is_active, set_task_code)
 select
   b.batch_id,
   t.task_id,
-  mapping.task_order,
-  true as is_required
+  m.task_order,
+  true,
+  true,
+  b.batch_code || '_' || lpad(m.task_order::text, 4, '0')
 from (
   values
-    ('SQL_TEXT_001',  1),
-    ('SQL_TEXT_002',  2),
-    ('SQL_TEXT_003',  3),
-    ('SQL_TEXT_004',  4),
-    ('SQL_TEXT_005',  5),
-    ('SQL_TEXT_006',  6),
-    ('SQL_TEXT_007',  7),
-    ('SQL_TEXT_008',  8),
-    ('SQL_TEXT_009',  9),
-    ('SQL_TEXT_010', 10),
-    ('SQL_TEXT_011', 11),
-    ('SQL_TEXT_012', 12),
-    ('SQL_TEXT_013', 13),
-    ('SQL_TEXT_014', 14),
-    ('SQL_TEXT_015', 15),
-    ('SQL_TEXT_016', 16),
-    ('SQL_TEXT_017', 17),
-    ('SQL_TEXT_018', 18),
-    ('SQL_TEXT_019', 19),
-    ('SQL_TEXT_020', 20)
-) as mapping(task_code, task_order)
-inner join public.mst_tasks t         on t.task_code  = mapping.task_code
-inner join public.mst_experiment_batches b on b.batch_code = 'SQL_ASSIGNMENT_BASIC_001'
+    ('QT0001',  1),
+    ('QT0003',  2),
+    ('QT0005',  3),
+    ('QT0010',  4),
+    ('QT0013',  5),
+    ('QT0015',  6),
+    ('QT0018',  7),
+    ('QT0020',  8),
+    ('QT0025',  9),
+    ('QT0030', 10)
+) as m(task_code, task_order)
+inner join public.mst_tasks              t on t.task_code  = m.task_code
+inner join public.mst_experiment_batches b on b.batch_code = 'EQT0001'
 on conflict (batch_id, task_id) do update set
-  task_order  = excluded.task_order,
-  is_required = excluded.is_required,
-  updated_at  = now();
+  task_order    = excluded.task_order,
+  is_required   = excluded.is_required,
+  is_active     = excluded.is_active,
+  set_task_code = excluded.set_task_code,
+  updated_at    = now();
