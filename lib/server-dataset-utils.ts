@@ -1,3 +1,4 @@
+import { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export function normalizeAnswer(value: string): string {
@@ -18,12 +19,16 @@ export function scoreSqlTextAnswer(params: {
   };
 }
 
-export async function getOwnedLearningSession(params: {
-  session_id: string;
-  profile_id: string;
-  task_id?: string;
-}) {
-  let query = supabaseAdmin
+// Use userClient when available (service role key may point to wrong project)
+function db(client?: SupabaseClient): SupabaseClient {
+  return client ?? supabaseAdmin;
+}
+
+export async function getOwnedLearningSession(
+  params: { session_id: string; profile_id: string; task_id?: string },
+  client?: SupabaseClient,
+) {
+  let query = db(client)
     .from("trn_learning_sessions")
     .select("*")
     .eq("session_id", params.session_id)
@@ -35,21 +40,21 @@ export async function getOwnedLearningSession(params: {
   return data;
 }
 
-export async function getPublishedTaskForScoring(taskId: string) {
-  const { data, error } = await supabaseAdmin
+export async function getPublishedTaskForScoring(taskId: string, client?: SupabaseClient) {
+  const { data, error } = await db(client)
     .from("mst_tasks")
-    .select("task_id, expected_answer, max_score, task_status, is_active")
+    .select("task_id, expected_sql, max_score, task_status, is_active")
     .eq("task_id", taskId)
     .eq("task_status", "published")
     .eq("is_active", true)
     .single();
   if (error || !data) throw new Error("Published task not found.");
-  if (!data.expected_answer) throw new Error("Task expected answer is missing.");
+  if (!data.expected_sql) throw new Error("Task expected answer is missing.");
   return data;
 }
 
-export async function getNextAttemptNo(sessionId: string): Promise<number> {
-  const { count, error } = await supabaseAdmin
+export async function getNextAttemptNo(sessionId: string, client?: SupabaseClient): Promise<number> {
+  const { count, error } = await db(client)
     .from("trn_attempts")
     .select("attempt_id", { count: "exact", head: true })
     .eq("session_id", sessionId);
@@ -57,8 +62,8 @@ export async function getNextAttemptNo(sessionId: string): Promise<number> {
   return (count ?? 0) + 1;
 }
 
-export async function getNextEventOrder(sessionId: string): Promise<number> {
-  const { count, error } = await supabaseAdmin
+export async function getNextEventOrder(sessionId: string, client?: SupabaseClient): Promise<number> {
+  const { count, error } = await db(client)
     .from("trn_event_logs")
     .select("event_id", { count: "exact", head: true })
     .eq("session_id", sessionId);
@@ -70,18 +75,22 @@ export function calculateDurationFromStart(startedAt: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
 }
 
-export async function insertServerEvent(params: {
-  session_id: string;
-  profile_id: string;
-  task_id: string;
-  event_type: string;
-  event_value?: string | null;
-  duration_from_start?: number | null;
-  metadata_json?: Record<string, unknown> | null;
-}) {
-  const eventOrder = await getNextEventOrder(params.session_id);
+export async function insertServerEvent(
+  params: {
+    session_id: string;
+    profile_id: string;
+    task_id: string;
+    event_type: string;
+    event_value?: string | null;
+    duration_from_start?: number | null;
+    metadata_json?: Record<string, unknown> | null;
+  },
+  client?: SupabaseClient,
+) {
+  const c = db(client);
+  const eventOrder = await getNextEventOrder(params.session_id, client);
   const now = new Date().toISOString();
-  const { error } = await supabaseAdmin.from("trn_event_logs").insert({
+  const { error } = await c.from("trn_event_logs").insert({
     session_id: params.session_id,
     profile_id: params.profile_id,
     task_id: params.task_id,
@@ -94,24 +103,28 @@ export async function insertServerEvent(params: {
   });
   if (error) throw new Error(error.message);
 
-  await supabaseAdmin.from("trn_learning_sessions").update({ last_event_at: now }).eq("session_id", params.session_id);
+  await c.from("trn_learning_sessions").update({ last_event_at: now }).eq("session_id", params.session_id);
 }
 
-export async function insertServerAttempt(params: {
-  session_id: string;
-  profile_id: string;
-  task_id: string;
-  attempt_type: "run" | "check" | "submit";
-  answer_text: string;
-  answer_json?: Record<string, unknown> | null;
-  is_correct: boolean;
-  score: number;
-  error_type?: string | null;
-  error_message?: string | null;
-  execution_time_ms?: number | null;
-}) {
-  const attemptNo = await getNextAttemptNo(params.session_id);
-  const { error } = await supabaseAdmin.from("trn_attempts").insert({
+export async function insertServerAttempt(
+  params: {
+    session_id: string;
+    profile_id: string;
+    task_id: string;
+    attempt_type: "run" | "check" | "submit";
+    answer_text: string;
+    answer_json?: Record<string, unknown> | null;
+    is_correct: boolean;
+    score: number;
+    error_type?: string | null;
+    error_message?: string | null;
+    execution_time_ms?: number | null;
+  },
+  client?: SupabaseClient,
+) {
+  const c = db(client);
+  const attemptNo = await getNextAttemptNo(params.session_id, client);
+  const { error } = await c.from("trn_attempts").insert({
     session_id: params.session_id,
     profile_id: params.profile_id,
     task_id: params.task_id,
