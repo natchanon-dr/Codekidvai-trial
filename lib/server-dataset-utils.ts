@@ -38,13 +38,13 @@ export async function getOwnedLearningSession(params: {
 export async function getPublishedTaskForScoring(taskId: string) {
   const { data, error } = await supabaseAdmin
     .from("mst_tasks")
-    .select("task_id, expected_answer, max_score, task_status, is_active")
+    .select("task_id, expected_sql, max_score, task_status, is_active")
     .eq("task_id", taskId)
     .eq("task_status", "published")
     .eq("is_active", true)
     .single();
   if (error || !data) throw new Error("Published task not found.");
-  if (!data.expected_answer) throw new Error("Task expected answer is missing.");
+  if (!data.expected_sql) throw new Error("Task expected answer is missing.");
   return data;
 }
 

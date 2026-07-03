@@ -187,7 +187,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["ใช้ SELECT * เพื่อเลือกทุกคอลัมน์","ชื่อตารางระบุหลัง FROM — ใช้ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students;"}'::jsonb,
     '{"bloom_level":"remember","topic":"basic_select","sequence":1}'::jsonb ),
 
   -- ── QT0002 ────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["student_id","student_name"]}'::jsonb,
     '{"hints":["ระบุชื่อคอลัมน์คั่นด้วยเครื่องหมายจุลภาค (,) หลัง SELECT","ไม่ต้องใช้ * เมื่อต้องการเฉพาะบางคอลัมน์","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name"]}'::jsonb,
+    '{"required_columns":["student_id","student_name"],"initial_sql":"SELECT student_id, student_name FROM tb_students;"}'::jsonb,
     '{"bloom_level":"remember","topic":"column_selection","sequence":2}'::jsonb ),
 
   -- ── QT0003 ────────────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true}'::jsonb,
     '{"hints":["ใช้ WHERE เพื่อกรองแถวข้อมูล","grade_level = 6 เปรียบเทียบตัวเลข ไม่ต้องใส่เครื่องหมายคำพูด","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students WHERE grade_level = 6;"}'::jsonb,
     '{"bloom_level":"understand","topic":"where_filter","sequence":3}'::jsonb ),
 
   -- ── QT0004 ────────────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true}'::jsonb,
     '{"hints":["ค่าข้อความต้องครอบด้วยเครื่องหมายคำพูดเดี่ยว (single quotes)","class_section = ''A'' เปรียบเทียบกับสตริง A","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students WHERE class_section = ''A'';"}'::jsonb,
     '{"bloom_level":"understand","topic":"where_string_filter","sequence":4}'::jsonb ),
 
   -- ── QT0005 ────────────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result in correct order"},"zero_credit":{"condition":"output does not match or wrong order"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":false}'::jsonb,
     '{"hints":["ใช้ ORDER BY ตามด้วยชื่อคอลัมน์","ASC หมายถึงเรียงจากน้อยไปมาก — A อยู่ก่อน Z","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students ORDER BY student_name ASC;"}'::jsonb,
     '{"bloom_level":"understand","topic":"order_by_asc","sequence":5}'::jsonb ),
 
   -- ── QT0006 ────────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"grade_level column is sorted descending"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":false,"required_columns":["student_name","grade_level"]}'::jsonb,
     '{"hints":["DESC หมายถึงเรียงจากมากไปน้อย — ค่าสูงสุดอยู่บนสุด","เลือกเฉพาะสองคอลัมน์ที่ต้องการ","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_name","grade_level"]}'::jsonb,
+    '{"required_columns":["student_name","grade_level"],"initial_sql":"SELECT student_name, grade_level FROM tb_students ORDER BY grade_level DESC;"}'::jsonb,
     '{"bloom_level":"understand","topic":"order_by_desc","sequence":6}'::jsonb ),
 
   -- ── QT0007 ────────────────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output shows count of 5"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_column_alias":true}'::jsonb,
     '{"hints":["COUNT(*) นับทุกแถวในตาราง","ใช้ AS เพื่อตั้งชื่อให้คอลัมน์ผลลัพธ์","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["total_students"]}'::jsonb,
+    '{"required_columns":["total_students"],"initial_sql":"SELECT COUNT(*) AS total_students FROM tb_students;"}'::jsonb,
     '{"bloom_level":"understand","topic":"count_all","sequence":7}'::jsonb ),
 
   -- ── QT0008 ────────────────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["GROUP BY จะรวมแถวที่มีค่า grade_level เดียวกันเข้าเป็นกลุ่ม","COUNT(*) นับจำนวนแถวในแต่ละกลุ่ม","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["grade_level","student_count"]}'::jsonb,
+    '{"required_columns":["grade_level","student_count"],"initial_sql":"SELECT grade_level, COUNT(*) AS student_count FROM tb_students GROUP BY grade_level;"}'::jsonb,
     '{"bloom_level":"apply","topic":"group_by_count","sequence":8}'::jsonb ),
 
   -- ── QT0009 ────────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["student_name","score"]}'::jsonb,
     '{"hints":["INNER JOIN เก็บเฉพาะแถวที่มีข้อมูลตรงกันในทั้งสองตาราง","ON ระบุคอลัมน์ที่เชื่อมตาราง — student_id ปรากฏในทั้ง tb_students และ tb_submissions"]}'::jsonb,
-    '{"required_columns":["student_name","score"]}'::jsonb,
+    '{"required_columns":["student_name","score"],"initial_sql":"SELECT s.student_name, sub.score FROM tb_students s INNER JOIN tb_submissions sub ON s.student_id = sub.student_id;"}'::jsonb,
     '{"bloom_level":"apply","topic":"inner_join_two_tables","sequence":9}'::jsonb ),
 
   -- ── QT0010 ────────────────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["student_name","assignment_title","score"]}'::jsonb,
     '{"hints":["เขียน JOIN ต่อเนื่องกันทีละครั้ง","แต่ละ JOIN ต้องมี ON ของตัวเอง","tb_submissions เชื่อมกับ tb_students (ผ่าน student_id) และ tb_assignments (ผ่าน assignment_id)"]}'::jsonb,
-    '{"required_columns":["student_name","assignment_title","score"]}'::jsonb,
+    '{"required_columns":["student_name","assignment_title","score"],"initial_sql":"SELECT s.student_name, a.assignment_title, sub.score FROM tb_students s INNER JOIN tb_submissions sub ON s.student_id = sub.student_id INNER JOIN tb_assignments a ON sub.assignment_id = a.assignment_id;"}'::jsonb,
     '{"bloom_level":"apply","topic":"multi_join","sequence":10}'::jsonb ),
 
   -- ── QT0011 ────────────────────────────────────────────────────────────────
@@ -347,7 +347,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["AVG(score) คำนวณค่าเฉลี่ยคะแนนในแต่ละกลุ่ม","GROUP BY student_id สร้างกลุ่มสำหรับนักเรียนแต่ละคน","ROUND(value, 2) ปัดเศษให้เหลือ 2 ตำแหน่งทศนิยม","ตารางชื่อ tb_submissions"]}'::jsonb,
-    '{"required_columns":["student_id","avg_score"]}'::jsonb,
+    '{"required_columns":["student_id","avg_score"],"initial_sql":"SELECT student_id, ROUND(AVG(score), 2) AS avg_score FROM tb_submissions GROUP BY student_id;"}'::jsonb,
     '{"bloom_level":"apply","topic":"avg_group_by","sequence":11}'::jsonb ),
 
   -- ── QT0012 ────────────────────────────────────────────────────────────────
@@ -363,7 +363,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_column_alias":true}'::jsonb,
     '{"hints":["MAX() คืนค่าที่มากที่สุดในคอลัมน์","MIN() คืนค่าที่น้อยที่สุดในคอลัมน์","ใช้ทั้งสองฟังก์ชันใน SELECT เดียวกันได้","ตารางชื่อ tb_submissions"]}'::jsonb,
-    '{"required_columns":["max_score","min_score"]}'::jsonb,
+    '{"required_columns":["max_score","min_score"],"initial_sql":"SELECT MAX(score) AS max_score, MIN(score) AS min_score FROM tb_submissions;"}'::jsonb,
     '{"bloom_level":"understand","topic":"max_min_aggregate","sequence":12}'::jsonb ),
 
   -- ── QT0013 ────────────────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["HAVING กรองกลุ่มหลังจาก GROUP BY","ใช้ HAVING COUNT(*) > 2 ไม่ใช่ WHERE","WHERE กรองแถวก่อนจัดกลุ่ม ส่วน HAVING กรองกลุ่มหลังจัดกลุ่ม","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["grade_level","student_count"]}'::jsonb,
+    '{"required_columns":["grade_level","student_count"],"initial_sql":"SELECT grade_level, COUNT(*) AS student_count FROM tb_students GROUP BY grade_level HAVING COUNT(*) > 2;"}'::jsonb,
     '{"bloom_level":"apply","topic":"having_clause","sequence":13}'::jsonb ),
 
   -- ── QT0014 ────────────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true}'::jsonb,
     '{"hints":["AND กำหนดให้เงื่อนไขทั้งสองต้องเป็นจริงพร้อมกัน","รวม grade_level = 6 AND class_section = ''A''","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students WHERE grade_level = 6 AND class_section = ''A'';"}'::jsonb,
     '{"bloom_level":"understand","topic":"where_and","sequence":14}'::jsonb ),
 
   -- ── QT0015 ────────────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true}'::jsonb,
     '{"hints":["OR คืนแถวที่เงื่อนไขใดข้อหนึ่งเป็นจริง","Diana (ชั้น 6 ห้อง B) ปรากฏเพราะอยู่ห้อง B","Eve (ชั้น 5 ห้อง A) ปรากฏเพราะอยู่ชั้น 5","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students WHERE grade_level = 5 OR class_section = ''B'';"}'::jsonb,
     '{"bloom_level":"understand","topic":"where_or","sequence":15}'::jsonb ),
 
   -- ── QT0016 ────────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output shows exactly two distinct grade levels"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true}'::jsonb,
     '{"hints":["DISTINCT ตัดค่าซ้ำออกจากผลลัพธ์","วาง DISTINCT ทันทีหลัง SELECT","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["grade_level"]}'::jsonb,
+    '{"required_columns":["grade_level"],"initial_sql":"SELECT DISTINCT grade_level FROM tb_students;"}'::jsonb,
     '{"bloom_level":"understand","topic":"distinct","sequence":16}'::jsonb ),
 
   -- ── QT0017 ────────────────────────────────────────────────────────────────
@@ -443,7 +443,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output contains exactly 3 rows"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"row_count","expected_count":3}'::jsonb,
     '{"hints":["LIMIT n จำกัดผลลัพธ์ให้มีไม่เกิน n แถว","วาง LIMIT ไว้ที่ท้ายคำสั่ง","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students LIMIT 3;"}'::jsonb,
     '{"bloom_level":"remember","topic":"limit","sequence":17}'::jsonb ),
 
   -- ── QT0018 ────────────────────────────────────────────────────────────────
@@ -459,7 +459,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["SUM() บวกค่าทุกค่าในคอลัมน์ตามกลุ่ม","GROUP BY assignment_id สร้างกลุ่มสำหรับแต่ละงาน","ตารางชื่อ tb_submissions"]}'::jsonb,
-    '{"required_columns":["assignment_id","total_score"]}'::jsonb,
+    '{"required_columns":["assignment_id","total_score"],"initial_sql":"SELECT assignment_id, SUM(score) AS total_score FROM tb_submissions GROUP BY assignment_id;"}'::jsonb,
     '{"bloom_level":"apply","topic":"sum_group_by","sequence":18}'::jsonb ),
 
   -- ── QT0019 ────────────────────────────────────────────────────────────────
@@ -475,7 +475,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output includes Charlie with NULL score"},"zero_credit":{"condition":"output does not match or Charlie is missing"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["student_name","score"]}'::jsonb,
     '{"hints":["LEFT JOIN เก็บทุกแถวจากตารางซ้าย (tb_students)","ถ้านักเรียนไม่มีการส่งงานที่ตรงกัน score จะเป็น NULL","INNER JOIN จะตัด Charlie ออกไปเลย"]}'::jsonb,
-    '{"required_columns":["student_name","score"]}'::jsonb,
+    '{"required_columns":["student_name","score"],"initial_sql":"SELECT s.student_name, sub.score FROM tb_students s LEFT JOIN tb_submissions sub ON s.student_id = sub.student_id;"}'::jsonb,
     '{"bloom_level":"apply","topic":"left_join","sequence":19}'::jsonb ),
 
   -- ── QT0020 ────────────────────────────────────────────────────────────────
@@ -491,7 +491,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output shows Alice and Diana only"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["student_name"]}'::jsonb,
     '{"hints":["subquery คือ SELECT ที่อยู่ภายใน SELECT อีกตัว","AVG(score) ด้านในคำนวณค่าเฉลี่ยโดยรวมจาก tb_submissions: (95+78+90+72+88+65)/6 = 81.33","ใช้ IN(...) เพื่อตรวจสอบว่านักเรียนมีการส่งงานที่ผ่านเกณฑ์"]}'::jsonb,
-    '{"required_columns":["student_name"]}'::jsonb,
+    '{"required_columns":["student_name"],"initial_sql":"SELECT s.student_name FROM tb_students s WHERE s.student_id IN (SELECT student_id FROM tb_submissions WHERE score > (SELECT AVG(score) FROM tb_submissions));"}'::jsonb,
     '{"bloom_level":"analyze","topic":"subquery_in","sequence":20}'::jsonb ),
 
   -- ── QT0021 ────────────────────────────────────────────────────────────────
@@ -507,7 +507,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"all grades match expected values"},"partial_credit":{"score":10,"condition":"CASE WHEN structure is correct but threshold is slightly off"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["CASE WHEN เงื่อนไข THEN ผลลัพธ์ ... ELSE ค่าเริ่มต้น END","เงื่อนไขถูกตรวจสอบจากบนลงล่าง — WHEN แรกที่ตรงเงื่อนไขจะถูกใช้","ELSE รองรับทุกกรณีที่เหลือ","ตารางชื่อ tb_submissions"]}'::jsonb,
-    '{"required_columns":["submission_id","score","grade"]}'::jsonb,
+    '{"required_columns":["submission_id","score","grade"],"initial_sql":"SELECT submission_id, score, CASE WHEN score >= 90 THEN ''A'' WHEN score >= 75 THEN ''B'' ELSE ''C'' END AS grade FROM tb_submissions;"}'::jsonb,
     '{"bloom_level":"apply","topic":"case_when","sequence":21}'::jsonb ),
 
   -- ── QT0022 ────────────────────────────────────────────────────────────────
@@ -523,7 +523,7 @@ task_rows (
     '{"full_credit":{"score":10,"condition":"output matches expected result"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["GROUP BY class_section จัดกลุ่มนักเรียนตามห้อง","COUNT(*) นับจำนวนนักเรียนในแต่ละกลุ่ม","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["class_section","student_count"]}'::jsonb,
+    '{"required_columns":["class_section","student_count"],"initial_sql":"SELECT class_section, COUNT(*) AS student_count FROM tb_students GROUP BY class_section;"}'::jsonb,
     '{"bloom_level":"apply","topic":"group_by_text","sequence":22}'::jsonb ),
 
   -- ── QT0023 ────────────────────────────────────────────────────────────────
@@ -539,7 +539,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output matches expected order exactly"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":false}'::jsonb,
     '{"hints":["คั่นคอลัมน์เรียงลำดับหลายคอลัมน์ด้วยเครื่องหมายจุลภาค","แต่ละคอลัมน์สามารถมี ASC หรือ DESC ของตัวเอง","grade_level DESC เรียงชั้น 6 ก่อนชั้น 5 ภายในชั้น 6 student_name ASC เรียงตามตัวอักษร","ตารางชื่อ tb_students"]}'::jsonb,
-    '{"required_columns":["student_id","student_name","grade_level","class_section"]}'::jsonb,
+    '{"required_columns":["student_id","student_name","grade_level","class_section"],"initial_sql":"SELECT * FROM tb_students ORDER BY grade_level DESC, student_name ASC;"}'::jsonb,
     '{"bloom_level":"apply","topic":"order_by_multi","sequence":23}'::jsonb ),
 
   -- ── QT0024 ────────────────────────────────────────────────────────────────
@@ -555,7 +555,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"Charlie shows 0; all counts are correct"},"partial_credit":{"score":10,"condition":"counts are correct but Charlie is missing"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["COUNT(sub.submission_id) นับเฉพาะค่าที่ไม่ใช่ NULL — นักเรียนที่ไม่มีการส่งงานจะได้ 0","ต้องใช้ LEFT JOIN เพื่อให้ Charlie ปรากฏแม้ไม่มีการส่งงาน","GROUP BY ทั้ง student_id และ student_name เพื่อหลีกเลี่ยงข้อผิดพลาดในการจัดกลุ่ม","ตาราง tb_students LEFT JOIN tb_submissions"]}'::jsonb,
-    '{"required_columns":["student_name","submission_count"]}'::jsonb,
+    '{"required_columns":["student_name","submission_count"],"initial_sql":"SELECT s.student_name, COUNT(sub.submission_id) AS submission_count FROM tb_students s LEFT JOIN tb_submissions sub ON s.student_id = sub.student_id GROUP BY s.student_id, s.student_name;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"left_join_group_by","sequence":24}'::jsonb ),
 
   -- ── QT0025 ────────────────────────────────────────────────────────────────
@@ -571,7 +571,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"output matches expected result"},"partial_credit":{"score":10,"condition":"joins are correct but grouping is incomplete"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true,"required_columns":["course_name","student_name","max_score"]}'::jsonb,
     '{"hints":["เชื่อม 4 ตารางทีละขั้น: tb_courses -> tb_assignments -> tb_submissions -> tb_students","GROUP BY ต้องครอบคลุมทั้ง course และ student","MAX(score) ต่อกลุ่ม (วิชา, นักเรียน) ให้คะแนนสูงสุดของนักเรียนในแต่ละวิชา"]}'::jsonb,
-    '{"required_columns":["course_name","student_name","max_score"]}'::jsonb,
+    '{"required_columns":["course_name","student_name","max_score"],"initial_sql":"SELECT c.course_name, s.student_name, MAX(sub.score) AS max_score FROM tb_courses c INNER JOIN tb_assignments a ON c.course_id = a.course_id INNER JOIN tb_submissions sub ON a.assignment_id = sub.assignment_id INNER JOIN tb_students s ON sub.student_id = s.student_id GROUP BY c.course_id, c.course_name, s.student_id, s.student_name;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"multi_join_max","sequence":25}'::jsonb ),
 
   -- ── QT0026 ────────────────────────────────────────────────────────────────
@@ -587,7 +587,7 @@ task_rows (
     '{"full_credit":{"score":15,"condition":"output shows only assignment 4"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"required_columns":["assignment_id","assignment_title"]}'::jsonb,
     '{"hints":["LEFT JOIN เก็บงานทุกชิ้นแม้ไม่มีการส่ง","WHERE sub.submission_id IS NULL กรองเฉพาะแถวที่ไม่มีคู่ตรงกัน","รูปแบบนี้เรียกว่า anti-join pattern","ตาราง tb_assignments LEFT JOIN tb_submissions"]}'::jsonb,
-    '{"required_columns":["assignment_id","assignment_title"]}'::jsonb,
+    '{"required_columns":["assignment_id","assignment_title"],"initial_sql":"SELECT a.assignment_id, a.assignment_title FROM tb_assignments a LEFT JOIN tb_submissions sub ON a.assignment_id = sub.assignment_id WHERE sub.submission_id IS NULL;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"anti_join","sequence":26}'::jsonb ),
 
   -- ── QT0027 ────────────────────────────────────────────────────────────────
@@ -603,7 +603,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"all three courses appear; English shows NULL avg"},"partial_credit":{"score":10,"condition":"averages are correct but English is missing"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["ใช้ LEFT JOIN เพื่อให้ English (ไม่มีการส่งงาน) ยังปรากฏในผลลัพธ์","GROUP BY วิชาเพื่อให้ได้หนึ่งแถวต่อวิชา","AVG คำนวณจากการส่งงานทั้งหมดในวิชานั้น รวมทุก assignment","เชื่อม tb_courses -> tb_assignments -> tb_submissions"]}'::jsonb,
-    '{"required_columns":["course_name","avg_score"]}'::jsonb,
+    '{"required_columns":["course_name","avg_score"],"initial_sql":"SELECT c.course_name, ROUND(AVG(sub.score), 2) AS avg_score FROM tb_courses c LEFT JOIN tb_assignments a ON c.course_id = a.course_id LEFT JOIN tb_submissions sub ON a.assignment_id = sub.assignment_id GROUP BY c.course_id, c.course_name;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"multi_join_avg","sequence":27}'::jsonb ),
 
   -- ── QT0028 ────────────────────────────────────────────────────────────────
@@ -619,7 +619,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"all students appear with correct pass/fail; Charlie is FAIL with null avg"},"partial_credit":{"score":10,"condition":"CASE WHEN logic is correct but some students are missing"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["ใช้ LEFT JOIN เพื่อให้ Charlie (ไม่มีการส่งงาน) ปรากฏในผลลัพธ์","CASE WHEN AVG(score) >= 75 ใช้งานได้ใน SELECT หลัง GROUP BY","นักเรียนที่ avg เป็น NULL จะได้ FAIL เพราะ NULL >= 75 ประเมินเป็น NULL (ไม่ใช่ true)","เชื่อม tb_students LEFT JOIN tb_submissions"]}'::jsonb,
-    '{"required_columns":["student_name","avg_score","result"]}'::jsonb,
+    '{"required_columns":["student_name","avg_score","result"],"initial_sql":"SELECT s.student_name, ROUND(AVG(sub.score), 2) AS avg_score, CASE WHEN AVG(sub.score) >= 75 THEN ''PASS'' ELSE ''FAIL'' END AS result FROM tb_students s LEFT JOIN tb_submissions sub ON s.student_id = sub.student_id GROUP BY s.student_id, s.student_name;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"aggregate_case_when","sequence":28}'::jsonb ),
 
   -- ── QT0029 ────────────────────────────────────────────────────────────────
@@ -635,7 +635,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"output matches expected result"},"partial_credit":{"score":10,"condition":"teacher_name and assignment_count are correct but course_count is wrong"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true}'::jsonb,
     '{"hints":["COUNT(DISTINCT c.course_id) นับวิชาที่ไม่ซ้ำกันต่อครู","COUNT(a.assignment_id) นับงานทั้งหมดที่เชื่อมกับวิชาเหล่านั้น","LEFT JOIN ทำให้ครูที่ไม่มีงานยังปรากฏในผลลัพธ์","เชื่อม tb_courses LEFT JOIN tb_assignments"]}'::jsonb,
-    '{"required_columns":["teacher_name","course_count","assignment_count"]}'::jsonb,
+    '{"required_columns":["teacher_name","course_count","assignment_count"],"initial_sql":"SELECT c.teacher_name, COUNT(DISTINCT c.course_id) AS course_count, COUNT(a.assignment_id) AS assignment_count FROM tb_courses c LEFT JOIN tb_assignments a ON c.course_id = a.course_id GROUP BY c.teacher_name;"}'::jsonb,
     '{"bloom_level":"analyze","topic":"multi_aggregate","sequence":29}'::jsonb ),
 
   -- ── QT0030 ────────────────────────────────────────────────────────────────
@@ -651,7 +651,7 @@ task_rows (
     '{"full_credit":{"score":20,"condition":"all 6 rows appear with correct status values"},"partial_credit":{"score":10,"condition":"joins are correct but CASE WHEN status is missing or wrong"},"zero_credit":{"condition":"output does not match"}}'::jsonb,
     '{"check_type":"exact_match","ignore_row_order":true,"ignore_column_alias":true,"required_columns":["student_name","course_name","assignment_title","score","status"]}'::jsonb,
     '{"hints":["เชื่อม 4 ตาราง: tb_students -> tb_submissions -> tb_assignments -> tb_courses","CASE WHEN score >= 75 THEN ''PASS'' ELSE ''FAIL'' END สร้างคอลัมน์ status","INNER JOIN ถูกต้องในที่นี้ — เฉพาะนักเรียนที่ส่งงานเท่านั้นที่ปรากฏ"]}'::jsonb,
-    '{"required_columns":["student_name","course_name","assignment_title","score","status"]}'::jsonb,
+    '{"required_columns":["student_name","course_name","assignment_title","score","status"],"initial_sql":"SELECT s.student_name, c.course_name, a.assignment_title, sub.score, CASE WHEN sub.score >= 75 THEN ''PASS'' ELSE ''FAIL'' END AS status FROM tb_students s INNER JOIN tb_submissions sub ON s.student_id = sub.student_id INNER JOIN tb_assignments a ON sub.assignment_id = a.assignment_id INNER JOIN tb_courses c ON a.course_id = c.course_id;"}'::jsonb,
     '{"bloom_level":"create","topic":"full_report","sequence":30}'::jsonb )
 
 )
@@ -696,6 +696,7 @@ on conflict (task_code) do update set
   sample_data_json       = excluded.sample_data_json,
   expected_output_json   = excluded.expected_output_json,
   expected_sql           = excluded.expected_sql,
+  expected_answer        = excluded.expected_sql,
   scoring_rubric_json    = excluded.scoring_rubric_json,
   grading_rules_json     = excluded.grading_rules_json,
   hint_json              = excluded.hint_json,

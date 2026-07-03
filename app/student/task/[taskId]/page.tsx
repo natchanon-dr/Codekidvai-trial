@@ -21,6 +21,7 @@ type ExtraTask = {
   instruction_text: string | null;
   expected_output_json: ExpectedRow[] | null;
   hint_json: HintJson | null;
+  answer_format_json: { initial_sql?: string; required_columns?: string[] } | null;
 };
 
 type BatchPolicy = {
@@ -137,7 +138,7 @@ export default function StudentTaskPage() {
     const [{ data: extraData }, { data: batchData }] = await Promise.all([
       supabase
         .from("mst_tasks")
-        .select("instruction_text, expected_output_json, hint_json")
+        .select("instruction_text, expected_output_json, hint_json, answer_format_json")
         .eq("task_id", t.task_id)
         .single<ExtraTask>(),
       supabase
@@ -158,6 +159,7 @@ export default function StudentTaskPage() {
 
     sessionRef.current = s; taskRef.current = t; profileRef.current = p;
     setTask(t); setExtra(extraData ?? null); setPolicy(batchData ?? null); setSession(s);
+    if (extraData?.answer_format_json?.initial_sql) setAnswer(extraData.answer_format_json.initial_sql);
   }
 
   const handleSqlChange = useCallback((value: string) => {
@@ -179,6 +181,8 @@ export default function StudentTaskPage() {
       await logLearningEvent({ session_id: session.session_id, profile_id: profileRef.current.profile_id, task_id: task.task_id, event_type: "sql_run", event_value: answer.substring(0, 500), duration_from_start: calculateDurationFromStart(session.started_at) });
       const result = await runAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, answer_text: answer, answer_json: { mode: "sql_text" } });
       setRunFeedback({ is_correct: result.is_correct, score: result.score, error_message: result.error_message ?? null });
+    } catch (e) {
+      setRunFeedback({ is_correct: false, score: 0, error_message: e instanceof Error ? e.message : "เกิดข้อผิดพลาด กรุณาลองใหม่" });
     } finally { setRunning(false); }
   }
 
@@ -190,6 +194,8 @@ export default function StudentTaskPage() {
       await submitAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, answer_text: answer, answer_json: { mode: "sql_text" } });
       setSubmitted(true);
       setTimeout(() => router.push("/student/dashboard"), 2000);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "ส่งคำตอบไม่สำเร็จ กรุณาลองใหม่");
     } finally { setSubmitting(false); }
   }
 
@@ -450,7 +456,7 @@ export default function StudentTaskPage() {
                   </svg>
                 )}
                 <span className={`font-bold text-sm ${runFeedback.is_correct ? "text-green-700" : "text-red-700"}`}>
-                  {runFeedback.is_correct ? "Correct!" : "Not quite right"}
+                  {runFeedback.is_correct ? "ถูกต้อง" : "ยังไม่ถูกต้อง"}
                 </span>
                 {canShowScore && runFeedback.is_correct && (
                   <span className="ml-auto text-sm font-bold text-green-700">+{runFeedback.score} pts</span>
@@ -458,7 +464,7 @@ export default function StudentTaskPage() {
               </div>
               {!runFeedback.is_correct && isAssignmentSet && (
                 <p className="text-sm text-red-600 mt-1.5 leading-relaxed">
-                  Your answer does not match the expected answer. Review your query and try again.
+                  ยังไม่ถูกต้อง กรุณาตรวจสอบคำสั่ง SQL แล้วลองอีกครั้ง
                 </p>
               )}
             </div>

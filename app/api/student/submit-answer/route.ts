@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const session = await getOwnedLearningSession({ session_id: sessionId, profile_id: profile.profile_id, task_id: taskId });
     if (session.status === "completed") throw new Error("Session already completed.");
     const task = await getPublishedTaskForScoring(taskId);
-    const result = scoreSqlTextAnswer({ student_answer: answerText, expected_answer: task.expected_answer, max_score: Number(task.max_score) });
+    const result = scoreSqlTextAnswer({ student_answer: answerText, expected_answer: task.expected_sql, max_score: Number(task.max_score) });
     const executionTimeMs = Date.now() - started;
 
     await insertServerEvent({ session_id: sessionId, profile_id: profile.profile_id, task_id: taskId, event_type: "submit_answer", event_value: "final_submit", duration_from_start: calculateDurationFromStart(session.started_at), metadata_json: { answer_length: answerText.length } });
