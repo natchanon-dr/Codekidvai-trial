@@ -19,6 +19,7 @@ type BatchInfo = {
   set_type_id: number | null;
   batch_type: string;
   status: string;
+  task_family_code: string | null;
 };
 
 type AssignmentRow = {
@@ -97,6 +98,100 @@ function Spinner() {
   );
 }
 
+// ─── Task family helpers ────────────────────────────────────────────────────────
+
+type FamilyCode = "QT" | "SP" | "ER" | "QB";
+
+function getTaskFamilyCode(batch: BatchInfo): FamilyCode {
+  if (batch.task_family_code) return batch.task_family_code as FamilyCode;
+  const prefix = batch.batch_code.slice(1, 3).toUpperCase();
+  if (prefix === "QT") return "QT";
+  if (prefix === "SP") return "SP";
+  if (prefix === "ER") return "ER";
+  if (prefix === "QB") return "QB";
+  return "QT";
+}
+
+function getTaskFamilyLabel(code: FamilyCode): string {
+  switch (code) {
+    case "QT": return "Query Text";
+    case "SP": return "Stored Procedure";
+    case "ER": return "ER Diagram";
+    case "QB": return "Query Block";
+  }
+}
+
+function TaskFamilyIcon({ code }: { code: FamilyCode }) {
+  switch (code) {
+    case "QT":
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+            d="M4 7h16M4 12h10M4 17h7M15 14l2 2 4-4" />
+        </svg>
+      );
+    case "SP":
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      );
+    case "ER":
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="2" y="3" width="6" height="4" rx="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} />
+          <rect x="16" y="3" width="6" height="4" rx="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} />
+          <rect x="9" y="17" width="6" height="4" rx="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+            d="M5 7v5h14V7M12 12v5" />
+        </svg>
+      );
+    case "QB":
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+            d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z" />
+        </svg>
+      );
+  }
+}
+
+// ─── Circular progress ──────────────────────────────────────────────────────────
+
+function CircularProgress({ done, total }: { done: number; total: number }) {
+  const remaining = total - done;
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+
+  return (
+    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+      <div className="relative w-[72px] h-[72px]">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 72 72">
+          {/* Track */}
+          <circle cx="36" cy="36" r={r} fill="none" stroke="#FED7AA" strokeWidth="6" />
+          {/* Progress */}
+          <circle
+            cx="36" cy="36" r={r}
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${circ}`}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+          <span className="text-[13px] font-bold text-[#0F172A]">{remaining}/{total}</span>
+        </div>
+      </div>
+      <span className="text-[10px] text-[#64748B] text-center leading-tight">{pct}% completed</span>
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -148,7 +243,7 @@ export default function DashboardPage() {
       const batchIds = [...new Set((assignmentData as AssignmentRow[]).map((a) => a.batch_id))];
       const { data: batchData, error: batchError } = await supabase
         .from("mst_experiment_batches")
-        .select("batch_id, batch_code, batch_name, batch_description, set_type_id, batch_type, status")
+        .select("batch_id, batch_code, batch_name, batch_description, set_type_id, batch_type, status, task_family_code")
         .in("batch_id", batchIds);
       if (batchError) { console.error("batchError:", batchError); setError(batchError.message); return; }
 
@@ -346,15 +441,26 @@ export default function DashboardPage() {
             {currentSets.map((group) => {
               const done = group.items.filter((i) => i.status === "completed").length;
               const total = group.items.length;
+              const familyCode = getTaskFamilyCode(group.batch);
+              const familyLabel = getTaskFamilyLabel(familyCode);
               return (
                 <button
                   key={group.batch.batch_id}
                   onClick={() => goToTasks(group)}
-                  className="w-full bg-white rounded-2xl border border-[#FED7AA] p-5 text-left hover:border-[#F37021] hover:shadow-md transition-all"
+                  className="w-full bg-white rounded-2xl border border-[#FED7AA] p-4 text-left hover:border-[#F37021] hover:shadow-md transition-all"
                 >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <div className="flex items-center gap-4">
+                    {/* Left: task family icon */}
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0 w-16">
+                      <div className="w-12 h-12 rounded-xl bg-[#FFF7ED] border border-[#FED7AA] flex items-center justify-center text-[#F37021]">
+                        <TaskFamilyIcon code={familyCode} />
+                      </div>
+                      <span className="text-[9px] font-semibold text-[#C2410C] text-center leading-tight">{familyLabel}</span>
+                    </div>
+
+                    {/* Center: batch info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <span className="font-mono text-[11px] text-[#F37021] font-bold">{group.batch.batch_code}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${isExam ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-green-50 text-green-700 border-green-200"}`}>
                           {isExam ? "Exam Set" : "Assignment Set"}
@@ -362,21 +468,15 @@ export default function DashboardPage() {
                       </div>
                       <p className="text-sm font-bold text-[#0F172A] truncate">{group.batch.batch_name}</p>
                       {group.batch.batch_description && (
-                        <p className="text-xs text-[#64748B] mt-0.5 line-clamp-2 leading-relaxed">{group.batch.batch_description}</p>
+                        <p className="text-[11px] text-[#64748B] mt-0.5 line-clamp-2 leading-relaxed">{group.batch.batch_description}</p>
                       )}
+                      <p className="text-[10px] text-[#64748B] mt-1">
+                        {isExam ? "Teacher review only" : "Feedback & hints enabled"}
+                      </p>
                     </div>
-                    <svg className="w-4 h-4 text-[#F37021] flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <ProgressBar done={done} total={total} />
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] text-[#64748B]">
-                      {isExam ? "Teacher review only" : "Feedback enabled"}
-                    </span>
-                    <span className="ml-auto text-[10px] font-semibold text-[#F37021]">
-                      {done}/{total} completed
-                    </span>
+
+                    {/* Right: circular progress */}
+                    <CircularProgress done={done} total={total} />
                   </div>
                 </button>
               );

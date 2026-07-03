@@ -1,9 +1,9 @@
 -- =============================================================================
--- Script 008: Enroll all student profiles into SQL_ASSIGNMENT_BASIC_001
+-- Script 008: Enroll all student profiles into AQT0001
 --
 -- Context:
 --   Script 006 deleted old prototype tasks and their batch mappings.
---   Script 007 created a new batch (SQL_ASSIGNMENT_BASIC_001) and 30 new tasks
+--   Script 007 created a new batch (AQT0001) and 30 new tasks
 --   with new UUIDs.  Any existing rows in trn_task_assignments still point to
 --   the old (now deleted) task_ids and batch_ids, so the dashboard shows empty.
 --
@@ -40,7 +40,7 @@ cross join public.mst_experiment_batches b
 inner join public.mst_assignment_set_tasks ast
   on ast.batch_id = b.batch_id and ast.is_active = true
 where p.role      = 'student'
-  and b.batch_code = 'SQL_ASSIGNMENT_BASIC_001'
+  and b.batch_code = 'AQT0001'
   and not exists (
     select 1
     from public.trn_task_assignments ta
