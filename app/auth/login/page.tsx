@@ -19,7 +19,17 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const profile = await getOrCreateCurrentProfile();
-      router.push(profile.consent_accepted ? "/student/dashboard" : "/consent");
+      if (!profile.consent_accepted) {
+        router.push("/consent");
+        return;
+      }
+
+      if (profile.role === "teacher" || profile.role === "admin") {
+        router.push("/teacher/dashboard");
+        return;
+      }
+
+      router.push("/student/dashboard");
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Login failed.");
     } finally {

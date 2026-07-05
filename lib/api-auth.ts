@@ -16,7 +16,10 @@ export function getBearerToken(request: NextRequest): string | null {
   return authHeader.slice(7).trim();
 }
 
-export async function requireAuthenticatedProfile(request: NextRequest): Promise<ApiUserContext> {
+async function getAuthenticatedProfile(
+  request: NextRequest,
+  options: { requireConsent: boolean },
+): Promise<ApiUserContext> {
   const token = getBearerToken(request);
   if (!token) throw new Error("Missing authorization token.");
 
@@ -38,7 +41,7 @@ export async function requireAuthenticatedProfile(request: NextRequest): Promise
     .single();
 
   if (error || !profile) throw new Error(`Profile not found. auth_user_id=${user.id} db_error=${error?.message ?? "none"}`);
-  if (!profile.consent_accepted) throw new Error("Research consent is required.");
+  if (options.requireConsent && !profile.consent_accepted) throw new Error("Research consent is required.");
 
   return {
     user_id: user.id,
@@ -47,6 +50,10 @@ export async function requireAuthenticatedProfile(request: NextRequest): Promise
     role: profile.role,
     consent_accepted: profile.consent_accepted,
   };
+}
+
+export async function requireAuthenticatedProfile(request: NextRequest): Promise<ApiUserContext> {
+  return getAuthenticatedProfile(request, { requireConsent: true });
 }
 
 export function createUserClient(token: string): SupabaseClient {
@@ -61,6 +68,14 @@ export async function requireAdminOrResearcher(request: NextRequest): Promise<Ap
   const profile = await requireAuthenticatedProfile(request);
   if (profile.role !== "admin" && profile.role !== "researcher") {
     throw new Error("Admin or researcher role is required.");
+  }
+  return profile;
+}
+
+export async function requireTeacherOrAdmin(request: NextRequest): Promise<ApiUserContext> {
+  const profile = await getAuthenticatedProfile(request, { requireConsent: false });
+  if (profile.role !== "teacher" && profile.role !== "admin") {
+    throw new Error("Teacher or admin role is required.");
   }
   return profile;
 }
