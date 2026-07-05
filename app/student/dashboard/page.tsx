@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
+import { getDashboardPathForRole } from "@/lib/role-redirect";
+import type { UserRole } from "@/types/dataset";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +12,7 @@ type Profile = {
   profile_id: string;
   display_name: string | null;
   participant_code: string | null;
+  role: UserRole;
 };
 
 type BatchInfo = {
@@ -174,11 +177,16 @@ export default function StudentDashboardPage() {
 
     const { data: prof } = await supabase
       .from("mst_profiles")
-      .select("profile_id, display_name, participant_code")
+      .select("profile_id, display_name, participant_code, role")
       .eq("auth_user_id", user.id)
       .single();
 
     if (!prof) { router.push("/auth/login"); return; }
+    const dashboardPath = getDashboardPathForRole(prof.role);
+    if (dashboardPath !== "/student/dashboard") {
+      router.push(dashboardPath);
+      return;
+    }
     setProfile(prof);
 
     // fetch batches the student has assignments in

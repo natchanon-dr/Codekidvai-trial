@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getOrCreateCurrentProfile } from "@/services/profile-service";
 import { acceptResearchConsent } from "@/services/consent-service";
+import { getDashboardPathForRole } from "@/lib/role-redirect";
 import type { Profile } from "@/types/dataset";
 
 export default function ConsentPage() {
@@ -17,7 +18,7 @@ export default function ConsentPage() {
     if (!profile || !checked) return;
     setLoading(true);
     await acceptResearchConsent(profile.profile_id);
-    router.push("/student/dashboard");
+    router.push(getDashboardPathForRole(profile.role));
   }
 
   return (

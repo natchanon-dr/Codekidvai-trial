@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { getOrCreateCurrentProfile } from "@/services/profile-service";
+import { getDashboardPathForRole } from "@/lib/role-redirect";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const profile = await getOrCreateCurrentProfile();
-      router.push(profile.consent_accepted ? "/student/dashboard" : "/consent");
+      router.push(profile.consent_accepted ? getDashboardPathForRole(profile.role) : "/consent");
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Login failed.");
     } finally {
