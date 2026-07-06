@@ -43,12 +43,28 @@ type SubmissionRow = {
   submitted_at?: string | null;
 };
 
+type CreateAssignmentBody = {
+  task_code?: string;
+  task_title?: string;
+  task_description?: string;
+  task_type?: string;
+  problem_statement?: string;
+  expected_answer?: string;
+};
+
 function isAssignmentBatch(batch: BatchRow) {
   return (
     batch.set_type_id === 1 ||
     batch.batch_type === "assignment_set" ||
+    batch.batch_code?.startsWith("SA") ||
     batch.batch_code?.startsWith("A")
   );
+}
+
+function getBatchFamily(batch: BatchRow): "assignment" | "lab" | "exam" {
+  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("E")) return "exam";
+  if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return "lab";
+  return "assignment";
 }
 
 async function getBatches() {
@@ -83,7 +99,11 @@ export async function GET(request: NextRequest) {
   try {
     const profile = await requireTeacherOrAdmin(request);
     const scope = request.nextUrl.searchParams.get("scope");
-    const batches = (await getBatches()).filter(isAssignmentBatch);
+    const family = request.nextUrl.searchParams.get("family") ?? "assignment";
+    const batches = (await getBatches()).filter((batch) => {
+      if (family === "lab" || family === "exam") return getBatchFamily(batch) === family;
+      return isAssignmentBatch(batch);
+    });
     const visibleBatches = scope === "all" || profile.role === "admin"
       ? batches
       : batches.filter((batch) => batch.created_by === profile.profile_id);
@@ -157,6 +177,47 @@ export async function GET(request: NextRequest) {
     console.error("Teacher assignments API error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to load teacher assignments." },
+      { status: 400 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    await requireTeacherOrAdmin(request);
+    const body = (await request.json()) as CreateAssignmentBody;
+    const taskCode = String(body.task_code ?? "").trim();
+    const taskTitle = String(body.task_title ?? "").trim();
+    const taskType = String(body.task_type ?? "sql_text").trim();
+    const problemStatement = String(body.problem_statement ?? "").trim();
+    const expectedAnswer = String(body.expected_answer ?? "").trim();
+
+    if (!taskCode) throw new Error("Assignment code is required.");
+    if (!taskTitle) throw new Error("Assignment name is required.");
+
+    const insert = await supabaseAdmin
+      .from("mst_tasks")
+      .insert({
+        task_code: taskCode,
+        task_title: taskTitle,
+        task_description: String(body.task_description ?? problemStatement).trim() || null,
+        task_type: taskType,
+        problem_statement: problemStatement || null,
+        expected_answer: expectedAnswer || null,
+        expected_sql: expectedAnswer || null,
+        max_score: 10,
+        task_status: "active",
+        is_active: true,
+      })
+      .select("task_id, task_code, task_title, task_type")
+      .single();
+    if (insert.error) throw insert.error;
+
+    return NextResponse.json({ assignment: insert.data }, { status: 201 });
+  } catch (error) {
+    console.error("Teacher assignment create API error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create assignment." },
       { status: 400 },
     );
   }

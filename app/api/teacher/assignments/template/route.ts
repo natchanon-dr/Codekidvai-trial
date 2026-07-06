@@ -4,7 +4,7 @@ import { convertRowsToCsv } from "@/lib/csv-utils";
 export async function GET() {
   const csv = convertRowsToCsv([
     {
-      task_code: "QT000001",
+      task_code: "AQT000001",
       assignment_name: "Example Assignment",
       description: "Short assignment description",
       problem_statement: "Write the problem statement here",

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
-type AssignmentItem = {
+type LabItem = {
   assignment_id: string;
   task_code: string | null;
   title: string | null;
@@ -16,7 +16,7 @@ type AssignmentItem = {
   owner: { display_name: string | null; participant_code: string | null } | null;
 };
 
-type AssignmentSetItem = {
+type LabSetItem = {
   batch_code: string | null;
 };
 
@@ -24,20 +24,19 @@ type TeacherProfile = {
   participant_code: string | null;
 };
 
-const assignmentSetTypes = [
-  { value: "sql_text", label: "SQL Text", setPrefix: "SAQT", taskPrefixes: ["AQT", "QT"], icon: "text" },
-  { value: "sql_block", label: "SQL Block", setPrefix: "SAQB", taskPrefixes: ["AQB", "QB"], icon: "block" },
-  { value: "er_diagram", label: "ER Diagram", setPrefix: "SAER", taskPrefixes: ["AER", "ER"], icon: "diagram" },
-  { value: "stored_procedure", label: "Stored Procedure", setPrefix: "SASP", taskPrefixes: ["ASP", "SP"], icon: "procedure" },
+const labSetTypes = [
+  { value: "sql_text", label: "SQL Text", setPrefix: "SLQT", taskPrefixes: ["LQT"], icon: "text" },
+  { value: "sql_block", label: "SQL Block", setPrefix: "SLQB", taskPrefixes: ["LQB"], icon: "block" },
+  { value: "er_diagram", label: "ER Diagram", setPrefix: "SLER", taskPrefixes: ["LER"], icon: "diagram" },
+  { value: "stored_procedure", label: "Stored Procedure", setPrefix: "SLSP", taskPrefixes: ["LSP"], icon: "procedure" },
 ];
 
-export default function NewAssignmentSetPage() {
+export default function NewLabSetPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
-  const [assignmentSets, setAssignmentSets] = useState<AssignmentSetItem[]>([]);
+  const [labs, setLabs] = useState<LabItem[]>([]);
+  const [labSets, setLabSets] = useState<LabSetItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [scoreByAssignment, setScoreByAssignment] = useState<Record<string, number>>({});
   const [setType, setSetType] = useState("sql_text");
   const [query, setQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
@@ -49,7 +48,7 @@ export default function NewAssignmentSetPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    async function loadAssignments() {
+    async function loadLabs() {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) {
@@ -58,104 +57,97 @@ export default function NewAssignmentSetPage() {
       }
 
       const [response, setsResponse, dashboardResponse] = await Promise.all([
-        fetch("/api/teacher/assignments?scope=all", {
+        fetch("/api/teacher/assignments?scope=all&family=lab", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("/api/teacher/assignmentsets?scope=all", {
+        fetch("/api/teacher/assignmentsets?scope=all&family=lab", {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch("/api/teacher/dashboard", {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
+
       const text = await response.text();
       const json = text ? safeJsonParse(text) : {};
       if (!response.ok) {
-        setErrorMessage(json.error ?? text ?? "Failed to load assignments.");
+        setErrorMessage(json.error ?? text ?? "Failed to load labs.");
         return;
       }
-      const loadedAssignments = (json.assignments ?? []).filter(isActiveAssignment);
-      setAssignments(loadedAssignments);
-      setScoreByAssignment(Object.fromEntries(loadedAssignments.map((assignment) => [
-        assignment.assignment_id,
-        Number(assignment.max_score ?? 10),
-      ])));
+
+      const loadedLabs = (json.assignments ?? []).filter(isActiveLab);
+      setLabs(loadedLabs);
 
       const dashboardText = await dashboardResponse.text();
       const dashboardJson = dashboardText ? safeJsonParse(dashboardText) : {};
       const teacherKey = dashboardResponse.ok ? dashboardJson.profile?.participant_code ?? null : null;
       if (teacherKey) {
-        const hasTeacherAssignments = loadedAssignments.some((assignment) => {
-          const ownerKey = assignment.owner?.participant_code ?? assignment.owner?.display_name ?? "Unknown";
+        const hasTeacherLabs = loadedLabs.some((lab) => {
+          const ownerKey = lab.owner?.participant_code ?? lab.owner?.display_name ?? "Unknown";
           return ownerKey === teacherKey;
         });
-        setTeacherOwnerKey(hasTeacherAssignments ? teacherKey : null);
-        setOwnerFilter(hasTeacherAssignments ? teacherKey : "all");
+        setTeacherOwnerKey(hasTeacherLabs ? teacherKey : null);
+        setOwnerFilter(hasTeacherLabs ? teacherKey : "all");
       }
 
       const setsText = await setsResponse.text();
       const setsJson = setsText ? safeJsonParse(setsText) : {};
       if (setsResponse.ok) {
-        setAssignmentSets(setsJson.assignment_sets ?? []);
+        setLabSets(setsJson.assignment_sets ?? []);
       }
     }
 
-    loadAssignments();
+    loadLabs();
   }, [router]);
 
   const owners = useMemo(() => {
     const map = new Map<string, string>();
-    for (const assignment of assignments) {
-      const key = assignment.owner?.participant_code ?? assignment.owner?.display_name ?? "Unknown";
-      const label = assignment.owner?.display_name ?? assignment.owner?.participant_code ?? "Unknown";
+    for (const lab of labs) {
+      const key = lab.owner?.participant_code ?? lab.owner?.display_name ?? "Unknown";
+      const label = lab.owner?.display_name ?? lab.owner?.participant_code ?? "Unknown";
       map.set(key, label);
     }
     return [...map.entries()].map(([value, label]) => ({ value, label }));
-  }, [assignments]);
+  }, [labs]);
 
-  const filteredAssignments = useMemo(() => {
+  const filteredLabs = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const taskPrefixes = assignmentSetTypes.find((type) => type.value === setType)?.taskPrefixes ?? ["AQT", "QT"];
-    return assignments.filter((assignment) => {
-      const ownerKey = assignment.owner?.participant_code ?? assignment.owner?.display_name ?? "Unknown";
-      const haystack = `${assignment.task_code ?? ""} ${assignment.title ?? ""}`.toLowerCase();
-      const matchesType = taskPrefixes.some((prefix) => assignment.task_code?.startsWith(prefix));
+    const taskPrefixes = labSetTypes.find((type) => type.value === setType)?.taskPrefixes ?? ["LQT"];
+    return labs.filter((lab) => {
+      const ownerKey = lab.owner?.participant_code ?? lab.owner?.display_name ?? "Unknown";
+      const haystack = `${lab.task_code ?? ""} ${lab.title ?? ""}`.toLowerCase();
+      const matchesType = taskPrefixes.some((prefix) => lab.task_code?.startsWith(prefix));
       return matchesType && (ownerFilter === "all" || ownerFilter === ownerKey) && (!normalized || haystack.includes(normalized));
     });
-  }, [assignments, query, ownerFilter, setType]);
+  }, [labs, query, ownerFilter, setType]);
 
-  const nextAssignmentSetCode = useMemo(() => {
-    const setPrefix = assignmentSetTypes.find((type) => type.value === setType)?.setPrefix ?? "SAQT";
+  const nextLabSetCode = useMemo(() => {
+    const setPrefix = labSetTypes.find((type) => type.value === setType)?.setPrefix ?? "SLQT";
     const pattern = new RegExp(`^${setPrefix}(\\d+)$`);
-    const numbers = assignmentSets
+    const numbers = labSets
       .map((set) => set.batch_code?.match(pattern)?.[1])
       .filter(Boolean)
       .map((value) => Number(value));
     const nextNumber = (numbers.length ? Math.max(...numbers) : 0) + 1;
-    const maxWidth = Math.max(4, ...assignmentSets.map((set) => set.batch_code?.match(pattern)?.[1]?.length ?? 0));
+    const maxWidth = Math.max(4, ...labSets.map((set) => set.batch_code?.match(pattern)?.[1]?.length ?? 0));
     return `${setPrefix}${String(nextNumber).padStart(maxWidth, "0")}`;
-  }, [assignmentSets, setType]);
+  }, [labSets, setType]);
 
   function changeSetType(nextType: string) {
     setSetType(nextType);
     setSelectedIds(new Set());
   }
 
-  function toggleSelected(assignmentId: string) {
+  function toggleSelected(labId: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(assignmentId)) next.delete(assignmentId);
-      else next.add(assignmentId);
+      if (next.has(labId)) next.delete(labId);
+      else next.add(labId);
       return next;
     });
   }
 
-  function updateScore(assignmentId: string, value: string) {
-    const score = Math.max(0, Number(value || 0));
-    setScoreByAssignment((current) => ({ ...current, [assignmentId]: score }));
-  }
-
-  async function createAssignmentSet() {
+  async function createLabSet() {
     const name = setName.trim();
     if (!name || saving) return;
 
@@ -172,8 +164,8 @@ export default function NewAssignmentSetPage() {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        family: "assignment",
-        batch_code: nextAssignmentSetCode,
+        family: "lab",
+        batch_code: nextLabSetCode,
         batch_name: name,
         batch_description: setDescription,
         status: "active",
@@ -184,13 +176,12 @@ export default function NewAssignmentSetPage() {
     const text = await response.text();
     const json = text ? safeJsonParse(text) : {};
     if (!response.ok) {
-      setErrorMessage(json.error ?? text ?? "Failed to create assignment set.");
+      setErrorMessage(json.error ?? text ?? "Failed to create lab set.");
       setSaving(false);
       return;
     }
 
-    const createdId = json.assignment_set?.batch_id;
-    router.push(createdId ? `/teacher/assignmentsets/${createdId}` : "/teacher/assignmentsets");
+    router.push("/teacher/labs");
   }
 
   if (errorMessage) {
@@ -201,18 +192,18 @@ export default function NewAssignmentSetPage() {
     <div className="min-h-screen bg-[#FFF7ED]">
       <header className="bg-white border-b border-[#FED7AA] px-6 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/teacher/assignmentsets" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
-            Assignment Sets
+          <Link href="/teacher/labs" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
+            Lab Sets
           </Link>
-          <span className="text-xs font-semibold text-[#F37021]">New Assignment Set</span>
+          <span className="text-xs font-semibold text-[#F37021]">New Lab Set</span>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         <section className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-[#0F172A]">New Assignment Set</h1>
-            <p className="text-sm text-[#64748B] mt-1">Select assignments from all teachers before creating a new batch assignment.</p>
+            <h1 className="text-2xl font-bold text-[#0F172A]">New Lab Set</h1>
+            <p className="text-sm text-[#64748B] mt-1">Select active labs before creating a new lab set.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -241,7 +232,7 @@ export default function NewAssignmentSetPage() {
 
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 grid grid-cols-1 lg:grid-cols-3 gap-3">
           <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {assignmentSetTypes.map((type) => (
+            {labSetTypes.map((type) => (
               <button
                 key={type.value}
                 type="button"
@@ -260,7 +251,7 @@ export default function NewAssignmentSetPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by assignment code or name"
+            placeholder="Search by lab code or name"
             className="lg:col-span-2 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm focus:outline-none focus:ring-2 focus:ring-[#F37021]"
           />
           <select
@@ -269,7 +260,7 @@ export default function NewAssignmentSetPage() {
             className="px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm focus:outline-none focus:ring-2 focus:ring-[#F37021]"
           >
             <option value="all">All teachers</option>
-            {teacherOwnerKey && <option value={teacherOwnerKey}>My assignments</option>}
+            {teacherOwnerKey && <option value={teacherOwnerKey}>My labs</option>}
             {owners.map((owner) => (
               owner.value === teacherOwnerKey ? null : <option key={owner.value} value={owner.value}>{owner.label}</option>
             ))}
@@ -279,65 +270,60 @@ export default function NewAssignmentSetPage() {
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <input
-              value={nextAssignmentSetCode}
+              value={nextLabSetCode}
               readOnly
-              aria-label="Assignment set code"
+              aria-label="Lab set code"
               className="px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#F8FAFC] text-sm font-mono font-bold text-[#F37021] cursor-not-allowed"
             />
             <input
               value={setName}
               onChange={(event) => setSetName(event.target.value)}
-              placeholder="Assignment Set Name"
+              placeholder="Lab Set Name"
               className="px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm"
             />
           </div>
           <textarea
             value={setDescription}
             onChange={(event) => setSetDescription(event.target.value)}
-            placeholder="Assignment Set Description"
+            placeholder="Lab Set Description"
             rows={3}
             className="w-full mb-5 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm resize-none"
           />
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[#0F172A]">
-              Selected Assignments: <span className="text-[#F37021]">{selectedIds.size}</span>
+              Selected Labs: <span className="text-[#F37021]">{selectedIds.size}</span>
             </p>
           </div>
           <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
-            {filteredAssignments.map((assignment) => (
-              <div key={assignment.assignment_id} className="flex items-start gap-3 border border-[#FED7AA] rounded-xl px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(assignment.assignment_id)}
-                  onChange={() => toggleSelected(assignment.assignment_id)}
-                  className="mt-1"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-mono font-bold text-[#F37021]">{assignment.task_code ?? "-"}</p>
-                  <p className="text-sm font-semibold text-[#0F172A]">{assignment.title ?? "Untitled assignment"}</p>
-                  <p className="text-xs text-[#64748B]">Owner: {assignment.owner?.display_name ?? assignment.owner?.participant_code ?? "Unknown"}</p>
-                </div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-[#64748B]">
-                  Score
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={scoreByAssignment[assignment.assignment_id] ?? 10}
-                    onChange={(event) => updateScore(assignment.assignment_id, event.target.value)}
-                    className="w-20 px-2 py-1.5 rounded-lg border border-[#FED7AA] bg-[#FFF7ED] text-sm font-semibold text-[#0F172A]"
-                  />
-                </label>
+            {filteredLabs.length === 0 ? (
+              <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center text-sm text-[#64748B]">
+                No active labs match the current filters.
               </div>
-            ))}
+            ) : (
+              filteredLabs.map((lab) => (
+                <div key={lab.assignment_id} className="flex items-start gap-3 border border-[#FED7AA] rounded-xl px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(lab.assignment_id)}
+                    onChange={() => toggleSelected(lab.assignment_id)}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-mono font-bold text-[#F37021]">{lab.task_code ?? "-"}</p>
+                    <p className="text-sm font-semibold text-[#0F172A]">{lab.title ?? "Untitled lab"}</p>
+                    <p className="text-xs text-[#64748B]">Owner: {lab.owner?.display_name ?? lab.owner?.participant_code ?? "Unknown"}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           <button
             type="button"
-            onClick={createAssignmentSet}
+            onClick={createLabSet}
             disabled={!setName.trim() || saving}
             className="mt-5 px-4 py-2 rounded-xl bg-[#F37021] hover:bg-[#C2410C] text-white text-sm font-semibold disabled:cursor-not-allowed disabled:bg-[#F37021]/50"
           >
-            {saving ? "Creating..." : `Create Assignment Set (${selectedIds.size})`}
+            {saving ? "Creating..." : `Create Lab Set (${selectedIds.size})`}
           </button>
         </section>
       </main>
@@ -345,8 +331,8 @@ export default function NewAssignmentSetPage() {
   );
 }
 
-function isActiveAssignment(assignment: AssignmentItem) {
-  return Boolean(assignment.is_active) && assignment.status !== "archived";
+function isActiveLab(lab: LabItem) {
+  return Boolean(lab.is_active) && lab.status !== "archived";
 }
 
 function TypeIcon({ name }: { name: string }) {
@@ -389,9 +375,8 @@ function TypeIcon({ name }: { name: string }) {
 
 function safeJsonParse(text: string): {
   error?: string;
-  assignments?: AssignmentItem[];
-  assignment_sets?: AssignmentSetItem[];
-  assignment_set?: { batch_id?: string };
+  assignments?: LabItem[];
+  assignment_sets?: LabSetItem[];
   profile?: TeacherProfile;
 } {
   try {

@@ -18,6 +18,7 @@ function isAssignmentBatch(batch: BatchRow) {
   return (
     batch.set_type_id === 1 ||
     batch.batch_type === "assignment_set" ||
+    batch.batch_code?.startsWith("SA") ||
     batch.batch_code?.startsWith("A")
   );
 }
@@ -26,6 +27,7 @@ function isExamBatch(batch: BatchRow) {
   return (
     batch.set_type_id === 2 ||
     batch.batch_type === "exam_set" ||
+    batch.batch_code?.startsWith("SE") ||
     batch.batch_code?.startsWith("E")
   );
 }

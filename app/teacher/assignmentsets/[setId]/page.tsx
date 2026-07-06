@@ -47,19 +47,24 @@ export default function AssignmentSetDetailPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [originalAssignments, setOriginalAssignments] = useState<AssignmentItem[]>([]);
   const [allAssignments, setAllAssignments] = useState<AssignmentItem[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [scoreByAssignment, setScoreByAssignment] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [addQuery, setAddQuery] = useState("");
-  const [addAssignmentId, setAddAssignmentId] = useState<string | null>(null);
+  const [addAssignmentIds, setAddAssignmentIds] = useState<string[]>([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [setCode, setSetCode] = useState("");
   const [setName, setSetName] = useState("");
   const [setDescription, setSetDescription] = useState("");
+  const [originalSetName, setOriginalSetName] = useState("");
+  const [originalSetDescription, setOriginalSetDescription] = useState("");
+  const [editingAssignments, setEditingAssignments] = useState(false);
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -116,14 +121,15 @@ export default function AssignmentSetDetailPage() {
         });
       }
       const loadedAssignments = [...assignmentMap.values()];
-      const selectedTaskIds = new Set(loadedAssignments.map((assignment) => assignment.assignment_id));
 
       setAssignments(loadedAssignments);
+      setOriginalAssignments(loadedAssignments);
       setAllAssignments((assignmentsJson.assignments ?? []).filter(isActiveAssignment));
-      setSelectedIds(selectedTaskIds);
       setSetCode(payload.assignment_set.batch_code ?? "");
       setSetName(payload.assignment_set.batch_name ?? "");
       setSetDescription(payload.assignment_set.batch_description ?? "");
+      setOriginalSetName(payload.assignment_set.batch_name ?? "");
+      setOriginalSetDescription(payload.assignment_set.batch_description ?? "");
       setScoreByAssignment(Object.fromEntries(loadedAssignments.map((assignment) => [
         assignment.assignment_id,
         Number(assignment.max_score ?? 10),
@@ -162,43 +168,109 @@ export default function AssignmentSetDetailPage() {
     });
   }, [addQuery, allAssignments, assignments]);
 
-  function toggleSelected(assignmentId: string) {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(assignmentId)) next.delete(assignmentId);
-      else next.add(assignmentId);
-      return next;
-    });
-  }
-
   function updateScore(assignmentId: string, value: string) {
     const score = Math.max(0, Number(value || 0));
+    setEditingAssignments(true);
     setScoreByAssignment((current) => ({ ...current, [assignmentId]: score }));
   }
 
   function openAddModal() {
+    setEditingAssignments(true);
     setAddQuery("");
-    setAddAssignmentId(null);
+    setAddAssignmentIds([]);
     setAddModalOpen(true);
   }
 
   function closeAddModal() {
     setAddModalOpen(false);
-    setAddAssignmentId(null);
+    setAddAssignmentIds([]);
   }
 
   function addAssignmentToSet() {
-    if (!addAssignmentId) return;
-    const assignment = allAssignments.find((item) => item.assignment_id === addAssignmentId);
-    if (!assignment) return;
+    if (addAssignmentIds.length === 0) return;
+    const selectedAssignments = allAssignments.filter((item) => addAssignmentIds.includes(item.assignment_id));
+    if (selectedAssignments.length === 0) return;
 
-    setAssignments((current) => [...current, assignment]);
-    setSelectedIds((current) => new Set(current).add(assignment.assignment_id));
+    setAssignments((current) => [...current, ...selectedAssignments]);
     setScoreByAssignment((current) => ({
       ...current,
-      [assignment.assignment_id]: Number(assignment.max_score ?? 10),
+      ...Object.fromEntries(selectedAssignments.map((assignment) => [
+        assignment.assignment_id,
+        Number(assignment.max_score ?? 10),
+      ])),
     }));
     closeAddModal();
+  }
+
+  function toggleAddAssignment(assignmentId: string) {
+    setAddAssignmentIds((current) => current.includes(assignmentId)
+      ? current.filter((id) => id !== assignmentId)
+      : [...current, assignmentId]);
+  }
+
+  function startEditAssignments() {
+    setEditingAssignments(true);
+  }
+
+  function removeAssignmentFromDraft(assignmentId: string) {
+    setEditingAssignments(true);
+    setAssignments((current) => current.filter((assignment) => assignment.assignment_id !== assignmentId));
+  }
+
+  function cancelAssignmentDraft() {
+    setAssignments(originalAssignments);
+    setSetName(originalSetName);
+    setSetDescription(originalSetDescription);
+    setScoreByAssignment(Object.fromEntries(originalAssignments.map((assignment) => [
+      assignment.assignment_id,
+      Number(assignment.max_score ?? 10),
+    ])));
+    setEditingAssignments(false);
+    closeAddModal();
+    setSaveMessage(null);
+  }
+
+  async function saveAssignmentSet() {
+    const name = setName.trim();
+    if (!name || saving) return;
+
+    setSaving(true);
+    setErrorMessage(null);
+    setSaveMessage(null);
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+
+    const response = await fetch(`/api/teacher/assignmentsets/${params.setId}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batch_name: name,
+        batch_description: setDescription,
+        assignments: assignments.map((assignment, index) => ({
+          task_id: assignment.assignment_id,
+          assigned_order: index + 1,
+        })),
+      }),
+    });
+    const text = await response.text();
+    const json = (text ? safeJsonParse(text) : {}) as { error?: string };
+    if (!response.ok) {
+      setErrorMessage(json.error ?? text ?? "Failed to save assignment set.");
+      setSaving(false);
+      return;
+    }
+
+    setSetName(name);
+    setOriginalSetName(name);
+    setOriginalSetDescription(setDescription);
+    setOriginalAssignments(assignments);
+    setEditingAssignments(false);
+    setSaveMessage("Assignment set saved.");
+    setSaving(false);
   }
 
   if (loading) {
@@ -280,14 +352,20 @@ export default function AssignmentSetDetailPage() {
             />
             <input
               value={setName}
-              onChange={(event) => setSetName(event.target.value)}
+              onChange={(event) => {
+                setSetName(event.target.value);
+                setEditingAssignments(true);
+              }}
               placeholder="Assignment Set Name"
               className="px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm"
             />
           </div>
           <textarea
             value={setDescription}
-            onChange={(event) => setSetDescription(event.target.value)}
+            onChange={(event) => {
+              setSetDescription(event.target.value);
+              setEditingAssignments(true);
+            }}
             placeholder="Assignment Set Description"
             rows={3}
             className="w-full mb-5 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm resize-none"
@@ -295,28 +373,60 @@ export default function AssignmentSetDetailPage() {
 
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[#0F172A]">
-              Selected Assignments: <span className="text-[#F37021]">{selectedIds.size}</span>
+              Selected Assignments: <span className="text-[#F37021]">{assignments.length}</span>
             </p>
-            <button
-              type="button"
-              onClick={openAddModal}
-              aria-label="Add assignment"
-              title="Add assignment"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F37021] text-lg font-bold leading-none text-white hover:bg-[#C2410C]"
-            >
-              +
-            </button>
+            <div className="flex items-center gap-2">
+              {!editingAssignments ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openAddModal}
+                    aria-label="Add assignment"
+                    title="Add assignment"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F37021] text-lg font-bold leading-none text-white hover:bg-[#C2410C]"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startEditAssignments}
+                    aria-label="Edit assignments"
+                    title="Edit assignments"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED]"
+                  >
+                    <PencilIcon />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={saveAssignmentSet}
+                    disabled={!setName.trim() || saving}
+                    aria-label="Save assignment set"
+                    title="Save"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F37021] text-white hover:bg-[#C2410C] disabled:cursor-not-allowed disabled:bg-[#F37021]/50"
+                  >
+                    <SaveIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelAssignmentDraft}
+                    disabled={saving}
+                    aria-label="Cancel assignment changes"
+                    title="Cancel"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-50"
+                  >
+                    <XIcon />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
             {filteredAssignments.map((assignment) => (
               <div key={assignment.assignment_id} className="flex items-start gap-3 border border-[#FED7AA] rounded-xl px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(assignment.assignment_id)}
-                  onChange={() => toggleSelected(assignment.assignment_id)}
-                  className="mt-1"
-                />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-mono font-bold text-[#F37021]">{assignment.task_code ?? "-"}</p>
                   <p className="text-sm font-semibold text-[#0F172A]">{assignment.title ?? "Untitled assignment"}</p>
@@ -333,12 +443,21 @@ export default function AssignmentSetDetailPage() {
                     className="w-20 px-2 py-1.5 rounded-lg border border-[#FED7AA] bg-[#FFF7ED] text-sm font-semibold text-[#0F172A]"
                   />
                 </label>
+                {editingAssignments && (
+                  <button
+                    type="button"
+                    onClick={() => removeAssignmentFromDraft(assignment.assignment_id)}
+                    aria-label="Remove assignment"
+                    title="Remove"
+                    className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-red-200 text-base font-bold leading-none text-red-600 hover:bg-red-50"
+                  >
+                    -
+                  </button>
+                )}
               </div>
             ))}
           </div>
-          <button className="mt-5 px-4 py-2 rounded-xl bg-[#F37021]/60 text-white text-sm font-semibold cursor-not-allowed" disabled>
-            Save Assignment Set ({selectedIds.size})
-          </button>
+          {saveMessage && <p className="mt-4 text-sm font-semibold text-green-700">{saveMessage}</p>}
         </section>
       </main>
 
@@ -348,7 +467,7 @@ export default function AssignmentSetDetailPage() {
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-[#0F172A]">Assignment List</h2>
-                <p className="text-sm text-[#64748B] mt-1">Select an active assignment to add to this set.</p>
+                <p className="text-sm text-[#64748B] mt-1">Select active assignments to add to this set.</p>
               </div>
               <button
                 type="button"
@@ -357,7 +476,7 @@ export default function AssignmentSetDetailPage() {
                 title="Cancel"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#FED7AA] bg-white text-lg font-bold text-[#F37021] hover:bg-[#FFF7ED]"
               >
-                ×
+                x
               </button>
             </div>
 
@@ -375,23 +494,20 @@ export default function AssignmentSetDetailPage() {
                 </div>
               ) : (
                 addableAssignments.map((assignment) => (
-                  <button
+                  <label
                     key={assignment.assignment_id}
-                    type="button"
-                    onClick={() => setAddAssignmentId(assignment.assignment_id)}
-                    className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                      addAssignmentId === assignment.assignment_id
+                    className={`block w-full cursor-pointer rounded-xl border px-4 py-3 text-left transition-colors ${
+                      addAssignmentIds.includes(assignment.assignment_id)
                         ? "border-[#F37021] bg-[#FFF7ED]"
                         : "border-[#FED7AA] bg-white hover:bg-[#FFF7ED]"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span
-                        className={`mt-1 h-4 w-4 rounded-full border ${
-                          addAssignmentId === assignment.assignment_id
-                            ? "border-[#F37021] bg-[#F37021]"
-                            : "border-[#FED7AA] bg-white"
-                        }`}
+                      <input
+                        type="checkbox"
+                        checked={addAssignmentIds.includes(assignment.assignment_id)}
+                        onChange={() => toggleAddAssignment(assignment.assignment_id)}
+                        className="mt-1 h-4 w-4 shrink-0 accent-[#F37021]"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-mono font-bold text-[#F37021]">{assignment.task_code ?? "-"}</p>
@@ -400,7 +516,7 @@ export default function AssignmentSetDetailPage() {
                       </div>
                       <span className="text-xs font-semibold text-[#64748B]">Score {assignment.max_score ?? 10}</span>
                     </div>
-                  </button>
+                  </label>
                 ))
               )}
             </div>
@@ -409,12 +525,12 @@ export default function AssignmentSetDetailPage() {
               <button
                 type="button"
                 onClick={addAssignmentToSet}
-                disabled={!addAssignmentId}
+                disabled={addAssignmentIds.length === 0}
                 aria-label="Add selected assignment"
                 title="Add selected assignment"
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F37021] text-xl font-bold text-white hover:bg-[#C2410C] disabled:cursor-not-allowed disabled:bg-[#F37021]/40"
               >
-                ✓
+                +
               </button>
             </div>
           </div>
@@ -426,6 +542,34 @@ export default function AssignmentSetDetailPage() {
 
 function isActiveAssignment(assignment: AssignmentItem) {
   return Boolean(assignment.is_active) && assignment.status !== "archived";
+}
+
+function PencilIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+      <path d="M17 21v-8H7v8" />
+      <path d="M7 3v5h8" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
 }
 
 function safeJsonParse(text: string): { error?: string; assignments?: AssignmentItem[] } | AssignmentSetPayload {

@@ -16,11 +16,12 @@ type DashboardData = {
 };
 
 const navItems = [
-  { title: "Assignment Management", subtitle: "Manage assignment sets and tasks", href: "/teacher/assignmentsets", enabled: true },
-  { title: "Labs", subtitle: "Coming Soon", href: "#", enabled: false },
-  { title: "Exams", subtitle: "Coming Soon", href: "#", enabled: false },
-  { title: "Submissions", subtitle: "Review student submissions", href: "/teacher/assignmentsets", enabled: true },
-  { title: "Students", subtitle: "View assigned students", href: "/teacher/assignmentsets", enabled: true },
+  { title: "Assignment", subtitle: "Manage assignment sets and tasks", href: "/teacher/assignmentsets", enabled: true, icon: "assignment" },
+  { title: "Labs", subtitle: "Manage lab sets and practice tasks", href: "/teacher/labs", enabled: true, icon: "labs" },
+  { title: "Exams", subtitle: "Coming Soon", href: "#", enabled: false, icon: "exams" },
+  { title: "Classes", subtitle: "Manage owned classes", href: "/teacher/classes", enabled: true, icon: "classes" },
+  { title: "Students", subtitle: "View active class students", href: "/teacher/students", enabled: true, icon: "students" },
+  { title: "Submission", subtitle: "Coming Soon", href: "#", enabled: false, icon: "submission" },
 ];
 
 export default function TeacherDashboardPage() {
@@ -50,7 +51,7 @@ export default function TeacherDashboardPage() {
         return;
       }
 
-      setData(json);
+      setData(json as DashboardData);
       setLoading(false);
     }
 
@@ -102,14 +103,20 @@ export default function TeacherDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {navItems.map((item) => (
               item.enabled ? (
-                <Link key={item.title} href={item.href} className="bg-white border border-[#FED7AA] rounded-2xl p-5 hover:border-[#F37021] hover:shadow-sm transition-all">
-                  <p className="font-bold text-[#0F172A] text-sm">{item.title}</p>
-                  <p className="text-xs text-[#64748B] mt-1">{item.subtitle}</p>
+                <Link key={item.title} href={item.href} className="flex items-center justify-between gap-4 bg-white border border-[#FED7AA] rounded-2xl p-5 hover:border-[#F37021] hover:shadow-sm transition-all">
+                  <span className="min-w-0">
+                    <span className="block font-bold text-[#0F172A] text-sm">{item.title}</span>
+                    <span className="block text-xs text-[#64748B] mt-1">{item.subtitle}</span>
+                  </span>
+                  <ManagementIcon name={item.icon} />
                 </Link>
               ) : (
-                <div key={item.title} className="bg-white border border-[#FED7AA] rounded-2xl p-5 opacity-60">
-                  <p className="font-bold text-[#0F172A] text-sm">{item.title}</p>
-                  <p className="text-xs text-[#64748B] mt-1">{item.subtitle}</p>
+                <div key={item.title} className="flex items-center justify-between gap-4 bg-white border border-[#FED7AA] rounded-2xl p-5 opacity-60">
+                  <span className="min-w-0">
+                    <span className="block font-bold text-[#0F172A] text-sm">{item.title}</span>
+                    <span className="block text-xs text-[#64748B] mt-1">{item.subtitle}</span>
+                  </span>
+                  <ManagementIcon name={item.icon} />
                 </div>
               )
             ))}
@@ -127,6 +134,66 @@ function SummaryCard({ title, value, description }: { title: string; value: numb
       <p className="text-3xl font-bold text-[#F37021] mt-3">{value}</p>
       <p className="text-xs text-[#64748B] mt-2">{description}</p>
     </div>
+  );
+}
+
+function ManagementIcon({ name }: { name: string }) {
+  const iconClass = "h-5 w-5";
+  return (
+    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#FED7AA] bg-[#FFF7ED] text-[#F37021]">
+      {name === "assignment" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 5h6" />
+          <path d="M9 12h6" />
+          <path d="M9 17h4" />
+          <path d="M5 7.5 6.5 9 9 6" />
+          <path d="M5 14.5 6.5 16 9 13" />
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+        </svg>
+      )}
+      {name === "labs" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
+          <path d="M8 2h8" />
+          <path d="M7 15h10" />
+        </svg>
+      )}
+      {name === "exams" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+          <path d="M14 2v6h6" />
+          <path d="M9 14h6" />
+          <path d="M9 18h4" />
+        </svg>
+      )}
+      {name === "classes" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 21h18" />
+          <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+          <path d="M9 8h1" />
+          <path d="M14 8h1" />
+          <path d="M9 12h1" />
+          <path d="M14 12h1" />
+        </svg>
+      )}
+      {name === "students" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-8 0v2" />
+          <circle cx="12" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      )}
+      {name === "submission" && (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 21h14" />
+          <path d="M5 17v4" />
+          <path d="M19 17v4" />
+        </svg>
+      )}
+    </span>
   );
 }
 

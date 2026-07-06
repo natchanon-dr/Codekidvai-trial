@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase-client";
 
 type StatusFilter = "active" | "inactive" | "all";
 
-type AssignmentSet = {
+type LabSet = {
   batch_id: string;
   batch_code: string | null;
   batch_name: string | null;
@@ -27,15 +27,15 @@ type AssignedClass = {
   class_name: string;
 };
 
-export default function TeacherAssignmentSetsPage() {
+export default function TeacherLabsPage() {
   const router = useRouter();
-  const [sets, setSets] = useState<AssignmentSet[]>([]);
+  const [sets, setSets] = useState<LabSet[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [classModalSet, setClassModalSet] = useState<AssignmentSet | null>(null);
+  const [classModalSet, setClassModalSet] = useState<LabSet | null>(null);
 
   useEffect(() => {
     async function loadSets() {
@@ -45,14 +45,14 @@ export default function TeacherAssignmentSetsPage() {
         return;
       }
 
-      const response = await fetch("/api/teacher/assignmentsets", {
+      const response = await fetch("/api/teacher/assignmentsets?family=lab", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const text = await response.text();
       const json = text ? safeJsonParse(text) : {};
       if (!response.ok) {
         if (String(json.error ?? "").includes("Teacher or admin")) router.push("/student/dashboard");
-        else setErrorMessage(json.error ?? text ?? "Failed to load assignment sets.");
+        else setErrorMessage(json.error ?? text ?? "Failed to load lab sets.");
         setLoading(false);
         return;
       }
@@ -93,13 +93,13 @@ export default function TeacherAssignmentSetsPage() {
         : set));
     } else {
       const text = await response.text();
-      alert(safeJsonParse(text).error ?? "Failed to update assignment set.");
+      alert(safeJsonParse(text).error ?? "Failed to update lab set.");
     }
     setUpdatingId(null);
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">Loading assignment sets...</div>;
+    return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">Loading lab sets...</div>;
   }
 
   if (errorMessage) {
@@ -113,26 +113,26 @@ export default function TeacherAssignmentSetsPage() {
           <Link href="/teacher/dashboard" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
             Teacher Dashboard
           </Link>
-          <span className="text-xs font-semibold text-[#F37021]">Assignment Sets by teacher</span>
+          <span className="text-xs font-semibold text-[#F37021]">Lab Sets by teacher</span>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         <section className="flex flex-col lg:flex-row lg:items-end gap-4 justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#0F172A]">Assignment Sets</h1>
-            <p className="text-sm text-[#64748B] mt-1">Batch Assignment records created by this teacher.</p>
+            <h1 className="text-2xl font-bold text-[#0F172A]">Lab Sets</h1>
+            <p className="text-sm text-[#64748B] mt-1">Practice lab records created by this teacher.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/teacher/assignmentsets/new" className="px-4 py-2 rounded-xl bg-[#F37021] hover:bg-[#C2410C] text-white text-sm font-semibold">
-              New Assignment Set
+            <Link href="/teacher/labs/new" className="px-4 py-2 rounded-xl bg-[#F37021] hover:bg-[#C2410C] text-white text-sm font-semibold">
+              New Lab Set
             </Link>
-            <Link href="/teacher/assignments/new" className="px-4 py-2 rounded-xl border border-[#F37021] text-[#F37021] bg-white hover:bg-[#FFF7ED] text-sm font-semibold">
-              New Assignment
-            </Link>
-            <Link href="/teacher/assignments" className="px-4 py-2 rounded-xl border border-[#FED7AA] text-[#0F172A] bg-white hover:border-[#F37021] text-sm font-semibold">
-              Assignment List
-            </Link>
+            <button type="button" className="px-4 py-2 rounded-xl border border-[#F37021] text-[#F37021] bg-white text-sm font-semibold opacity-60">
+              New Lab
+            </button>
+            <button type="button" className="px-4 py-2 rounded-xl border border-[#FED7AA] text-[#0F172A] bg-white text-sm font-semibold opacity-60">
+              Lab List
+            </button>
           </div>
         </section>
 
@@ -140,13 +140,14 @@ export default function TeacherAssignmentSetsPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by set code or name"
+            placeholder="Search by lab set code or name"
             className="flex-1 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
           />
           <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
             {(["active", "inactive", "all"] as StatusFilter[]).map((status) => (
               <button
                 key={status}
+                type="button"
                 onClick={() => setStatusFilter(status)}
                 className={`px-4 py-2 text-sm font-semibold capitalize ${statusFilter === status ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
               >
@@ -158,7 +159,7 @@ export default function TeacherAssignmentSetsPage() {
 
         {filteredSets.length === 0 ? (
           <div className="bg-white border border-[#FED7AA] rounded-2xl p-8 text-center text-sm text-[#64748B]">
-            No assignment sets match the current filters.
+            No lab sets match the current filters.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -170,10 +171,10 @@ export default function TeacherAssignmentSetsPage() {
                       {set.batch_code && <span className="font-mono text-xs font-bold text-[#F37021]">{set.batch_code}</span>}
                       <Badge>{set.status ?? "draft"}</Badge>
                     </div>
-                    <h2 className="text-base font-bold text-[#0F172A]">{set.batch_name ?? "Untitled assignment set"}</h2>
+                    <h2 className="text-base font-bold text-[#0F172A]">{set.batch_name ?? "Untitled lab set"}</h2>
                     <p className="text-sm text-[#64748B] mt-1">{set.batch_description ?? "No description provided."}</p>
                     <div className="flex flex-wrap gap-4 mt-4 text-xs text-[#64748B]">
-                      <span>{set.task_count} assignments</span>
+                      <span>{set.task_count} labs</span>
                       <button
                         type="button"
                         onClick={() => setClassModalSet(set)}
@@ -190,19 +191,19 @@ export default function TeacherAssignmentSetsPage() {
                       Owner: <span className="font-semibold text-[#0F172A]">{set.owner?.display_name ?? set.owner?.participant_code ?? "Unknown"}</span>
                     </p>
                     <div className="flex items-center gap-3">
-                    <Link
-                      href={`/teacher/assignmentsets/${set.batch_id}`}
-                      aria-label="Edit assignment set"
-                      title="Edit"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#F37021] hover:bg-[#C2410C] text-white"
-                    >
-                      <PencilIcon />
-                    </Link>
-                    <SetActiveSwitch
-                      active={set.status === "active"}
-                      disabled={updatingId === set.batch_id}
-                      onToggle={(nextActive) => toggleSetStatus(set.batch_id, nextActive)}
-                    />
+                      <button
+                        type="button"
+                        aria-label="Edit lab set"
+                        title="Edit"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#F37021] text-white opacity-60"
+                      >
+                        <PencilIcon />
+                      </button>
+                      <SetActiveSwitch
+                        active={set.status === "active"}
+                        disabled={updatingId === set.batch_id}
+                        onToggle={(nextActive) => toggleSetStatus(set.batch_id, nextActive)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -220,7 +221,7 @@ export default function TeacherAssignmentSetsPage() {
                 <p className="mt-1 text-sm text-[#64748B]">
                   <span className="font-mono font-semibold text-[#F37021]">{classModalSet.batch_code ?? "-"}</span>
                   <span className="mx-2 text-[#CBD5E1]">|</span>
-                  {classModalSet.batch_name ?? "Untitled assignment set"}
+                  {classModalSet.batch_name ?? "Untitled lab set"}
                 </p>
               </div>
               <button
@@ -233,7 +234,7 @@ export default function TeacherAssignmentSetsPage() {
             </div>
             {(classModalSet.assigned_classes ?? []).length === 0 ? (
               <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-5 text-center text-sm text-[#64748B]">
-                No classes linked to this assignment set.
+                No classes linked to this lab set.
               </div>
             ) : (
               <div className="space-y-2">
@@ -279,7 +280,7 @@ function SetActiveSwitch({
       <button
         type="button"
         aria-pressed={active}
-        aria-label="Toggle assignment set active status"
+        aria-label="Toggle lab set active status"
         disabled={disabled}
         onClick={() => onToggle(!active)}
         title={active ? "Active" : "Inactive"}
@@ -302,7 +303,7 @@ function PencilIcon() {
   );
 }
 
-function safeJsonParse(text: string): { error?: string; assignment_sets?: AssignmentSet[] } {
+function safeJsonParse(text: string): { error?: string; assignment_sets?: LabSet[] } {
   try {
     return JSON.parse(text);
   } catch {

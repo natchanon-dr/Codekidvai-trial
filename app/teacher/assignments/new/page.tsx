@@ -9,12 +9,24 @@ type AssignmentItem = {
   task_code: string | null;
 };
 
+const assignmentTypes = [
+  { value: "sql_text", label: "SQL Text", prefix: "AQT" },
+  { value: "sql_block", label: "SQL Block", prefix: "AQB" },
+  { value: "er_diagram", label: "ER Diagram", prefix: "AER" },
+  { value: "stored_procedure", label: "Stored Procedure", prefix: "ASP" },
+];
+
 export default function NewAssignmentPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [assignmentType, setAssignmentType] = useState("sql_text");
+  const [assignmentName, setAssignmentName] = useState("");
+  const [problemStatement, setProblemStatement] = useState("");
+  const [expectedAnswer, setExpectedAnswer] = useState("");
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadAssignments() {
@@ -42,14 +54,50 @@ export default function NewAssignmentPage() {
   }, [router]);
 
   const nextAssignmentCode = useMemo(() => {
+    const prefix = assignmentTypes.find((type) => type.value === assignmentType)?.prefix ?? "AQT";
+    const pattern = new RegExp(`^${prefix}(\\d+)$`);
     const numbers = assignments
-      .map((assignment) => assignment.task_code?.match(/^QT(\d+)$/)?.[1])
+      .map((assignment) => assignment.task_code?.match(pattern)?.[1])
       .filter(Boolean)
       .map((value) => Number(value));
     const nextNumber = (numbers.length ? Math.max(...numbers) : 0) + 1;
-    const maxWidth = Math.max(4, ...assignments.map((assignment) => assignment.task_code?.match(/^QT(\d+)$/)?.[1]?.length ?? 0));
-    return `QT${String(nextNumber).padStart(maxWidth, "0")}`;
-  }, [assignments]);
+    const maxWidth = Math.max(6, ...assignments.map((assignment) => assignment.task_code?.match(pattern)?.[1]?.length ?? 0));
+    return `${prefix}${String(nextNumber).padStart(maxWidth, "0")}`;
+  }, [assignments, assignmentType]);
+
+  async function saveAssignment() {
+    if (!assignmentName.trim() || saving) return;
+    setSaving(true);
+    setErrorMessage(null);
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+
+    const response = await fetch("/api/teacher/assignments", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_code: nextAssignmentCode,
+        task_title: assignmentName,
+        task_type: assignmentType,
+        problem_statement: problemStatement,
+        expected_answer: expectedAnswer,
+      }),
+    });
+    const text = await response.text();
+    const json = text ? safeJsonParse(text) : {};
+    if (!response.ok) {
+      setErrorMessage(json.error ?? text ?? "Failed to save assignment.");
+      setSaving(false);
+      return;
+    }
+
+    router.push("/teacher/assignments");
+  }
 
   if (errorMessage) {
     return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-red-600">{errorMessage}</div>;
@@ -101,18 +149,56 @@ export default function NewAssignmentPage() {
           <div className="bg-white border border-[#FED7AA] rounded-2xl p-6 shadow-sm">
             <h2 className="text-base font-bold text-[#0F172A]">Manual Create</h2>
             <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {assignmentTypes.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setAssignmentType(type.value)}
+                    className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                      assignmentType === type.value
+                        ? "border-[#F37021] bg-[#F37021] text-white"
+                        : "border-[#FED7AA] bg-[#FFF7ED] text-[#0F172A] hover:border-[#F37021]"
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
               <input
                 value={nextAssignmentCode}
                 readOnly
                 aria-label="Assignment code"
                 className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#F8FAFC] text-sm font-mono font-bold text-[#F37021] cursor-not-allowed"
               />
-              <input placeholder="Assignment name" className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm" />
-              <textarea placeholder="Problem statement" rows={5} className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm" />
-              <textarea placeholder="Expected answer" rows={4} className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm" />
+              <input
+                value={assignmentName}
+                onChange={(event) => setAssignmentName(event.target.value)}
+                placeholder="Assignment name"
+                className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm"
+              />
+              <textarea
+                value={problemStatement}
+                onChange={(event) => setProblemStatement(event.target.value)}
+                placeholder="Problem statement"
+                rows={5}
+                className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm"
+              />
+              <textarea
+                value={expectedAnswer}
+                onChange={(event) => setExpectedAnswer(event.target.value)}
+                placeholder="Expected answer"
+                rows={4}
+                className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm"
+              />
             </div>
-            <button className="mt-4 px-4 py-2 rounded-xl bg-[#F37021]/60 text-white text-sm font-semibold cursor-not-allowed" disabled>
-              Save Assignment
+            <button
+              type="button"
+              onClick={saveAssignment}
+              disabled={!assignmentName.trim() || saving}
+              className="mt-4 px-4 py-2 rounded-xl bg-[#F37021] hover:bg-[#C2410C] text-white text-sm font-semibold disabled:cursor-not-allowed disabled:bg-[#F37021]/50"
+            >
+              {saving ? "Saving..." : "Save Assignment"}
             </button>
           </div>
         </section>

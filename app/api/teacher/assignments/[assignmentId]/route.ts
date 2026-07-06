@@ -38,6 +38,7 @@ function isAssignmentBatch(batch: BatchRow) {
   return (
     batch.set_type_id === 1 ||
     batch.batch_type === "assignment_set" ||
+    batch.batch_code?.startsWith("SA") ||
     batch.batch_code?.startsWith("A")
   );
 }
@@ -163,7 +164,7 @@ export async function GET(
       submissions: submissions.map((row) => ({
         ...row,
         student: studentMap.get(row.profile_id) ?? null,
-        batch: batchMap.get(row.batch_id) ?? null,
+        batch: row.batch_id ? batchMap.get(row.batch_id) ?? null : null,
       })),
     });
   } catch (error) {

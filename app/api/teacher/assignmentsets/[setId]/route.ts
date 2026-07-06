@@ -23,11 +23,35 @@ type AssignmentRow = {
   assigned_order: number | null;
 };
 
+type UpdateSetBody = {
+  batch_name?: string;
+  batch_description?: string;
+  status?: string;
+  assignments?: Array<{
+    task_id?: string;
+    assigned_order?: number;
+  }>;
+};
+
 function isAssignmentSet(batch: BatchRow) {
   return (
     batch.set_type_id === 1 ||
     batch.batch_type === "assignment_set" ||
+    batch.batch_code?.startsWith("SA") ||
     batch.batch_code?.startsWith("A")
+  );
+}
+
+function isManagedSet(batch: BatchRow) {
+  return (
+    isAssignmentSet(batch) ||
+    batch.set_type_id === 2 ||
+    batch.batch_type === "exam_set" ||
+    batch.batch_type === "lab_set" ||
+    batch.batch_code?.startsWith("SE") ||
+    batch.batch_code?.startsWith("SL") ||
+    batch.batch_code?.startsWith("E") ||
+    batch.batch_code?.startsWith("L")
   );
 }
 
@@ -50,8 +74,8 @@ export async function GET(
     const { setId } = await params;
     const profile = await requireTeacherOrAdmin(request);
     const set = await getBatch(setId);
-    if (!set || !isAssignmentSet(set)) {
-      return NextResponse.json({ error: "Assignment set not found." }, { status: 404 });
+    if (!set || !isManagedSet(set)) {
+      return NextResponse.json({ error: "Set not found." }, { status: 404 });
     }
     if (profile.role !== "admin" && set.created_by !== profile.profile_id) {
       return NextResponse.json({ error: "You are not allowed to view this assignment set." }, { status: 403 });
@@ -126,22 +150,77 @@ export async function PATCH(
     const { setId } = await params;
     const profile = await requireTeacherOrAdmin(request);
     const set = await getBatch(setId);
-    if (!set || !isAssignmentSet(set)) {
-      return NextResponse.json({ error: "Assignment set not found." }, { status: 404 });
+    if (!set || !isManagedSet(set)) {
+      return NextResponse.json({ error: "Set not found." }, { status: 404 });
     }
     if (profile.role !== "admin" && set.created_by !== profile.profile_id) {
       return NextResponse.json({ error: "You are not allowed to update this assignment set." }, { status: 403 });
     }
 
-    const body = await request.json();
-    const status = body.status === "active" ? "active" : "archived";
+    const body = (await request.json()) as UpdateSetBody;
+    const updates: Record<string, string | null> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (body.status) updates.status = body.status === "active" ? "active" : "archived";
+    if (typeof body.batch_name === "string") {
+      const name = body.batch_name.trim();
+      if (!name) throw new Error("Assignment set name is required.");
+      updates.batch_name = name;
+    }
+    if (typeof body.batch_description === "string") {
+      updates.batch_description = body.batch_description.trim() || null;
+    }
+
     const { error } = await supabaseAdmin
       .from("mst_experiment_batches")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq("batch_id", setId);
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, status });
+    if (Array.isArray(body.assignments)) {
+      const taskIds = [...new Set(body.assignments.map((item) => String(item.task_id ?? "").trim()).filter(Boolean))];
+      const orderByTaskId = new Map(taskIds.map((taskId, index) => [taskId, index + 1]));
+      for (const item of body.assignments) {
+        const taskId = String(item.task_id ?? "").trim();
+        if (!taskId) continue;
+        orderByTaskId.set(taskId, Math.max(1, Number(item.assigned_order ?? orderByTaskId.get(taskId) ?? 1)));
+      }
+
+      const { data: existingRows, error: existingError } = await supabaseAdmin
+        .from("trn_task_assignments")
+        .select("profile_id")
+        .eq("batch_id", setId);
+      if (existingError) throw existingError;
+
+      const profileIds = [...new Set((existingRows ?? []).map((row) => row.profile_id).filter(Boolean))];
+      if (profileIds.length === 0 && set.created_by) profileIds.push(set.created_by);
+
+      let deleteQuery = supabaseAdmin.from("trn_task_assignments").delete().eq("batch_id", setId);
+      if (taskIds.length > 0) deleteQuery = deleteQuery.not("task_id", "in", `(${taskIds.join(",")})`);
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) throw deleteError;
+
+      if (taskIds.length > 0 && profileIds.length > 0) {
+        const now = new Date().toISOString();
+        const rows = profileIds.flatMap((profileId) => taskIds.map((taskId) => ({
+          batch_id: setId,
+          profile_id: profileId,
+          task_id: taskId,
+          assigned_order: orderByTaskId.get(taskId) ?? 1,
+          assigned_group: null,
+          is_required: true,
+          is_unlocked: true,
+          status: "assigned",
+          assigned_at: now,
+        })));
+        const { error: upsertError } = await supabaseAdmin
+          .from("trn_task_assignments")
+          .upsert(rows, { onConflict: "batch_id,profile_id,task_id", ignoreDuplicates: false });
+        if (upsertError) throw upsertError;
+      }
+    }
+
+    return NextResponse.json({ ok: true, updates });
   } catch (error) {
     console.error("Teacher assignment set update API error:", error);
     return NextResponse.json(

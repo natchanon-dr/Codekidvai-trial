@@ -79,7 +79,7 @@ export default function TeacherAssignmentDetailPage() {
         return;
       }
 
-      setData(json);
+      setData(json as DetailPayload);
       setLoading(false);
     }
 

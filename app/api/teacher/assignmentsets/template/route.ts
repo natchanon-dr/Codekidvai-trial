@@ -4,10 +4,10 @@ import { convertRowsToCsv } from "@/lib/csv-utils";
 export async function GET() {
   const csv = convertRowsToCsv([
     {
-      assignment_set_code: "AQT0001",
+      assignment_set_code: "SAQT0001",
       assignment_set_name: "Example Assignment Set",
       assignment_set_description: "Short assignment set description",
-      assignment_code: "QT000001",
+      assignment_code: "AQT000001",
       score: 10,
       assigned_order: 1,
     },
