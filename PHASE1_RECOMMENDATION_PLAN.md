@@ -26,6 +26,19 @@ The two original Phase 1 gaps were:
 
 The requirement has since been clarified: student membership should not be mainly based on the teacher manually adding students. Students should register, request academy access, wait for Admin approval, then join a class themselves using a class code or enrollment code.
 
+### Live inspection notes
+
+- `tb_academy`, `tb_classes`, and `tb_class_students` already exist.
+- `tb_academy` is minimal and currently uses `is_active`, not a full academy status workflow.
+- `tb_classes` already has `academy_id`, but class creation currently creates or reuses a `DEFAULT` academy automatically.
+- `tb_classes` does not currently expose `enrollment_code`, `is_open_for_enrollment`, or a distinct `target_level` field.
+- `mst_profiles` currently stores `display_name`, `grade_level`, and `school_type`, but not `first_name`, `last_name`, `student_code`, or stored `email`.
+- Current academy access is single-profile-oriented through nullable `mst_profiles.academy_id`; no multi-academy membership/request table was found.
+- Student dashboard currently reads direct `trn_task_assignments`, not academy/class-scoped enrollment context.
+- Teacher review UI and `/api/teacher/submissions` exist, but the API is read-only and review status/score changes are client-side only.
+- `trn_submissions` currently stores score/pass/run stats but not `review_status`, `teacher_feedback`, `reviewed_by`, or `reviewed_at`.
+- Student dashboard references `trn_batch_submissions`, but no matching migration was found during inspection.
+
 ## 2. Student Self-Enrollment Plan
 
 ### Intended behavior
@@ -600,6 +613,7 @@ Important: current accepted schema may include naming like `tb_academy`, `tb_cla
 - Upload/import must validate data before write.
 - Exports must never leak cross-academy data.
 - Migrations with deletion logic must be treated carefully in real environments.
+- Existing `trn_batch_submissions` usage should be resolved before relying on submit-to-teacher behavior.
 
 ## 15. Recommended Implementation Order
 
