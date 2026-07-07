@@ -16,6 +16,8 @@ type ClassRow = {
   class_section: string | null;
   academic_year: string | null;
   term: string | null;
+  enrollment_code: string | null;
+  is_open_for_enrollment: boolean;
   is_active: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -67,6 +69,8 @@ type UpdateClassBody = {
   class_section?: string;
   academic_year?: string;
   term?: string;
+  enrollment_code?: string;
+  is_open_for_enrollment?: boolean;
   is_active?: boolean;
 };
 
@@ -84,7 +88,7 @@ function batchFamily(batch: BatchRow | undefined) {
 async function getClassById(classId: string, profileId: string, role: string) {
   let query = supabaseAdmin
     .from("tb_classes")
-    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, is_active, created_at, updated_at")
+    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
     .eq("class_id", classId);
 
   if (role !== "admin") {
@@ -268,13 +272,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.class_section !== undefined) updatePayload.class_section = normalizeText(body.class_section) || null;
     if (body.academic_year !== undefined) updatePayload.academic_year = normalizeText(body.academic_year) || null;
     if (body.term !== undefined) updatePayload.term = normalizeText(body.term) || null;
+    if (body.enrollment_code !== undefined) {
+      const enrollmentCode = normalizeText(body.enrollment_code);
+      updatePayload.enrollment_code = enrollmentCode || classItem.class_code;
+    }
+    if (body.is_open_for_enrollment !== undefined) updatePayload.is_open_for_enrollment = Boolean(body.is_open_for_enrollment);
     if (body.is_active !== undefined) updatePayload.is_active = Boolean(body.is_active);
 
     const { data, error } = await supabaseAdmin
       .from("tb_classes")
       .update(updatePayload)
       .eq("class_id", classId)
-      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, is_active, created_at, updated_at")
+      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
       .single();
     if (error) throw error;
 

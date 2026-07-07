@@ -22,6 +22,12 @@ type TaskResult = {
   submission: {
     submission_id: string;
     final_answer_text: string | null;
+    auto_score: number | null;
+    review_score: number | null;
+    review_status: TaskReviewStatus | null;
+    teacher_feedback: string | null;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
     final_score: number;
     is_passed: boolean | null;
     submitted_at: string | null;
@@ -253,8 +259,8 @@ export default function TeacherSubmissionReviewPage() {
       const task = student.tasks.find((item) => item.task_id === taskSummary.task_id);
       if (!task || !isTaskEffectivelySubmittedNow(student, task)) continue;
       const key = getTaskStatusKey(student.profile_id, taskSummary.task_id);
-      snapshot.statuses[key] = taskStatusOverridesRef.current[key] ?? savedTaskStatusOverridesRef.current[key] ?? getDefaultTaskStatus(student);
-      snapshot.scores[key] = taskScoreOverridesRef.current[key] ?? savedTaskScoreOverridesRef.current[key] ?? Number(task.submission?.final_score ?? 0);
+      snapshot.statuses[key] = taskStatusOverridesRef.current[key] ?? savedTaskStatusOverridesRef.current[key] ?? getDefaultTaskStatus(student, task);
+      snapshot.scores[key] = taskScoreOverridesRef.current[key] ?? savedTaskScoreOverridesRef.current[key] ?? getSubmissionDisplayScore(task);
     }
     taskReviewSnapshotRef.current = snapshot;
     setTaskModal(taskSummary);
@@ -265,7 +271,7 @@ export default function TeacherSubmissionReviewPage() {
     const override = taskStatusOverrides[key] ?? savedTaskStatusOverrides[key];
     if (override) return override;
     if (!task.submission && deliveredTaskIds.has(task.task_id)) return "submitted";
-    return getDefaultTaskStatus(student);
+    return getDefaultTaskStatus(student, task);
   }
 
   function isTaskEffectivelySubmitted(student: ReviewStudent, task: TaskResult) {
@@ -292,7 +298,8 @@ export default function TeacherSubmissionReviewPage() {
     );
   }
 
-  function getDefaultTaskStatus(student: ReviewStudent): TaskReviewStatus {
+  function getDefaultTaskStatus(student: ReviewStudent, task?: TaskResult): TaskReviewStatus {
+    if (task?.submission?.review_status) return task.submission.review_status;
     if (student.status === "completed") return "completed";
     if (student.status === "review") return "reviewed";
     return "submitted";
@@ -325,7 +332,35 @@ export default function TeacherSubmissionReviewPage() {
 
   function getTaskScore(student: ReviewStudent, task: TaskResult) {
     const key = getTaskStatusKey(student.profile_id, task.task_id);
-    return taskScoreOverrides[key] ?? savedTaskScoreOverrides[key] ?? Number(task.submission?.final_score ?? 0);
+    return taskScoreOverrides[key] ?? savedTaskScoreOverrides[key] ?? getSubmissionDisplayScore(task);
+  }
+
+  function getSubmissionDisplayScore(task: TaskResult) {
+    return Number(task.submission?.review_score ?? task.submission?.auto_score ?? task.submission?.final_score ?? 0);
+  }
+
+  async function persistTaskReview(student: ReviewStudent, task: TaskResult, statusOverride?: TaskReviewStatus) {
+    if (!task.submission) return;
+    const token = await getToken();
+    if (!token) {
+      router.push("/auth/login");
+      throw new Error("Missing session.");
+    }
+
+    const status = statusOverride ?? getTaskStatus(student, task);
+    const response = await fetch("/api/teacher/submissions", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        submission_id: task.submission.submission_id,
+        review_status: status,
+        review_score: getTaskScore(student, task),
+        teacher_feedback: task.submission.teacher_feedback ?? null,
+      }),
+    });
+    const text = await response.text();
+    const json = text ? safeJsonParse(text) : {};
+    if (!response.ok) throw new Error(json.error ?? text ?? "Failed to save review.");
   }
 
   function updateTaskScore(student: ReviewStudent, task: TaskResult, value: string) {
@@ -338,7 +373,7 @@ export default function TeacherSubmissionReviewPage() {
     setApprovalDraftStudentIds((current) => new Set(current).add(student.profile_id));
     setDirtyTaskKeys((current) => {
       const next = new Set(current);
-      const baselineScore = savedTaskScoreOverridesRef.current[key] ?? savedTaskScoreOverrides[key] ?? Number(task.submission?.final_score ?? 0);
+      const baselineScore = savedTaskScoreOverridesRef.current[key] ?? savedTaskScoreOverrides[key] ?? getSubmissionDisplayScore(task);
       if (nextScore === baselineScore) next.delete(key);
       else next.add(key);
       return next;
@@ -435,9 +470,19 @@ export default function TeacherSubmissionReviewPage() {
     });
   }
 
-  function saveTaskReviewChanges(taskId: string) {
+  async function saveTaskReviewChanges(taskId: string) {
     if (!target) return;
     const studentsWithTask = target.setItem.students.filter((student) => student.tasks.some((task) => task.task_id === taskId));
+    try {
+      await Promise.all(studentsWithTask.map(async (student) => {
+        const task = student.tasks.find((item) => item.task_id === taskId);
+        if (!task || !task.submission) return;
+        await persistTaskReview(student, task);
+      }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save review.");
+      return;
+    }
     updateSavedTaskScoreOverrides((current) => {
       const next = { ...current };
       for (const student of studentsWithTask) {
@@ -451,7 +496,7 @@ export default function TeacherSubmissionReviewPage() {
       for (const student of studentsWithTask) {
         const key = getTaskStatusKey(student.profile_id, taskId);
         const task = student.tasks.find((item) => item.task_id === taskId);
-        if (task && isTaskEffectivelySubmittedNow(student, task)) next[key] = taskStatusOverridesRef.current[key] ?? savedTaskStatusOverridesRef.current[key] ?? getDefaultTaskStatus(student);
+        if (task && isTaskEffectivelySubmittedNow(student, task)) next[key] = taskStatusOverridesRef.current[key] ?? savedTaskStatusOverridesRef.current[key] ?? getDefaultTaskStatus(student, task);
       }
       return next;
     });
@@ -535,7 +580,16 @@ export default function TeacherSubmissionReviewPage() {
     return student.tasks.some((task) => isTaskEffectivelySubmitted(student, task));
   }
 
-  function saveDraftReview(student: ReviewStudent) {
+  async function saveDraftReview(student: ReviewStudent) {
+    try {
+      await Promise.all(student.tasks.map(async (task) => {
+        if (!task.submission || !isTaskEffectivelySubmitted(student, task)) return;
+        await persistTaskReview(student, task, getTaskStatus(student, task) === "completed" ? "reviewed" : getTaskStatus(student, task));
+      }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save review.");
+      return;
+    }
     setDirtyTaskKeys((current) => {
       const next = new Set(current);
       for (const task of student.tasks) next.delete(getTaskStatusKey(student.profile_id, task.task_id));
@@ -551,7 +605,16 @@ export default function TeacherSubmissionReviewPage() {
     setStudentModal(null);
   }
 
-  function approveStudentReview(student: ReviewStudent) {
+  async function approveStudentReview(student: ReviewStudent) {
+    try {
+      await Promise.all(student.tasks.map(async (task) => {
+        if (!task.submission || !isTaskEffectivelySubmitted(student, task)) return;
+        await persistTaskReview(student, task, "completed");
+      }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to approve review.");
+      return;
+    }
     setApprovedStudentIds((current) => new Set(current).add(student.profile_id));
     setDraftSavedStudentIds((current) => {
       const next = new Set(current);

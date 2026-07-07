@@ -18,6 +18,8 @@ export default function NewTeacherClassPage() {
   const [classSection, setClassSection] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [term, setTerm] = useState("");
+  const [enrollmentCode, setEnrollmentCode] = useState("");
+  const [isOpenForEnrollment, setIsOpenForEnrollment] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -50,6 +52,8 @@ export default function NewTeacherClassPage() {
         class_section: classSection,
         academic_year: academicYear,
         term,
+        enrollment_code: enrollmentCode.trim() || code || undefined,
+        is_open_for_enrollment: isOpenForEnrollment,
         is_active: true,
       }),
     });
@@ -134,6 +138,25 @@ export default function NewTeacherClassPage() {
                 className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
               />
             </Field>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Enrollment Code">
+              <input
+                value={enrollmentCode}
+                onChange={(event) => setEnrollmentCode(event.target.value)}
+                placeholder={classCode || suggestedCode}
+                className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm font-mono font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+              />
+            </Field>
+            <label className="flex items-center gap-3 text-sm font-semibold text-[#0F172A]">
+              <input
+                type="checkbox"
+                checked={isOpenForEnrollment}
+                onChange={(event) => setIsOpenForEnrollment(event.target.checked)}
+                className="h-4 w-4 accent-[#F37021]"
+              />
+              Open for student self-enrollment
+            </label>
           </div>
 
           {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}

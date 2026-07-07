@@ -318,6 +318,12 @@ export default function StudentDashboardPage() {
           <span className="font-bold text-[#0F172A] text-sm">CodeKidVai</span>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push("/student/classes/join")}
+            className="text-xs font-semibold text-[#F37021] hover:text-[#C2410C] transition-colors"
+          >
+            Join Class
+          </button>
           {profile?.participant_code && (
             <span className="text-xs text-[#64748B]">รหัส: <span className="font-mono font-semibold text-[#0F172A]">{profile.participant_code}</span></span>
           )}

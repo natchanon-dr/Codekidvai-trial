@@ -13,6 +13,8 @@ type TeacherClass = {
   class_section: string | null;
   academic_year: string | null;
   term: string | null;
+  enrollment_code: string | null;
+  is_open_for_enrollment: boolean;
   is_active: boolean;
   student_count: number;
   assignment_count: number;
@@ -56,6 +58,8 @@ export default function TeacherClassDetailPage() {
   const [classSection, setClassSection] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [term, setTerm] = useState("");
+  const [enrollmentCode, setEnrollmentCode] = useState("");
+  const [isOpenForEnrollment, setIsOpenForEnrollment] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -90,6 +94,8 @@ export default function TeacherClassDetailPage() {
       setClassSection(loadedClass?.class_section ?? "");
       setAcademicYear(loadedClass?.academic_year ?? "");
       setTerm(loadedClass?.term ?? "");
+      setEnrollmentCode(loadedClass?.enrollment_code ?? loadedClass?.class_code ?? "");
+      setIsOpenForEnrollment(Boolean(loadedClass?.is_open_for_enrollment ?? true));
       setIsActive(Boolean(loadedClass?.is_active));
       setLoading(false);
     }
@@ -128,6 +134,8 @@ export default function TeacherClassDetailPage() {
         class_section: classSection,
         academic_year: academicYear,
         term,
+        enrollment_code: enrollmentCode,
+        is_open_for_enrollment: isOpenForEnrollment,
         is_active: isActive,
       }),
     });
@@ -208,6 +216,13 @@ export default function TeacherClassDetailPage() {
                 className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
               />
             </Field>
+            <Field label="Enrollment Code">
+              <input
+                value={enrollmentCode}
+                onChange={(event) => setEnrollmentCode(event.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm font-mono font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+              />
+            </Field>
             <Field label="Level">
               <input
                 value={classLevel}
@@ -246,6 +261,15 @@ export default function TeacherClassDetailPage() {
               className="h-4 w-4 accent-[#F37021]"
             />
             Active class
+          </label>
+          <label className="flex items-center gap-3 text-sm font-semibold text-[#0F172A]">
+            <input
+              type="checkbox"
+              checked={isOpenForEnrollment}
+              onChange={(event) => setIsOpenForEnrollment(event.target.checked)}
+              className="h-4 w-4 accent-[#F37021]"
+            />
+            Open for student self-enrollment
           </label>
           {saveMessage && <p className="text-sm font-semibold text-green-700">{saveMessage}</p>}
           {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}

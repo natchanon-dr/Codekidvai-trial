@@ -12,6 +12,8 @@ type ClassRow = {
   class_section: string | null;
   academic_year: string | null;
   term: string | null;
+  enrollment_code: string | null;
+  is_open_for_enrollment: boolean;
   is_active: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -51,6 +53,8 @@ type CreateClassBody = {
   class_section?: string;
   academic_year?: string;
   term?: string;
+  enrollment_code?: string;
+  is_open_for_enrollment?: boolean;
   is_active?: boolean;
 };
 
@@ -96,7 +100,7 @@ async function generateClassCode() {
 async function getClasses(profileId: string, role: string): Promise<ClassRow[]> {
   let query = supabaseAdmin
     .from("tb_classes")
-    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, is_active, created_at, updated_at")
+    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
     .order("created_at", { ascending: false });
 
   if (role !== "admin") {
@@ -276,10 +280,12 @@ export async function POST(request: NextRequest) {
         class_section: normalizeText(body.class_section) || null,
         academic_year: normalizeText(body.academic_year) || null,
         term: normalizeText(body.term) || null,
+        enrollment_code: normalizeText(body.enrollment_code) || classCode,
+        is_open_for_enrollment: body.is_open_for_enrollment ?? true,
         is_active: body.is_active ?? true,
         updated_at: new Date().toISOString(),
       })
-      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, is_active, created_at, updated_at")
+      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
       .single();
     if (error) throw error;
 

@@ -54,11 +54,26 @@ type SubmissionRow = {
   batch_id: string | null;
   task_id: string | null;
   final_answer_text: string | null;
+  auto_score?: number | null;
+  review_score?: number | null;
+  review_status?: TaskReviewStatus | null;
+  teacher_feedback?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
   final_score: number | null;
   is_passed: boolean | null;
   submitted_at: string | null;
   total_run_count?: number | null;
   total_attempt_count?: number | null;
+};
+
+type TaskReviewStatus = "submitted" | "reviewed" | "completed";
+
+type ReviewUpdateBody = {
+  submission_id?: string;
+  review_status?: TaskReviewStatus;
+  review_score?: number | null;
+  teacher_feedback?: string | null;
 };
 
 function getBatchFamily(batch: BatchRow | undefined): BatchFamily | null {
@@ -83,6 +98,20 @@ function getReviewStatus(taskCount: number, submittedCount: number, totalScore: 
   if (taskCount === 0 || submittedCount < taskCount) return "unsubmitted";
   if (maxScore > 0 && totalScore >= maxScore * 0.8) return "completed";
   return "review";
+}
+
+function getEffectiveScore(submission: { review_score?: number | null; auto_score?: number | null; final_score?: number | null } | null) {
+  return Number(submission?.review_score ?? submission?.auto_score ?? submission?.final_score ?? 0);
+}
+
+function getStudentReviewStatus(tasks: Array<{ submission: { review_status?: TaskReviewStatus | null; review_score?: number | null; auto_score?: number | null; final_score?: number | null } | null; max_score: number | null }>): ReviewStatus {
+  if (tasks.length === 0 || tasks.some((task) => !task.submission)) return "unsubmitted";
+  const statuses = tasks.map((task) => task.submission?.review_status ?? "submitted");
+  if (statuses.every((status) => status === "completed")) return "completed";
+  if (statuses.some((status) => status === "reviewed" || status === "completed")) return "review";
+  const totalScore = tasks.reduce((sum, task) => sum + getEffectiveScore(task.submission), 0);
+  const maxScore = tasks.reduce((sum, task) => sum + Number(task.max_score ?? 0), 0);
+  return getReviewStatus(tasks.length, tasks.length, totalScore, maxScore);
 }
 
 function countStatuses(students: Array<{ status: ReviewStatus }>) {
@@ -162,7 +191,7 @@ export async function GET(request: NextRequest) {
       taskIds.length
         ? supabaseAdmin
             .from("trn_submissions")
-            .select("submission_id, profile_id, batch_id, task_id, final_answer_text, final_score, is_passed, submitted_at, total_run_count, total_attempt_count")
+            .select("submission_id, profile_id, batch_id, task_id, final_answer_text, auto_score, review_score, review_status, teacher_feedback, reviewed_by, reviewed_at, final_score, is_passed, submitted_at, total_run_count, total_attempt_count")
             .in("profile_id", profileIds)
             .in("task_id", taskIds)
         : Promise.resolve({ data: [], error: null }),
@@ -232,6 +261,12 @@ export async function GET(request: NextRequest) {
                 ? {
                     submission_id: submission.submission_id,
                     final_answer_text: submission.final_answer_text,
+                    auto_score: submission.auto_score ?? null,
+                    review_score: submission.review_score ?? null,
+                    review_status: submission.review_status ?? "submitted",
+                    teacher_feedback: submission.teacher_feedback ?? null,
+                    reviewed_by: submission.reviewed_by ?? null,
+                    reviewed_at: submission.reviewed_at ?? null,
                     final_score: Number(submission.final_score ?? 0),
                     is_passed: submission.is_passed,
                     submitted_at: submission.submitted_at,
@@ -242,7 +277,7 @@ export async function GET(request: NextRequest) {
             };
           });
           const submittedCount = tasks.filter((task) => task.submission).length;
-          const totalScore = tasks.reduce((sum, task) => sum + Number(task.submission?.final_score ?? 0), 0);
+          const totalScore = tasks.reduce((sum, task) => sum + getEffectiveScore(task.submission), 0);
           const maxScore = tasks.reduce((sum, task) => sum + Number(task.max_score ?? 0), 0);
           return {
             profile_id: profileId,
@@ -251,7 +286,7 @@ export async function GET(request: NextRequest) {
             submitted_count: submittedCount,
             total_score: totalScore,
             max_score: maxScore,
-            status: getReviewStatus(tasks.length, submittedCount, totalScore, maxScore),
+            status: getStudentReviewStatus(tasks),
             tasks,
           };
         });
@@ -287,6 +322,102 @@ export async function GET(request: NextRequest) {
     console.error("Teacher submissions API error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to load submissions." },
+      { status: 400 },
+    );
+  }
+}
+
+function isReviewStatus(value: unknown): value is TaskReviewStatus {
+  return value === "submitted" || value === "reviewed" || value === "completed";
+}
+
+async function requireReviewAccess(submission: SubmissionRow, profileId: string, role: string) {
+  if (role === "admin") return;
+
+  const { data: classRows, error: classError } = await supabaseAdmin
+    .from("tb_classes")
+    .select("class_id")
+    .eq("teacher_profile_id", profileId)
+    .eq("is_active", true);
+  if (classError) throw classError;
+
+  const classIds = (classRows ?? []).map((row) => row.class_id).filter(Boolean);
+  if (classIds.length === 0) throw new Error("Submission not found for this teacher.");
+
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from("tb_class_students")
+    .select("class_student_id")
+    .eq("profile_id", submission.profile_id)
+    .eq("status", "active")
+    .in("class_id", classIds)
+    .limit(1)
+    .maybeSingle();
+  if (membershipError) throw membershipError;
+  if (!membership) throw new Error("Submission not found for this teacher.");
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const profile = await requireTeacherOrAdmin(request);
+    const body = (await request.json()) as ReviewUpdateBody;
+    const submissionId = String(body.submission_id ?? "").trim();
+    if (!submissionId) throw new Error("Submission is required.");
+
+    const { data: submissionData, error: submissionError } = await supabaseAdmin
+      .from("trn_submissions")
+      .select("submission_id, profile_id, batch_id, task_id, final_answer_text, auto_score, review_score, review_status, teacher_feedback, reviewed_by, reviewed_at, final_score, is_passed, submitted_at, total_run_count, total_attempt_count")
+      .eq("submission_id", submissionId)
+      .single();
+    if (submissionError || !submissionData) throw new Error("Submission not found.");
+
+    const submission = submissionData as SubmissionRow;
+    await requireReviewAccess(submission, profile.profile_id, profile.role);
+
+    const updatePayload: Record<string, string | number | null> = {
+      reviewed_by: profile.profile_id,
+      reviewed_at: new Date().toISOString(),
+    };
+
+    if (body.review_status !== undefined) {
+      if (!isReviewStatus(body.review_status)) throw new Error("Invalid review status.");
+      updatePayload.review_status = body.review_status;
+    }
+
+    if (body.review_score !== undefined) {
+      if (body.review_score === null) {
+        updatePayload.review_score = null;
+      } else {
+        const { data: taskRow, error: taskError } = await supabaseAdmin
+          .from("mst_tasks")
+          .select("max_score")
+          .eq("task_id", submission.task_id)
+          .maybeSingle();
+        if (taskError) throw taskError;
+        const maxScore = Number(taskRow?.max_score ?? Number.MAX_SAFE_INTEGER);
+        const score = Number(body.review_score);
+        if (!Number.isFinite(score)) throw new Error("Invalid review score.");
+        updatePayload.review_score = Math.min(Math.max(score, 0), maxScore);
+      }
+    }
+
+    if (body.teacher_feedback !== undefined) {
+      const feedback = String(body.teacher_feedback ?? "").trim();
+      updatePayload.teacher_feedback = feedback || null;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("trn_submissions")
+      .update(updatePayload)
+      .eq("submission_id", submissionId)
+      .select("submission_id, profile_id, batch_id, task_id, final_answer_text, auto_score, review_score, review_status, teacher_feedback, reviewed_by, reviewed_at, final_score, is_passed, submitted_at, total_run_count, total_attempt_count")
+      .single();
+    if (error) throw error;
+
+    return NextResponse.json({ submission: data });
+  } catch (error) {
+    console.error("Teacher submission review API error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to save review." },
       { status: 400 },
     );
   }
