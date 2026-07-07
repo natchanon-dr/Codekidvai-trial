@@ -44,12 +44,14 @@ type SubmissionRow = {
 };
 
 type CreateAssignmentBody = {
+  family?: "assignment" | "lab" | "exam";
   task_code?: string;
   task_title?: string;
   task_description?: string;
   task_type?: string;
   problem_statement?: string;
   expected_answer?: string;
+  max_score?: number;
 };
 
 function isAssignmentBatch(batch: BatchRow) {
@@ -62,9 +64,15 @@ function isAssignmentBatch(batch: BatchRow) {
 }
 
 function getBatchFamily(batch: BatchRow): "assignment" | "lab" | "exam" {
-  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("E")) return "exam";
+  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SX") || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("X") || batch.batch_code?.startsWith("E")) return "exam";
   if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return "lab";
   return "assignment";
+}
+
+function getTaskPrefixes(family: string) {
+  if (family === "lab") return ["LQT", "LQB", "LER", "LSP"];
+  if (family === "exam") return ["XQT", "XQB", "XER", "XSP"];
+  return ["AQT", "AQB", "AER", "ASP"];
 }
 
 async function getBatches() {
@@ -108,29 +116,23 @@ export async function GET(request: NextRequest) {
       ? batches
       : batches.filter((batch) => batch.created_by === profile.profile_id);
     const batchIds = visibleBatches.map((batch) => batch.batch_id);
-
-    if (batchIds.length === 0) {
-      return NextResponse.json({ assignments: [] });
-    }
-
-    const { data: assignmentRows, error: assignmentError } = await supabaseAdmin
-      .from("trn_task_assignments")
-      .select("assignment_id, batch_id, profile_id, task_id, status")
-      .in("batch_id", batchIds);
+    const { data: assignmentRows, error: assignmentError } = batchIds.length
+      ? await supabaseAdmin
+          .from("trn_task_assignments")
+          .select("assignment_id, batch_id, profile_id, task_id, status")
+          .in("batch_id", batchIds)
+      : { data: [], error: null };
     if (assignmentError) throw assignmentError;
 
     const assignments = (assignmentRows ?? []) as AssignmentRow[];
     const taskIds = [...new Set(assignments.map((row) => row.task_id))];
     const ownerIds = [...new Set(visibleBatches.map((batch) => batch.created_by).filter(Boolean))];
-    if (taskIds.length === 0) {
-      return NextResponse.json({ assignments: [] });
-    }
 
     const [{ data: taskRows, error: taskError }, submissionRows, { data: ownerRows, error: ownerError }] = await Promise.all([
       supabaseAdmin
         .from("mst_tasks")
         .select("task_id, task_code, task_title, task_description, task_type, difficulty_level, max_score, task_status, is_active, created_at")
-        .in("task_id", taskIds),
+        .order("created_at", { ascending: false }),
       getSubmissions(taskIds),
       ownerIds.length
         ? supabaseAdmin
@@ -145,7 +147,9 @@ export async function GET(request: NextRequest) {
     const batchMap = new Map(visibleBatches.map((batch) => [batch.batch_id, batch]));
     const ownerMap = new Map((ownerRows ?? []).map((owner) => [owner.profile_id, owner]));
     const submissions = submissionRows.filter((row) => !row.batch_id || batchIds.includes(row.batch_id));
+    const taskPrefixes = getTaskPrefixes(family);
     const items = ((taskRows ?? []) as TaskRow[])
+      .filter((task) => taskIds.includes(task.task_id) || taskPrefixes.some((prefix) => task.task_code?.startsWith(prefix)))
       .map((task) => {
         const taskAssignments = assignments.filter((row) => row.task_id === task.task_id);
         const taskBatchIds = [...new Set(taskAssignments.map((row) => row.batch_id))];
@@ -186,6 +190,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireTeacherOrAdmin(request);
     const body = (await request.json()) as CreateAssignmentBody;
+    const family = body.family ?? "assignment";
     const taskCode = String(body.task_code ?? "").trim();
     const taskTitle = String(body.task_title ?? "").trim();
     const taskType = String(body.task_type ?? "sql_text").trim();
@@ -205,8 +210,8 @@ export async function POST(request: NextRequest) {
         problem_statement: problemStatement || null,
         expected_answer: expectedAnswer || null,
         expected_sql: expectedAnswer || null,
-        max_score: 10,
-        task_status: "active",
+        max_score: Number(body.max_score ?? (family === "lab" ? 0 : 10)),
+        task_status: "published",
         is_active: true,
       })
       .select("task_id, task_code, task_title, task_type")

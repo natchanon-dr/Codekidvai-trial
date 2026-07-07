@@ -18,10 +18,10 @@ type DashboardData = {
 const navItems = [
   { title: "Assignment", subtitle: "Manage assignment sets and tasks", href: "/teacher/assignmentsets", enabled: true, icon: "assignment" },
   { title: "Labs", subtitle: "Manage lab sets and practice tasks", href: "/teacher/labs", enabled: true, icon: "labs" },
-  { title: "Exams", subtitle: "Coming Soon", href: "#", enabled: false, icon: "exams" },
+  { title: "Exams", subtitle: "Manage exam sets and tasks", href: "/teacher/exams", enabled: true, icon: "exams" },
   { title: "Classes", subtitle: "Manage owned classes", href: "/teacher/classes", enabled: true, icon: "classes" },
   { title: "Students", subtitle: "View active class students", href: "/teacher/students", enabled: true, icon: "students" },
-  { title: "Submission", subtitle: "Coming Soon", href: "#", enabled: false, icon: "submission" },
+  { title: "Submission", subtitle: "Review submitted work", href: "/teacher/submissions", enabled: true, icon: "submission" },
 ];
 
 export default function TeacherDashboardPage() {

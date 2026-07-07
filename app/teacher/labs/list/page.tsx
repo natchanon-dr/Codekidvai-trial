@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
-type AssignmentItem = {
+type LabItem = {
   assignment_id: string;
   task_id: string;
   task_code: string | null;
@@ -25,9 +25,9 @@ type AssignmentItem = {
 type StatusFilter = "active" | "inactive" | "all";
 type TypeFilter = "all" | "qt" | "qb" | "er" | "sp";
 
-export default function TeacherAssignmentsPage() {
+export default function TeacherLabListPage() {
   const router = useRouter();
-  const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [labs, setLabs] = useState<LabItem[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -36,7 +36,7 @@ export default function TeacherAssignmentsPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadAssignments() {
+    async function loadLabs() {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
@@ -44,61 +44,62 @@ export default function TeacherAssignmentsPage() {
         return;
       }
 
-      const response = await fetch("/api/teacher/assignments", {
+      const response = await fetch("/api/teacher/assignments?family=lab", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const text = await response.text();
       const json = text ? safeJsonParse(text) : {};
       if (!response.ok) {
         if (String(json.error ?? "").includes("Teacher or admin")) router.push("/student/dashboard");
-        else setErrorMessage(json.error ?? text ?? "Failed to load assignments.");
+        else setErrorMessage(json.error ?? text ?? "Failed to load labs.");
         setLoading(false);
         return;
       }
 
-      setAssignments(json.assignments ?? []);
+      setLabs(json.assignments ?? []);
       setLoading(false);
     }
 
-    loadAssignments();
+    loadLabs();
   }, [router]);
 
-  const filteredAssignments = useMemo(() => {
+  const filteredLabs = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return assignments.filter((assignment) => {
-      const active = assignment.is_active && assignment.status !== "archived";
+    return labs.filter((lab) => {
+      const active = lab.is_active && lab.status !== "archived";
       const matchesStatus =
         statusFilter === "all" ||
         (statusFilter === "active" && active) ||
         (statusFilter === "inactive" && !active);
-      const haystack = `${assignment.task_code ?? ""} ${assignment.title ?? ""}`.toLowerCase();
-      return matchesStatus && matchesAssignmentType(assignment.task_code, typeFilter) && (!normalized || haystack.includes(normalized));
+      const haystack = `${lab.task_code ?? ""} ${lab.title ?? ""}`.toLowerCase();
+      return matchesStatus && matchesLabType(lab.task_code, typeFilter) && (!normalized || haystack.includes(normalized));
     });
-  }, [assignments, query, statusFilter, typeFilter]);
+  }, [labs, query, statusFilter, typeFilter]);
 
-  async function toggleAssignmentStatus(assignmentId: string, nextActive: boolean) {
-    setUpdatingId(assignmentId);
+  async function toggleLabStatus(labId: string, nextActive: boolean) {
+    setUpdatingId(labId);
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return;
-    const response = await fetch(`/api/teacher/assignments/${assignmentId}`, {
+
+    const response = await fetch(`/api/teacher/assignments/${labId}?family=lab`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ status: nextActive ? "active" : "inactive" }),
     });
     if (response.ok) {
-      setAssignments((current) => current.map((assignment) => assignment.assignment_id === assignmentId
-        ? { ...assignment, status: nextActive ? "published" : "archived", is_active: nextActive }
-        : assignment));
+      setLabs((current) => current.map((lab) => lab.assignment_id === labId
+        ? { ...lab, status: nextActive ? "published" : "archived", is_active: nextActive }
+        : lab));
     } else {
       const text = await response.text();
-      alert(safeJsonParse(text).error ?? "Failed to update assignment.");
+      alert(safeJsonParse(text).error ?? "Failed to update lab.");
     }
     setUpdatingId(null);
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">Loading assignments...</div>;
+    return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">Loading labs...</div>;
   }
 
   if (errorMessage) {
@@ -109,69 +110,72 @@ export default function TeacherAssignmentsPage() {
     <div className="min-h-screen bg-[#FFF7ED]">
       <header className="bg-white border-b border-[#FED7AA] px-6 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Link href="/teacher/dashboard" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
-            Teacher Dashboard
+          <Link href="/teacher/labs" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
+            Lab Sets
           </Link>
-          <span className="text-xs font-semibold text-[#F37021]">Assignment List</span>
+          <span className="text-xs font-semibold text-[#F37021]">Lab List</span>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-[#0F172A]">Assignments</h1>
-            <p className="text-sm text-[#64748B] mt-1">Assignment records created by this teacher.</p>
+            <h1 className="text-2xl font-bold text-[#0F172A]">Labs</h1>
+            <p className="text-sm text-[#64748B] mt-1">Lab records created by this teacher.</p>
           </div>
+          <Link href="/teacher/labs/create" className="px-4 py-2 rounded-xl bg-[#F37021] hover:bg-[#C2410C] text-white text-sm font-semibold">
+            New Lab
+          </Link>
         </section>
 
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-col lg:flex-row gap-3">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by assignment code or name"
+            placeholder="Search by lab code or name"
             className="flex-1 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
           />
           <TypeFilterButtons value={typeFilter} onChange={setTypeFilter} />
           <StatusFilterButtons value={statusFilter} onChange={setStatusFilter} />
         </section>
 
-        {filteredAssignments.length === 0 ? (
+        {filteredLabs.length === 0 ? (
           <div className="bg-white border border-[#FED7AA] rounded-2xl p-8 text-center text-sm text-[#64748B]">
-            No assignments match the current filters.
+            No labs match the current filters.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {filteredAssignments.map((assignment) => (
-              <article key={assignment.assignment_id} className="bg-white border border-[#FED7AA] rounded-2xl p-5 shadow-sm">
+            {filteredLabs.map((lab) => (
+              <article key={lab.assignment_id} className="bg-white border border-[#FED7AA] rounded-2xl p-5 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {assignment.task_code && <span className="font-mono text-xs font-bold text-[#F37021]">{assignment.task_code}</span>}
-                      {assignment.difficulty_level && <Badge>{assignment.difficulty_level}</Badge>}
-                      <Badge>{assignment.status ?? "draft"}</Badge>
-                      <Badge>{assignment.is_active ? "active" : "inactive"}</Badge>
+                      {lab.task_code && <span className="font-mono text-xs font-bold text-[#F37021]">{lab.task_code}</span>}
+                      {lab.task_type && <Badge>{formatTaskType(lab.task_type)}</Badge>}
+                      <Badge>{lab.status ?? "draft"}</Badge>
+                      <Badge>{lab.is_active ? "active" : "inactive"}</Badge>
                     </div>
-                    <h2 className="text-base font-bold text-[#0F172A]">{assignment.title ?? "Untitled assignment"}</h2>
-                    <p className="text-sm text-[#64748B] mt-1 line-clamp-2">{assignment.description ?? "No description provided."}</p>
+                    <h2 className="text-base font-bold text-[#0F172A]">{lab.title ?? "Untitled lab"}</h2>
+                    <p className="text-sm text-[#64748B] mt-1 line-clamp-2">{lab.description ?? "No description provided."}</p>
                     <div className="flex flex-wrap gap-4 mt-4 text-xs text-[#64748B]">
-                      <span>{assignment.batches.length} batches</span>
-                      <span>Owner: {assignment.owner?.display_name ?? assignment.owner?.participant_code ?? "Unknown"}</span>
-                      {assignment.created_at && <span>Created {new Date(assignment.created_at).toLocaleDateString()}</span>}
+                      <span>{lab.batches.length} sets</span>
+                      <span>Owner: {lab.owner?.display_name ?? lab.owner?.participant_code ?? "Unknown"}</span>
+                      {lab.created_at && <span>Created {new Date(lab.created_at).toLocaleDateString()}</span>}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Link
-                      href={`/teacher/assignments/${assignment.assignment_id}`}
-                      aria-label="Edit assignment"
+                      href={`/teacher/labs/list/${lab.assignment_id}`}
+                      aria-label="Edit lab"
                       title="Edit"
-                      className="inline-flex h-8 w-8 items-center justify-center bg-[#F37021] hover:bg-[#C2410C] text-white rounded-full transition-colors"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#F37021] text-white hover:bg-[#C2410C]"
                     >
                       <PencilIcon />
                     </Link>
-                    <AssignmentActiveSwitch
-                      active={Boolean(assignment.is_active && assignment.status !== "archived")}
-                      disabled={updatingId === assignment.assignment_id}
-                      onToggle={(nextActive) => toggleAssignmentStatus(assignment.assignment_id, nextActive)}
+                    <LabActiveSwitch
+                      active={Boolean(lab.is_active && lab.status !== "archived")}
+                      disabled={updatingId === lab.assignment_id}
+                      onToggle={(nextActive) => toggleLabStatus(lab.assignment_id, nextActive)}
                     />
                   </div>
                 </div>
@@ -317,19 +321,19 @@ function TypeFilterIcon({ type }: { type: Exclude<TypeFilter, "all"> }) {
   );
 }
 
-function matchesAssignmentType(code: string | null, type: TypeFilter) {
+function matchesLabType(code: string | null, type: TypeFilter) {
   if (type === "all") return true;
   const normalized = String(code ?? "").toUpperCase();
   const prefixes: Record<Exclude<TypeFilter, "all">, string[]> = {
-    qt: ["AQT", "QT"],
-    qb: ["AQB", "QB"],
-    er: ["AER", "ER"],
-    sp: ["ASP", "SP"],
+    qt: ["LQT", "QT"],
+    qb: ["LQB", "QB"],
+    er: ["LER", "ER"],
+    sp: ["LSP", "SP"],
   };
   return prefixes[type].some((prefix) => normalized.startsWith(prefix));
 }
 
-function AssignmentActiveSwitch({
+function LabActiveSwitch({
   active,
   disabled,
   onToggle,
@@ -342,7 +346,7 @@ function AssignmentActiveSwitch({
     <button
       type="button"
       aria-pressed={active}
-      aria-label="Toggle assignment active status"
+      aria-label="Toggle lab active status"
       disabled={disabled}
       onClick={() => onToggle(!active)}
       title={active ? "Active" : "Inactive"}
@@ -364,7 +368,11 @@ function PencilIcon() {
   );
 }
 
-function safeJsonParse(text: string): { error?: string; assignments?: AssignmentItem[] } {
+function formatTaskType(taskType: string) {
+  return taskType.replaceAll("_", " ");
+}
+
+function safeJsonParse(text: string): { error?: string; assignments?: LabItem[] } {
   try {
     return JSON.parse(text);
   } catch {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
 type StatusFilter = "active" | "inactive" | "all";
+type TypeFilter = "all" | "qt" | "qb" | "er" | "sp";
 
 type AssignmentSet = {
   batch_id: string;
@@ -32,6 +33,7 @@ export default function TeacherAssignmentSetsPage() {
   const [sets, setSets] = useState<AssignmentSet[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -73,9 +75,9 @@ export default function TeacherAssignmentSetsPage() {
         (statusFilter === "active" && active) ||
         (statusFilter === "inactive" && !active);
       const haystack = `${set.batch_code ?? ""} ${set.batch_name ?? ""}`.toLowerCase();
-      return matchesStatus && (!normalized || haystack.includes(normalized));
+      return matchesStatus && matchesAssignmentSetType(set.batch_code, typeFilter) && (!normalized || haystack.includes(normalized));
     });
-  }, [sets, query, statusFilter]);
+  }, [sets, query, statusFilter, typeFilter]);
 
   async function toggleSetStatus(setId: string, nextActive: boolean) {
     setUpdatingId(setId);
@@ -136,21 +138,25 @@ export default function TeacherAssignmentSetsPage() {
           </div>
         </section>
 
-        <section className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-col md:flex-row gap-3">
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-col lg:flex-row gap-3">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by set code or name"
             className="flex-1 px-4 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
           />
+          <TypeFilterButtons value={typeFilter} onChange={setTypeFilter} />
           <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
             {(["active", "inactive", "all"] as StatusFilter[]).map((status) => (
               <button
                 key={status}
+                type="button"
                 onClick={() => setStatusFilter(status)}
-                className={`px-4 py-2 text-sm font-semibold capitalize ${statusFilter === status ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                aria-label={`Filter ${getStatusFilterLabel(status)}`}
+                title={getStatusFilterLabel(status)}
+                className={`inline-flex h-10 w-12 items-center justify-center text-sm font-semibold uppercase ${statusFilter === status ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
               >
-                {status}
+                {status === "all" ? "ALL" : <StatusFilterIcon status={status} />}
               </button>
             ))}
           </div>
@@ -265,6 +271,32 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+function getStatusFilterLabel(status: StatusFilter) {
+  const labels: Record<StatusFilter, string> = {
+    active: "Active",
+    inactive: "Inactive",
+    all: "All",
+  };
+  return labels[status];
+}
+
+function StatusFilterIcon({ status }: { status: Exclude<StatusFilter, "all"> }) {
+  if (status === "inactive") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8 12h8" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <path d="m8.5 12 2.4 2.4 4.8-5" />
+    </svg>
+  );
+}
+
 function SetActiveSwitch({
   active,
   disabled,
@@ -291,6 +323,92 @@ function SetActiveSwitch({
       </button>
     </div>
   );
+}
+
+function TypeFilterButtons({
+  value,
+  onChange,
+}: {
+  value: TypeFilter;
+  onChange: (value: TypeFilter) => void;
+}) {
+  return (
+    <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+      {(["qt", "qb", "er", "sp", "all"] as TypeFilter[]).map((type) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => onChange(type)}
+          aria-label={`Filter ${getTypeFilterLabel(type)}`}
+          title={getTypeFilterLabel(type)}
+          className={`inline-flex h-10 w-12 items-center justify-center text-sm font-semibold uppercase ${value === type ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+        >
+          {type === "all" ? "ALL" : <TypeFilterIcon type={type} />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function getTypeFilterLabel(type: TypeFilter) {
+  const labels: Record<TypeFilter, string> = {
+    qt: "SQL Text",
+    qb: "SQL Block",
+    er: "ER Diagram",
+    sp: "Stored Procedure",
+    all: "All",
+  };
+  return labels[type];
+}
+
+function TypeFilterIcon({ type }: { type: Exclude<TypeFilter, "all"> }) {
+  const iconClass = "h-4 w-4";
+  if (type === "qb") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8.5 3h3v3a2 2 0 1 0 4 0V3h3A2.5 2.5 0 0 1 21 5.5v3h-3a2 2 0 1 0 0 4h3v3A2.5 2.5 0 0 1 18.5 18h-3v-3a2 2 0 1 0-4 0v3h-3A2.5 2.5 0 0 1 6 15.5v-3H3a2 2 0 1 1 0-4h3v-3A2.5 2.5 0 0 1 8.5 3Z" />
+      </svg>
+    );
+  }
+  if (type === "er") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="7" height="5" rx="1.5" />
+        <rect x="14" y="15" width="7" height="5" rx="1.5" />
+        <path d="M10 6.5h4.5a3 3 0 0 1 3 3V15" />
+        <path d="M6.5 9v5a3 3 0 0 0 3 3H14" />
+      </svg>
+    );
+  }
+  if (type === "sp") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="7" ry="3" />
+        <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+        <path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 4h10" />
+      <path d="M9 4v16" />
+      <path d="M15 4v16" />
+      <path d="M7 20h10" />
+    </svg>
+  );
+}
+
+function matchesAssignmentSetType(code: string | null, type: TypeFilter) {
+  if (type === "all") return true;
+  const normalized = String(code ?? "").toUpperCase();
+  const prefixes: Record<Exclude<TypeFilter, "all">, string[]> = {
+    qt: ["SAQT", "AQT"],
+    qb: ["SAQB", "AQB"],
+    er: ["SAER", "AER"],
+    sp: ["SASP", "ASP"],
+  };
+  return prefixes[type].some((prefix) => normalized.startsWith(prefix));
 }
 
 function PencilIcon() {

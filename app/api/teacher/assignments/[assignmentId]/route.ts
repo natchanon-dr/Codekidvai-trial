@@ -11,6 +11,15 @@ type BatchRow = {
   set_type_id?: number | null;
 };
 
+type UpdateAssignmentBody = {
+  status?: string;
+  task_title?: string;
+  task_description?: string;
+  problem_statement?: string;
+  expected_answer?: string;
+  max_score?: number;
+};
+
 type AssignmentRow = {
   assignment_id: string;
   batch_id: string;
@@ -41,6 +50,18 @@ function isAssignmentBatch(batch: BatchRow) {
     batch.batch_code?.startsWith("SA") ||
     batch.batch_code?.startsWith("A")
   );
+}
+
+function getBatchFamily(batch: BatchRow): "assignment" | "lab" | "exam" {
+  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SX") || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("X") || batch.batch_code?.startsWith("E")) return "exam";
+  if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return "lab";
+  return "assignment";
+}
+
+function getTaskPrefixes(family: string) {
+  if (family === "lab") return ["LQT", "LQB", "LER", "LSP"];
+  if (family === "exam") return ["XQT", "XQB", "XER", "XSP"];
+  return ["AQT", "AQB", "AER", "ASP"];
 }
 
 async function getBatches() {
@@ -82,15 +103,15 @@ export async function GET(
   try {
     const { assignmentId } = await params;
     const profile = await requireTeacherOrAdmin(request);
-    const batches = (await getBatches()).filter(isAssignmentBatch);
+    const family = request.nextUrl.searchParams.get("family") ?? "assignment";
+    const batches = (await getBatches()).filter((batch) => {
+      if (family === "lab" || family === "exam") return getBatchFamily(batch) === family;
+      return isAssignmentBatch(batch);
+    });
     const visibleBatches = profile.role === "admin"
       ? batches
       : batches.filter((batch) => batch.created_by === profile.profile_id);
     const batchIds = visibleBatches.map((batch) => batch.batch_id);
-
-    if (batchIds.length === 0) {
-      return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
-    }
 
     const { data: task, error: taskError } = await supabaseAdmin
       .from("mst_tasks")
@@ -101,27 +122,36 @@ export async function GET(
     if (!task) {
       return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
     }
+    const allowedPrefixes = getTaskPrefixes(family);
+    const isFamilyTask = allowedPrefixes.some((prefix) => task.task_code?.startsWith(prefix));
+    if (!isFamilyTask) {
+      return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+    }
 
-    const { data: assignmentRows, error: assignmentError } = await supabaseAdmin
-      .from("trn_task_assignments")
-      .select("assignment_id, batch_id, profile_id, task_id, status, assigned_order, assigned_at, completed_at")
-      .eq("task_id", assignmentId)
-      .in("batch_id", batchIds)
-      .order("assigned_order", { ascending: true });
+    const { data: assignmentRows, error: assignmentError } = batchIds.length
+      ? await supabaseAdmin
+          .from("trn_task_assignments")
+          .select("assignment_id, batch_id, profile_id, task_id, status, assigned_order, assigned_at, completed_at")
+          .eq("task_id", assignmentId)
+          .in("batch_id", batchIds)
+          .order("assigned_order", { ascending: true })
+      : { data: [], error: null };
     if (assignmentError) throw assignmentError;
 
     const assignments = (assignmentRows ?? []) as AssignmentRow[];
-    if (assignments.length === 0) {
+    if (assignments.length === 0 && family === "assignment") {
       return NextResponse.json({ error: "You are not allowed to view this assignment." }, { status: 403 });
     }
 
     const profileIds = [...new Set(assignments.map((row) => row.profile_id))];
     const ownerIds = [...new Set(visibleBatches.map((batch) => batch.created_by).filter(Boolean))];
     const [{ data: studentRows, error: studentError }, submissionRows, { data: ownerRows, error: ownerError }] = await Promise.all([
-      supabaseAdmin
-        .from("mst_profiles")
-        .select("profile_id, display_name, participant_code")
-        .in("profile_id", profileIds),
+      profileIds.length
+        ? supabaseAdmin
+            .from("mst_profiles")
+            .select("profile_id, display_name, participant_code")
+            .in("profile_id", profileIds)
+        : Promise.resolve({ data: [], error: null }),
       getSubmissions(assignmentId, profileIds),
       ownerIds.length
         ? supabaseAdmin
@@ -183,40 +213,74 @@ export async function PATCH(
   try {
     const { assignmentId } = await params;
     const profile = await requireTeacherOrAdmin(request);
-    const batches = (await getBatches()).filter(isAssignmentBatch);
+    const family = request.nextUrl.searchParams.get("family") ?? "assignment";
+    const batches = (await getBatches()).filter((batch) => {
+      if (family === "lab" || family === "exam") return getBatchFamily(batch) === family;
+      return isAssignmentBatch(batch);
+    });
     const visibleBatches = profile.role === "admin"
       ? batches
       : batches.filter((batch) => batch.created_by === profile.profile_id);
     const batchIds = visibleBatches.map((batch) => batch.batch_id);
 
-    if (batchIds.length === 0) {
+    const body = (await request.json()) as UpdateAssignmentBody;
+
+    const { data: task, error: taskLoadError } = await supabaseAdmin
+      .from("mst_tasks")
+      .select("task_id, task_code")
+      .eq("task_id", assignmentId)
+      .maybeSingle();
+    if (taskLoadError) throw taskLoadError;
+    if (!task) {
+      return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+    }
+    const allowedPrefixes = getTaskPrefixes(family);
+    const isFamilyTask = allowedPrefixes.some((prefix) => task.task_code?.startsWith(prefix));
+    if (!isFamilyTask) {
       return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
     }
 
-    const { data: assignmentRows, error: assignmentError } = await supabaseAdmin
-      .from("trn_task_assignments")
-      .select("assignment_id")
-      .eq("task_id", assignmentId)
-      .in("batch_id", batchIds)
-      .limit(1);
+    const { data: assignmentRows, error: assignmentError } = batchIds.length
+      ? await supabaseAdmin
+          .from("trn_task_assignments")
+          .select("assignment_id")
+          .eq("task_id", assignmentId)
+          .in("batch_id", batchIds)
+          .limit(1)
+      : { data: [], error: null };
     if (assignmentError) throw assignmentError;
-    if (!assignmentRows?.length) {
+    if (!assignmentRows?.length && family === "assignment") {
       return NextResponse.json({ error: "You are not allowed to update this assignment." }, { status: 403 });
     }
 
-    const body = await request.json();
-    const makeActive = body.status === "active";
+    const updates: Record<string, string | number | boolean | null> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (body.status) {
+      const makeActive = body.status === "active";
+      updates.task_status = makeActive ? "published" : "archived";
+      updates.is_active = makeActive;
+    }
+    if (typeof body.task_title === "string") {
+      const title = body.task_title.trim();
+      if (!title) throw new Error("Assignment name is required.");
+      updates.task_title = title;
+    }
+    if (typeof body.task_description === "string") updates.task_description = body.task_description.trim() || null;
+    if (typeof body.problem_statement === "string") updates.problem_statement = body.problem_statement.trim() || null;
+    if (typeof body.expected_answer === "string") {
+      updates.expected_answer = body.expected_answer.trim() || null;
+      updates.expected_sql = body.expected_answer.trim() || null;
+    }
+    if (typeof body.max_score === "number") updates.max_score = Number(body.max_score);
+
     const { error } = await supabaseAdmin
       .from("mst_tasks")
-      .update({
-        task_status: makeActive ? "published" : "archived",
-        is_active: makeActive,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updates)
       .eq("task_id", assignmentId);
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, status: makeActive ? "published" : "archived" });
+    return NextResponse.json({ ok: true, updates });
   } catch (error) {
     console.error("Teacher assignment update API error:", error);
     return NextResponse.json(

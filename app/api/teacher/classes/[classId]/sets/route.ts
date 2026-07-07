@@ -61,7 +61,7 @@ async function requireVisibleSet(batchId: string, profileId: string, role: strin
 }
 
 function getBatchFamily(batch: { batch_type: string | null; batch_code: string | null; set_type_id?: number | null }): BatchFamily {
-  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("E")) return "exam";
+  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SX") || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("X") || batch.batch_code?.startsWith("E")) return "exam";
   if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return "lab";
   return "assignment";
 }

@@ -27,6 +27,8 @@ function isExamBatch(batch: BatchRow) {
   return (
     batch.set_type_id === 2 ||
     batch.batch_type === "exam_set" ||
+    batch.batch_code?.startsWith("SX") ||
+    batch.batch_code?.startsWith("X") ||
     batch.batch_code?.startsWith("SE") ||
     batch.batch_code?.startsWith("E")
   );

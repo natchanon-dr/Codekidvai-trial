@@ -47,6 +47,7 @@ function isManagedSet(batch: BatchRow) {
     isAssignmentSet(batch) ||
     batch.set_type_id === 2 ||
     batch.batch_type === "exam_set" ||
+    batch.batch_code?.startsWith("SX") ||
     batch.batch_type === "lab_set" ||
     batch.batch_code?.startsWith("SE") ||
     batch.batch_code?.startsWith("SL") ||
