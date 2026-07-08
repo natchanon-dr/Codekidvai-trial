@@ -37,7 +37,7 @@ type TaskItem = {
 
 type View =
   | { kind: "category" }
-  | { kind: "sets"; category: "assignment" | "exam" }
+  | { kind: "sets"; category: "assignment" | "exam" | "lab" }
   | { kind: "tasks"; batch: BatchInfo };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -67,7 +67,16 @@ function getFamilyCode(batch: BatchInfo): FamilyCode {
   return "QT";
 }
 
+function isLab(batch: BatchInfo): boolean {
+  return (
+    batch.batch_type === "lab_set" ||
+    batch.batch_code?.startsWith("SL") ||
+    (batch.batch_code?.startsWith("L") ?? false)
+  );
+}
+
 function isAssignment(batch: BatchInfo): boolean {
+  if (isLab(batch)) return false;
   return (
     batch.set_type_id === 1 ||
     batch.batch_type === "assignment_set" ||
@@ -275,7 +284,8 @@ export default function StudentDashboardPage() {
 
   // ── derived ──
   const assignmentBatches = batches.filter(isAssignment);
-  const examBatches = batches.filter((b) => !isAssignment(b));
+  const labBatches = batches.filter(isLab);
+  const examBatches = batches.filter((b) => !isAssignment(b) && !isLab(b));
 
   function familyBreakdown(list: BatchInfo[]) {
     const counts: Partial<Record<FamilyCode, number>> = {};
@@ -350,12 +360,20 @@ export default function StudentDashboardPage() {
             <>
               <span>/</span>
               <button
-                onClick={() => setView({ kind: "sets", category: view.kind === "tasks" ? (isAssignment(view.batch) ? "assignment" : "exam") : view.category })}
+                onClick={() => {
+                  const cat = view.kind === "tasks"
+                    ? (isLab(view.batch) ? "lab" : isAssignment(view.batch) ? "assignment" : "exam")
+                    : view.category;
+                  setView({ kind: "sets", category: cat });
+                }}
                 className={view.kind === "sets" ? "font-semibold text-[#0F172A]" : "hover:text-[#F37021] transition-colors"}
               >
-                {view.kind === "tasks"
-                  ? (isAssignment(view.batch) ? "ชุดแบบฝึกหัด" : "ชุดแบบทดสอบ")
-                  : (view.category === "assignment" ? "ชุดแบบฝึกหัด" : "ชุดแบบทดสอบ")}
+                {(() => {
+                  const cat = view.kind === "tasks"
+                    ? (isLab(view.batch) ? "lab" : isAssignment(view.batch) ? "assignment" : "exam")
+                    : view.category;
+                  return cat === "assignment" ? "ชุดแบบฝึกหัด" : cat === "exam" ? "ชุดแบบทดสอบ" : "ชุด Lab";
+                })()}
               </button>
             </>
           )}
@@ -407,6 +425,35 @@ export default function StudentDashboardPage() {
                 breakdown={familyBreakdown(examBatches)}
                 onClick={() => setView({ kind: "sets", category: "exam" })}
               />
+              {/* Lab card */}
+              <CategoryCard
+                title="ชุด Lab"
+                subtitle="ทดลองปฏิบัติตามใบงาน"
+                icon={
+                  <svg className="w-6 h-6 text-[#F37021]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                      d="M9 3v10.5a3 3 0 006 0V3M6 3h12M5 21h14" />
+                  </svg>
+                }
+                totalSets={labBatches.length}
+                breakdown={familyBreakdown(labBatches)}
+                onClick={() => setView({ kind: "sets", category: "lab" })}
+              />
+              {/* Assessment card — placeholder */}
+              <CategoryCard
+                title="Assessment"
+                subtitle="เร็ว ๆ นี้"
+                icon={
+                  <svg className="w-6 h-6 text-[#CBD5E1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                }
+                totalSets={0}
+                breakdown={{}}
+                disabled
+                onClick={() => {}}
+              />
             </div>
           </>
         )}
@@ -415,11 +462,12 @@ export default function StudentDashboardPage() {
         {/* VIEW: SETS                                           */}
         {/* ════════════════════════════════════════════════════ */}
         {view.kind === "sets" && (() => {
-          const list = view.category === "assignment" ? assignmentBatches : examBatches;
+          const list = view.category === "assignment" ? assignmentBatches : view.category === "lab" ? labBatches : examBatches;
+          const categoryLabel = view.category === "assignment" ? "ชุดแบบฝึกหัด" : view.category === "lab" ? "ชุด Lab" : "ชุดแบบทดสอบ";
           return (
             <>
               <h2 className="text-lg font-bold text-[#0F172A] mb-1">
-                {view.category === "assignment" ? "ชุดแบบฝึกหัด" : "ชุดแบบทดสอบ"}
+                {categoryLabel}
               </h2>
               <p className="text-sm text-[#64748B] mb-5">
                 {list.length} ชุด
@@ -561,7 +609,7 @@ export default function StudentDashboardPage() {
 // ─── Category Card ────────────────────────────────────────────────────────────
 
 function CategoryCard({
-  title, subtitle, icon, totalSets, breakdown, onClick,
+  title, subtitle, icon, totalSets, breakdown, onClick, disabled = false,
 }: {
   title: string;
   subtitle: string;
@@ -569,8 +617,29 @@ function CategoryCard({
   totalSets: number;
   breakdown: Partial<Record<FamilyCode, number>>;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   const ALL_FAMILIES: FamilyCode[] = ["QT", "SP", "ER", "QB"];
+
+  if (disabled) {
+    return (
+      <div className="text-left bg-white border border-gray-100 rounded-2xl p-5 shadow-sm opacity-60 flex flex-col gap-4 cursor-not-allowed">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center flex-shrink-0">
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-[#64748B] text-sm leading-snug">{title}</p>
+            <p className="text-[11px] text-[#CBD5E1] mt-0.5 leading-snug">{subtitle}</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-[#CBD5E1]">เร็ว ๆ นี้</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
       onClick={onClick}
