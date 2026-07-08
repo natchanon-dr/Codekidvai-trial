@@ -41,6 +41,19 @@ export async function POST(request: NextRequest) {
       ? Math.round((new Date(firstCorrectAt).getTime() - new Date(session.started_at).getTime()) / 1000)
       : null;
 
+    const { data: existingSubmission } = await userClient
+      .from("trn_submissions")
+      .select("review_status, review_score, teacher_feedback, reviewed_by, reviewed_at")
+      .eq("profile_id", profile.profile_id)
+      .eq("batch_id", batchId)
+      .eq("task_id", taskId)
+      .maybeSingle();
+
+    const reviewStatus =
+      existingSubmission?.review_status === "reviewed" || existingSubmission?.review_status === "completed"
+        ? existingSubmission.review_status
+        : "submitted";
+
     const now = new Date().toISOString();
     await userClient.from("trn_submissions").upsert(
       {
@@ -53,7 +66,8 @@ export async function POST(request: NextRequest) {
         auto_score: result.score,
         final_score: result.score,
         is_passed: result.is_correct,
-        review_status: "submitted",
+        review_status: reviewStatus,
+        // Teacher review metadata is intentionally omitted so resubmits keep the existing review.
         submitted_at: now,
         total_run_count: totalRunCount,
         total_attempt_count: totalAttemptCount,
