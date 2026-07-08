@@ -22,6 +22,7 @@ type ProfileRow = {
   display_name: string | null;
   grade_level: string | null;
   student_status: string | null;
+  academy_member_id?: string | null;
 };
 
 type SessionRow = {
@@ -237,7 +238,26 @@ export async function GET(request: NextRequest) {
     ]);
     if (profileError) throw profileError;
 
-    const profileMap = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.profile_id, row]));
+    const participantCodes = ((profileRows ?? []) as ProfileRow[])
+      .map((r) => r.participant_code)
+      .filter(Boolean) as string[];
+    const { data: memberRows } = participantCodes.length
+      ? await supabaseAdmin
+          .from("mst_academy_members")
+          .select("participant_code, academy_member_id")
+          .in("participant_code", participantCodes)
+      : { data: [] };
+    const memberMap = new Map(
+      ((memberRows ?? []) as { participant_code: string; academy_member_id: string }[])
+        .map((m) => [m.participant_code, m.academy_member_id]),
+    );
+
+    const profileMap = new Map(
+      ((profileRows ?? []) as ProfileRow[]).map((row) => [
+        row.profile_id,
+        { ...row, academy_member_id: memberMap.get(row.participant_code ?? "") ?? null },
+      ]),
+    );
     const groupedClasses = classes.map((classItem) => {
       const students = rows
         .filter((row) => row.class_id === classItem.class_id)

@@ -13,6 +13,7 @@ type StudentItem = {
     display_name: string | null;
     grade_level: string | null;
     student_status: string | null;
+    academy_member_id?: string | null;
   } | null;
   progress: {
     lab_done: number;
@@ -126,7 +127,7 @@ export default function TeacherStudentsPage() {
         ...classItem,
         students: sortStudents(
           classItem.students.filter((item) => {
-            const haystack = `${item.student?.display_name ?? ""} ${item.student?.participant_code ?? ""}`.toLowerCase();
+            const haystack = `${item.student?.display_name ?? ""} ${item.student?.academy_member_id ?? ""} ${item.student?.participant_code ?? ""}`.toLowerCase();
             return !normalized || haystack.includes(normalized);
           }),
           sortKey,
@@ -340,7 +341,7 @@ export default function TeacherStudentsPage() {
                             <tr className="border-b border-[#FED7AA] text-xs font-semibold text-[#64748B]">
                               {multiFeedbackClassId === classItem.class_id && <th className="py-3 pr-4 w-10" />}
                               <th className="py-3 pr-4">
-                                <SortButton label="Student Code" sortKey="participant_code" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} />
+                                <SortButton label="Academy ID" sortKey="participant_code" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} />
                               </th>
                               <th className="py-3 pr-4">
                                 <SortButton label="Student Name" sortKey="display_name" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} />
@@ -375,7 +376,7 @@ export default function TeacherStudentsPage() {
                                   </td>
                                 )}
                                 <td className="py-3 pr-4">
-                                  <p className="font-mono text-xs font-bold text-[#F37021]">{item.student?.participant_code ?? "-"}</p>
+                                  <p className="font-mono text-xs font-bold text-[#F37021]">{item.student?.academy_member_id ?? item.student?.participant_code ?? "-"}</p>
                                 </td>
                                 <td className="py-3 pr-4">
                                   <p className="font-semibold text-[#0F172A]">{item.student?.display_name ?? "Unknown student"}</p>
@@ -439,7 +440,7 @@ export default function TeacherStudentsPage() {
               {feedbackStudents.map((item) => (
                 <div key={item.profile_id} className="flex items-center justify-between gap-3 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2">
                   <p className="min-w-0 truncate text-sm text-[#0F172A]">
-                    <span className="font-mono text-xs font-bold text-[#F37021]">{item.student?.participant_code ?? "-"}</span>
+                    <span className="font-mono text-xs font-bold text-[#F37021]">{item.student?.academy_member_id ?? item.student?.participant_code ?? "-"}</span>
                     <span className="mx-2 text-[#CBD5E1]">|</span>
                     <span className="font-semibold">{item.student?.display_name ?? "Unknown student"}</span>
                   </p>
@@ -478,7 +479,7 @@ export default function TeacherStudentsPage() {
               <div>
                 <h2 className="text-lg font-bold text-[#0F172A]">Assignment Score by Set</h2>
                 <p className="mt-1 text-sm text-[#64748B]">
-                  <span className="font-mono font-semibold text-[#F37021]">{scoreModal.student.student?.participant_code ?? "-"}</span>
+                  <span className="font-mono font-semibold text-[#F37021]">{scoreModal.student.student?.academy_member_id ?? scoreModal.student.student?.participant_code ?? "-"}</span>
                   <span className="mx-2 text-[#CBD5E1]">|</span>
                   {scoreModal.student.student?.display_name ?? "Unknown student"}
                 </p>

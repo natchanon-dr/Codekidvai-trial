@@ -10,9 +10,11 @@ type ClassRow = {
   class_name: string;
   class_level: string | null;
   class_section: string | null;
+  learner_group: string | null;
   academic_year: string | null;
   term: string | null;
-  enrollment_code: string | null;
+  register_from: string | null;
+  register_to: string | null;
   is_open_for_enrollment: boolean;
   is_active: boolean;
   created_at: string | null;
@@ -51,9 +53,11 @@ type CreateClassBody = {
   class_name?: string;
   class_level?: string;
   class_section?: string;
+  learner_group?: string;
   academic_year?: string;
   term?: string;
-  enrollment_code?: string;
+  register_from?: string;
+  register_to?: string;
   is_open_for_enrollment?: boolean;
   is_active?: boolean;
 };
@@ -100,7 +104,7 @@ async function generateClassCode() {
 async function getClasses(profileId: string, role: string): Promise<ClassRow[]> {
   let query = supabaseAdmin
     .from("tb_classes")
-    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
+    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, learner_group, academic_year, term, register_from, register_to, is_open_for_enrollment, is_active, created_at, updated_at")
     .order("created_at", { ascending: false });
 
   if (role !== "admin") {
@@ -135,6 +139,17 @@ async function getStudentCounts(classIds: string[]) {
   return counts;
 }
 
+type ClassSetRow = {
+  class_id: string;
+  batch_id: string;
+  family: string;
+  mst_experiment_batches: {
+    batch_code: string | null;
+    batch_name: string | null;
+    status: string | null;
+  } | null;
+};
+
 async function getClassContent(classIds: string[]) {
   const empty = new Map<string, {
     assignment_sets: ContentItem[];
@@ -143,58 +158,31 @@ async function getClassContent(classIds: string[]) {
   }>();
   if (classIds.length === 0) return empty;
 
-  const { data: studentRows, error: studentError } = await supabaseAdmin
-    .from("tb_class_students")
-    .select("class_id, profile_id, status")
-    .in("class_id", classIds)
-    .eq("status", "active");
-  if (studentError) {
-    if (studentError.code === "42P01" || studentError.code === "42703") return empty;
-    throw studentError;
+  const { data, error } = await supabaseAdmin
+    .from("tb_class_sets")
+    .select("class_id, batch_id, family, mst_experiment_batches(batch_code, batch_name, status)")
+    .in("class_id", classIds);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST204") return empty;
+    throw error;
   }
 
-  const classStudents = (studentRows ?? []) as ClassStudentRow[];
-  const profileIds = [...new Set(classStudents.map((row) => row.profile_id).filter(Boolean))] as string[];
-  if (profileIds.length === 0) return empty;
-
-  const [{ data: assignmentRows, error: assignmentError }, { data: batchRows, error: batchError }] = await Promise.all([
-    supabaseAdmin
-      .from("trn_task_assignments")
-      .select("batch_id, profile_id")
-      .in("profile_id", profileIds),
-    supabaseAdmin
-      .from("mst_experiment_batches")
-      .select("batch_id, batch_code, batch_name, batch_type, status, set_type_id"),
-  ]);
-  if (assignmentError) throw assignmentError;
-  if (batchError) throw batchError;
-
-  const profileClassMap = new Map<string, string[]>();
-  for (const row of classStudents) {
-    if (!row.profile_id) continue;
-    profileClassMap.set(row.profile_id, [...(profileClassMap.get(row.profile_id) ?? []), row.class_id]);
-  }
-
-  const batchMap = new Map(((batchRows ?? []) as BatchRow[]).map((row) => [row.batch_id, row]));
   const grouped = new Map<string, { assignment: Map<string, ContentItem>; lab: Map<string, ContentItem>; exam: Map<string, ContentItem> }>();
   for (const classId of classIds) {
     grouped.set(classId, { assignment: new Map(), lab: new Map(), exam: new Map() });
   }
 
-  for (const assignment of (assignmentRows ?? []) as AssignmentRow[]) {
-    const classIdsForProfile = profileClassMap.get(assignment.profile_id) ?? [];
-    const batch = batchMap.get(assignment.batch_id);
-    if (!batch) continue;
-    const family = getBatchFamily(batch);
-    const item = {
-      batch_id: batch.batch_id,
-      batch_code: batch.batch_code,
-      batch_name: batch.batch_name,
-      status: batch.status,
+  for (const row of (data ?? []) as unknown as ClassSetRow[]) {
+    const b = row.mst_experiment_batches;
+    const family = (["assignment", "lab", "exam"].includes(row.family) ? row.family : "assignment") as "assignment" | "lab" | "exam";
+    const item: ContentItem = {
+      batch_id: row.batch_id,
+      batch_code: b?.batch_code ?? null,
+      batch_name: b?.batch_name ?? null,
+      status: b?.status ?? null,
     };
-    for (const classId of classIdsForProfile) {
-      grouped.get(classId)?.[family].set(assignment.batch_id, item);
-    }
+    grouped.get(row.class_id)?.[family].set(row.batch_id, item);
   }
 
   return new Map([...grouped.entries()].map(([classId, counts]) => [
@@ -278,14 +266,16 @@ export async function POST(request: NextRequest) {
         class_name: className,
         class_level: normalizeText(body.class_level) || null,
         class_section: normalizeText(body.class_section) || null,
+        learner_group: normalizeText(body.learner_group) || null,
         academic_year: normalizeText(body.academic_year) || null,
         term: normalizeText(body.term) || null,
-        enrollment_code: normalizeText(body.enrollment_code) || classCode,
+        register_from: body.register_from || null,
+        register_to: body.register_to || null,
         is_open_for_enrollment: body.is_open_for_enrollment ?? true,
         is_active: body.is_active ?? true,
         updated_at: new Date().toISOString(),
       })
-      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
+      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, learner_group, academic_year, term, register_from, register_to, is_open_for_enrollment, is_active, created_at, updated_at")
       .single();
     if (error) throw error;
 

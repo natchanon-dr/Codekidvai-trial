@@ -14,9 +14,11 @@ type ClassRow = {
   class_name: string;
   class_level: string | null;
   class_section: string | null;
+  learner_group: string | null;
   academic_year: string | null;
   term: string | null;
-  enrollment_code: string | null;
+  register_from: string | null;
+  register_to: string | null;
   is_open_for_enrollment: boolean;
   is_active: boolean;
   created_at: string | null;
@@ -37,6 +39,7 @@ type StudentProfileRow = {
   display_name: string | null;
   grade_level: string | null;
   student_status: string | null;
+  academy_member_id?: string | null;
 };
 
 type SessionRow = {
@@ -69,7 +72,8 @@ type UpdateClassBody = {
   class_section?: string;
   academic_year?: string;
   term?: string;
-  enrollment_code?: string;
+  register_from?: string | null;
+  register_to?: string | null;
   is_open_for_enrollment?: boolean;
   is_active?: boolean;
 };
@@ -88,7 +92,7 @@ function batchFamily(batch: BatchRow | undefined) {
 async function getClassById(classId: string, profileId: string, role: string) {
   let query = supabaseAdmin
     .from("tb_classes")
-    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
+    .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, learner_group, academic_year, term, register_from, register_to, is_open_for_enrollment, is_active, created_at, updated_at")
     .eq("class_id", classId);
 
   if (role !== "admin") {
@@ -121,7 +125,26 @@ async function getStudents(classId: string) {
     .in("profile_id", profileIds);
   if (profileError) throw profileError;
 
-  const profileMap = new Map((profileRows ?? []).map((row) => [row.profile_id, row as StudentProfileRow]));
+  const participantCodes = (profileRows ?? [])
+    .map((r) => r.participant_code)
+    .filter(Boolean) as string[];
+  const { data: memberRows } = participantCodes.length
+    ? await supabaseAdmin
+        .from("mst_academy_members")
+        .select("participant_code, academy_member_id")
+        .in("participant_code", participantCodes)
+    : { data: [] };
+  const memberMap = new Map(
+    ((memberRows ?? []) as { participant_code: string; academy_member_id: string }[])
+      .map((m) => [m.participant_code, m.academy_member_id]),
+  );
+
+  const profileMap = new Map(
+    (profileRows ?? []).map((row) => [
+      row.profile_id,
+      { ...(row as StudentProfileRow), academy_member_id: memberMap.get(row.participant_code ?? "") ?? null },
+    ]),
+  );
   const scoreMap = await getScoreSummary(profileIds);
 
   return memberships.map((membership) => {
@@ -143,32 +166,51 @@ async function getStudents(classId: string) {
   });
 }
 
-async function getContentCounts(profileIds: string[]) {
-  if (profileIds.length === 0) return { assignment_count: 0, lab_count: 0, exam_count: 0 };
+type ContentSetItem = {
+  batch_id: string;
+  batch_code: string | null;
+  batch_name: string | null;
+  status: string | null;
+};
 
-  const [{ data: assignmentRows, error: assignmentError }, { data: batchRows, error: batchError }] = await Promise.all([
-    supabaseAdmin
-      .from("trn_task_assignments")
-      .select("batch_id, profile_id")
-      .in("profile_id", profileIds),
-    supabaseAdmin
-      .from("mst_experiment_batches")
-      .select("batch_id, batch_type, batch_code, set_type_id"),
-  ]);
-  if (assignmentError) throw assignmentError;
-  if (batchError) throw batchError;
+type ClassSetRow = {
+  batch_id: string;
+  family: string;
+  mst_experiment_batches: {
+    batch_code: string | null;
+    batch_name: string | null;
+    status: string | null;
+  } | null;
+};
 
-  const batchMap = new Map(((batchRows ?? []) as BatchRow[]).map((row) => [row.batch_id, row]));
-  const counts = { assignment: new Set<string>(), lab: new Set<string>(), exam: new Set<string>() };
-  for (const assignment of (assignmentRows ?? []) as AssignmentRow[]) {
-    const family = batchFamily(batchMap.get(assignment.batch_id));
-    counts[family].add(assignment.batch_id);
+async function getContentSets(classId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("tb_class_sets")
+    .select("batch_id, family, mst_experiment_batches(batch_code, batch_name, status)")
+    .eq("class_id", classId);
+
+  if (error) {
+    // If table doesn't exist yet, return empty (migration not yet run)
+    if (error.code === "42P01" || error.code === "PGRST204") {
+      return { assignment_sets: [], lab_sets: [], exam_sets: [], assignment_count: 0, lab_count: 0, exam_count: 0 };
+    }
+    throw error;
+  }
+
+  const sets: Record<string, ContentSetItem[]> = { assignment: [], lab: [], exam: [] };
+  for (const row of (data ?? []) as unknown as ClassSetRow[]) {
+    const b = row.mst_experiment_batches;
+    const family = (["assignment", "lab", "exam"].includes(row.family) ? row.family : "assignment") as "assignment" | "lab" | "exam";
+    sets[family].push({ batch_id: row.batch_id, batch_code: b?.batch_code ?? null, batch_name: b?.batch_name ?? null, status: b?.status ?? null });
   }
 
   return {
-    assignment_count: counts.assignment.size,
-    lab_count: counts.lab.size,
-    exam_count: counts.exam.size,
+    assignment_sets: sets.assignment,
+    lab_sets: sets.lab,
+    exam_sets: sets.exam,
+    assignment_count: sets.assignment.length,
+    lab_count: sets.lab.length,
+    exam_count: sets.exam.length,
   };
 }
 
@@ -233,12 +275,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .filter((item) => item.status === "active")
       .map((item) => item.profile_id)
       .filter(Boolean);
-    const contentCounts = await getContentCounts(activeProfileIds);
+    const contentSets = await getContentSets(classId);
     return NextResponse.json({
       class: {
         ...classItem,
         student_count: students.filter((item) => item.status === "active").length,
-        ...contentCounts,
+        ...contentSets,
       },
       students,
     });
@@ -272,10 +314,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.class_section !== undefined) updatePayload.class_section = normalizeText(body.class_section) || null;
     if (body.academic_year !== undefined) updatePayload.academic_year = normalizeText(body.academic_year) || null;
     if (body.term !== undefined) updatePayload.term = normalizeText(body.term) || null;
-    if (body.enrollment_code !== undefined) {
-      const enrollmentCode = normalizeText(body.enrollment_code);
-      updatePayload.enrollment_code = enrollmentCode || classItem.class_code;
-    }
+    if (body.register_from !== undefined) updatePayload.register_from = body.register_from || null;
+    if (body.register_to !== undefined) updatePayload.register_to = body.register_to || null;
     if (body.is_open_for_enrollment !== undefined) updatePayload.is_open_for_enrollment = Boolean(body.is_open_for_enrollment);
     if (body.is_active !== undefined) updatePayload.is_active = Boolean(body.is_active);
 
@@ -283,7 +323,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .from("tb_classes")
       .update(updatePayload)
       .eq("class_id", classId)
-      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, academic_year, term, enrollment_code, is_open_for_enrollment, is_active, created_at, updated_at")
+      .select("class_id, academy_id, teacher_profile_id, class_code, class_name, class_level, class_section, learner_group, academic_year, term, register_from, register_to, is_open_for_enrollment, is_active, created_at, updated_at")
       .single();
     if (error) throw error;
 

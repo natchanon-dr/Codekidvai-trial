@@ -3,7 +3,6 @@ import { requireAuthenticatedProfile } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 type JoinClassBody = {
-  enrollment_code?: string;
   class_code?: string;
 };
 
@@ -13,9 +12,10 @@ type ClassRow = {
   class_code: string;
   class_name: string;
   class_level: string | null;
-  enrollment_code: string | null;
   is_open_for_enrollment: boolean | null;
   is_active: boolean | null;
+  register_from: string | null;
+  register_to: string | null;
 };
 
 type MembershipRow = {
@@ -23,26 +23,53 @@ type MembershipRow = {
   status: string | null;
 };
 
+async function assignClassSetsToStudent(classId: string, profileId: string, now: string) {
+  const { data: classSets, error: setsError } = await supabaseAdmin
+    .from("tb_class_sets")
+    .select("batch_id")
+    .eq("class_id", classId);
+  if (setsError || !classSets || classSets.length === 0) return;
+
+  for (const { batch_id } of classSets as { batch_id: string }[]) {
+    const { data: tasks } = await supabaseAdmin
+      .from("trn_task_assignments")
+      .select("task_id, assigned_order, assigned_group, is_required, is_unlocked")
+      .eq("batch_id", batch_id)
+      .order("assigned_order", { ascending: true });
+
+    if (!tasks || tasks.length === 0) continue;
+    const seen = new Map<string, typeof tasks[0]>();
+    for (const t of tasks) { if (!seen.has(t.task_id)) seen.set(t.task_id, t); }
+    const rows = [...seen.values()].map(t => ({
+      batch_id,
+      profile_id: profileId,
+      task_id: t.task_id,
+      assigned_order: Number(t.assigned_order),
+      assigned_group: t.assigned_group,
+      is_required: t.is_required ?? true,
+      is_unlocked: t.is_unlocked ?? true,
+      status: "assigned",
+      assigned_at: now,
+    }));
+    await supabaseAdmin.from("trn_task_assignments").upsert(rows, { onConflict: "batch_id,profile_id,task_id", ignoreDuplicates: true });
+  }
+}
+
 function normalizeCode(value: unknown) {
   return String(value ?? "").trim();
 }
 
-async function findClassByCode(code: string) {
-  const byEnrollmentCode = await supabaseAdmin
-    .from("tb_classes")
-    .select("class_id, academy_id, class_code, class_name, class_level, enrollment_code, is_open_for_enrollment, is_active")
-    .eq("enrollment_code", code)
-    .maybeSingle();
-  if (!byEnrollmentCode.error && byEnrollmentCode.data) return byEnrollmentCode.data as ClassRow;
-  if (byEnrollmentCode.error && byEnrollmentCode.error.code !== "PGRST116") throw byEnrollmentCode.error;
+const CLASS_FIELDS =
+  "class_id, academy_id, class_code, class_name, class_level, is_open_for_enrollment, is_active, register_from, register_to";
 
-  const byClassCode = await supabaseAdmin
+async function findClassByCode(code: string) {
+  const { data, error } = await supabaseAdmin
     .from("tb_classes")
-    .select("class_id, academy_id, class_code, class_name, class_level, enrollment_code, is_open_for_enrollment, is_active")
+    .select(CLASS_FIELDS)
     .eq("class_code", code)
     .maybeSingle();
-  if (byClassCode.error && byClassCode.error.code !== "PGRST116") throw byClassCode.error;
-  return (byClassCode.data ?? null) as ClassRow | null;
+  if (error && error.code !== "PGRST116") throw error;
+  return (data ?? null) as ClassRow | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -51,13 +78,19 @@ export async function POST(request: NextRequest) {
     if (profile.role !== "student") throw new Error("Student role is required.");
 
     const body = (await request.json()) as JoinClassBody;
-    const code = normalizeCode(body.enrollment_code || body.class_code);
+    const code = normalizeCode(body.class_code);
     if (!code) throw new Error("Class code is required.");
 
     const classItem = await findClassByCode(code);
     if (!classItem) throw new Error("Class not found.");
     if (!classItem.is_active) throw new Error("This class is inactive.");
     if (classItem.is_open_for_enrollment === false) throw new Error("This class is closed for enrollment.");
+
+    const now = new Date().toISOString();
+    const regFrom = classItem.register_from as string | null;
+    const regTo = classItem.register_to as string | null;
+    const inPeriod = (regFrom === null || regFrom <= now) && (regTo === null || regTo >= now);
+    if (!inPeriod) throw new Error("Enrollment is only allowed during the registration period.");
 
     const { data: existingRows, error: existingError } = await supabaseAdmin
       .from("tb_class_students")
@@ -72,7 +105,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ joined: false, already_member: true, class: classItem });
     }
 
-    const now = new Date().toISOString();
     if (existing) {
       const { error } = await supabaseAdmin
         .from("tb_class_students")
@@ -96,6 +128,9 @@ export async function POST(request: NextRequest) {
         });
       if (error) throw error;
     }
+
+    // Auto-assign sets that the teacher linked to this class
+    await assignClassSetsToStudent(classItem.class_id, profile.profile_id, now);
 
     return NextResponse.json({ joined: true, already_member: false, class: classItem }, { status: 201 });
   } catch (error) {

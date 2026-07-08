@@ -41,6 +41,7 @@ type ReviewStudent = {
   student: {
     participant_code: string | null;
     display_name: string | null;
+    academy_member_id?: string | null;
   } | null;
   task_count: number;
   submitted_count: number;
@@ -174,7 +175,7 @@ export default function TeacherSubmissionReviewPage() {
       .filter((student) => {
         const status = getStudentStatus(student);
         const matchesStatus = statusFilter === "all" || status === statusFilter;
-        const haystack = `${student.student?.participant_code ?? ""} ${student.student?.display_name ?? ""}`.toLowerCase();
+        const haystack = `${student.student?.academy_member_id ?? ""} ${student.student?.participant_code ?? ""} ${student.student?.display_name ?? ""}`.toLowerCase();
         return matchesStatus && (!normalized || haystack.includes(normalized));
       })
       .sort((a, b) => compareStudents(a, b, studentSort.key, studentSort.direction, getStudentSubmittedCount, getCurrentTotalScore));
@@ -638,9 +639,9 @@ export default function TeacherSubmissionReviewPage() {
     const rows =
       mode === "student"
         ? [
-            ["Student Code", "Student Name", "Submit", "Score", "Status"],
+            ["Academy ID", "Student Name", "Submit", "Score", "Status"],
             ...students.map((student) => [
-              student.student?.participant_code ?? "",
+              student.student?.academy_member_id ?? student.student?.participant_code ?? "",
               student.student?.display_name ?? "",
               String(getStudentSubmittedCount(student)),
               String(getCurrentTotalScore(student)),
@@ -829,7 +830,7 @@ export default function TeacherSubmissionReviewPage() {
                           <StatusIcon status={status} />
                         </span>
                       </div>
-                      <p className="truncate font-mono text-xs font-bold text-[#F37021]">{student.student?.participant_code ?? "-"}</p>
+                      <p className="truncate font-mono text-xs font-bold text-[#F37021]">{student.student?.academy_member_id ?? student.student?.participant_code ?? "-"}</p>
                       <p className="truncate text-sm font-semibold text-[#0F172A]">{student.student?.display_name ?? "Unknown student"}</p>
                       <p className="text-sm font-semibold text-[#0F172A]">{getStudentSubmittedCount(student)}</p>
                       <p className="text-sm font-semibold text-[#F37021]">{getCurrentTotalScore(student)}</p>
@@ -1003,7 +1004,7 @@ function StudentReviewModal({
           <div>
             <h2 className="text-lg font-bold text-[#0F172A]">Review Student Work</h2>
             <p className="mt-1 text-sm text-[#64748B]">
-              <span className="font-mono font-semibold text-[#F37021]">{student.student?.participant_code ?? "-"}</span>
+              <span className="font-mono font-semibold text-[#F37021]">{student.student?.academy_member_id ?? student.student?.participant_code ?? "-"}</span>
               <span className="mx-2 text-[#CBD5E1]">|</span>
               {student.student?.display_name ?? "Unknown student"}
             </p>
@@ -1214,7 +1215,7 @@ function TaskReviewModal({
                         {status ? <TaskReviewStatusIcon status={status} /> : <StatusIcon status="unsubmitted" />}
                       </span>
                     </td>
-                    <td className="py-3 pr-3 align-top font-mono text-xs font-bold text-[#F37021]">{student.student?.participant_code ?? "-"}</td>
+                    <td className="py-3 pr-3 align-top font-mono text-xs font-bold text-[#F37021]">{student.student?.academy_member_id ?? student.student?.participant_code ?? "-"}</td>
                     <td className="py-3 pr-3 align-top font-semibold text-[#0F172A]">{student.student?.display_name ?? "Unknown student"}</td>
                     <td className="py-3 px-3 text-center align-top text-[#64748B]">{studentTask?.submission?.total_attempt_count ?? "-"}</td>
                     <td className="py-3 px-3 text-center align-top font-semibold text-[#0F172A]">

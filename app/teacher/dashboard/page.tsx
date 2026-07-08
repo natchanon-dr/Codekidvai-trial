@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
@@ -24,11 +24,31 @@ const navItems = [
   { title: "Submission", subtitle: "Review submitted work", href: "/teacher/submissions", enabled: true, icon: "submission" },
 ];
 
+type ProfileDetail = {
+  display_name: string | null;
+  email: string | null;
+  participant_code: string;
+  academy_member_id: string | null;
+  academy_name: string | null;
+  academy_code: string | null;
+};
+
 export default function TeacherDashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileDetail, setProfileDetail] = useState<ProfileDetail | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -53,6 +73,12 @@ export default function TeacherDashboardPage() {
 
       setData(json as DashboardData);
       setLoading(false);
+
+      // Fetch profile detail for dropdown (non-blocking)
+      fetch("/api/profile/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d) setProfileDetail(d as ProfileDetail); })
+        .catch(() => { /* silent */ });
     }
 
     loadDashboard();
@@ -80,9 +106,59 @@ export default function TeacherDashboardPage() {
           <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Teacher</p>
           <p className="text-xs text-[#64748B]">Assignment mode dashboard</p>
         </div>
-        <button onClick={handleLogout} className="text-xs text-[#64748B] hover:text-red-600 transition-colors">
-          Logout
-        </button>
+        {/* Profile icon */}
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="w-8 h-8 rounded-full bg-[#FED7AA] flex items-center justify-center hover:bg-[#F37021] hover:text-white transition-colors text-[#F37021] border border-[#FED7AA]"
+            title="Profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 top-10 w-72 bg-white border border-[#FED7AA] rounded-2xl shadow-lg z-50 p-4 space-y-3">
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Name</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{profileDetail?.display_name ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Email</p>
+                <p className="text-sm text-[#0F172A] break-all">{profileDetail?.email ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Register Code</p>
+                <p className="text-sm font-mono font-semibold text-[#64748B]">{profileDetail?.participant_code ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Academy ID</p>
+                <p className="text-sm font-mono font-bold text-[#F37021]">{profileDetail?.academy_member_id ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Academy</p>
+                <p className="text-sm text-[#0F172A]">{profileDetail?.academy_name ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <div className="flex gap-2">
+                <button className="flex-1 py-1.5 rounded-xl border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                  Switch Academy
+                </button>
+                <button className="flex-1 py-1.5 rounded-xl border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                  Add Academy
+                </button>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full py-1.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">

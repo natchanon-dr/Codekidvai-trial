@@ -22,6 +22,7 @@ type ProfileRow = {
   profile_id: string;
   participant_code: string | null;
   display_name: string | null;
+  academy_member_id?: string | null;
 };
 
 type AssignmentRow = {
@@ -171,6 +172,24 @@ export async function GET(request: NextRequest) {
     if (profileError) throw profileError;
     if (assignmentError) throw assignmentError;
 
+    const participantCodes = ((profileRows ?? []) as { participant_code: string | null }[])
+      .map((r) => r.participant_code)
+      .filter(Boolean) as string[];
+    const { data: memberRows } = participantCodes.length
+      ? await supabaseAdmin
+          .from("mst_academy_members")
+          .select("participant_code, academy_member_id")
+          .in("participant_code", participantCodes)
+      : { data: [] };
+    const memberMap = new Map(
+      ((memberRows ?? []) as { participant_code: string; academy_member_id: string }[])
+        .map((m) => [m.participant_code, m.academy_member_id]),
+    );
+    const profileMap = new Map(
+      ((profileRows ?? []) as { profile_id: string; participant_code: string | null; display_name: string | null }[])
+        .map((r) => [r.profile_id, { ...r, academy_member_id: memberMap.get(r.participant_code ?? "") ?? null }]),
+    );
+
     const assignments = (assignmentRows ?? []) as AssignmentRow[];
     const batchIds = [...new Set(assignments.map((row) => row.batch_id).filter(Boolean))];
     const taskIds = [...new Set(assignments.map((row) => row.task_id).filter(Boolean))];
@@ -200,7 +219,6 @@ export async function GET(request: NextRequest) {
     if (taskError) throw taskError;
     if (submissionError) throw submissionError;
 
-    const profileMap = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.profile_id, row]));
     const batchMap = new Map(((batchRows ?? []) as BatchRow[]).map((row) => [row.batch_id, row]));
     const taskMap = new Map(((taskRows ?? []) as TaskRow[]).map((row) => [row.task_id, row]));
     const submissions = (submissionRows ?? []) as SubmissionRow[];
