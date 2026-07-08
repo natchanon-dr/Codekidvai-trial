@@ -62,16 +62,16 @@ async function getDefaultAcademyId() {
   const existing = await supabaseAdmin
     .from("tb_academy")
     .select("academy_id")
-    .eq("academy_code", "DEFAULT")
+    .eq("academy_code", "KMITL")
     .maybeSingle();
   if (!existing.error && existing.data?.academy_id) return existing.data.academy_id as string;
 
   const created = await supabaseAdmin
     .from("tb_academy")
     .insert({
-      academy_code: "DEFAULT",
-      academy_name: "Default Institution",
-      academy_description: "Default institution for Phase 1 teacher and student flows.",
+      academy_code: "KMITL",
+      academy_name: "KMITL",
+      academy_description: "King Mongkut's Institute of Technology Ladkrabang",
       is_active: true,
     })
     .select("academy_id")
