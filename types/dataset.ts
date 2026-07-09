@@ -42,11 +42,42 @@ export interface EventLogInput {
   metadata_json?: Record<string, unknown> | null;
 }
 
+export interface RubricCriterion {
+  key: string;
+  label: string;
+  keywords: string[];
+  weight: number; // 0–1; all criteria weights must sum to 1
+}
+
+export interface ScoringRubric {
+  version: number;
+  type: "criterion_based" | "block_order";
+  pass_threshold?: number; // fraction of max_score required to pass (default 1.0)
+  criteria?: RubricCriterion[]; // only for criterion_based
+}
+
+export interface RubricCriterionScore {
+  key: string;
+  label: string;
+  criterion_score: number;
+  max_criterion_score: number;
+  matched: boolean;
+}
+
 export interface ScoreResult {
   is_correct: boolean;
   score: number;
   error_type: string | null;
   error_message: string | null;
+  rubric_breakdown?: RubricCriterionScore[];
+}
+
+export interface RubricScoreRow {
+  submission_id: string;
+  criterion_key: string;
+  criterion_label: string;
+  criterion_score: number;
+  max_criterion_score: number;
 }
 
 export interface StudentBlock {

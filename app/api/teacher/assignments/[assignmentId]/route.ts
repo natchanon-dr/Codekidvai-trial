@@ -18,6 +18,7 @@ type UpdateAssignmentBody = {
   problem_statement?: string;
   expected_answer?: string;
   max_score?: number;
+  scoring_rubric_json?: unknown;
 };
 
 type AssignmentRow = {
@@ -115,7 +116,7 @@ export async function GET(
 
     const { data: task, error: taskError } = await supabaseAdmin
       .from("mst_tasks")
-      .select("task_id, task_code, task_title, task_description, task_type, difficulty_level, learning_objective, problem_statement, expected_answer, expected_output_json, expected_concept, max_score, estimated_time_seconds, task_status, is_active, created_at")
+      .select("task_id, task_code, task_title, task_description, task_type, difficulty_level, learning_objective, problem_statement, expected_answer, expected_output_json, expected_concept, max_score, estimated_time_seconds, task_status, is_active, created_at, scoring_rubric_json")
       .eq("task_id", assignmentId)
       .maybeSingle();
     if (taskError) throw taskError;
@@ -253,7 +254,7 @@ export async function PATCH(
       return NextResponse.json({ error: "You are not allowed to update this assignment." }, { status: 403 });
     }
 
-    const updates: Record<string, string | number | boolean | null> = {
+    const updates: Record<string, string | number | boolean | Record<string, unknown> | null> = {
       updated_at: new Date().toISOString(),
     };
     if (body.status) {
@@ -273,6 +274,9 @@ export async function PATCH(
       updates.expected_sql = body.expected_answer.trim() || null;
     }
     if (typeof body.max_score === "number") updates.max_score = Number(body.max_score);
+    if ("scoring_rubric_json" in body) {
+      updates.scoring_rubric_json = (body.scoring_rubric_json ?? null) as Record<string, unknown> | null;
+    }
 
     const { error } = await supabaseAdmin
       .from("mst_tasks")

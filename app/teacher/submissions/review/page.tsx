@@ -94,6 +94,72 @@ type TaskReviewSnapshot = {
   scores: Record<string, number>;
 };
 
+// ─── C1 Analytics types ───────────────────────────────────────────────────────
+
+type CriterionAvg = { avg_score: number | null; avg_max_score: number | null; avg_pct: number | null };
+
+type TaskAnalytics = {
+  task_id: string;
+  task_code: string | null;
+  task_title: string | null;
+  assigned_count: number;
+  submitted_count: number;
+  completion_rate_pct: number | null;
+  passed_count: number;
+  pass_rate_pct: number | null;
+  avg_score: number | null;
+  min_score: number | null;
+  max_score: number | null;
+  avg_run_count: number | null;
+  avg_attempt_count: number | null;
+  avg_time_to_first_correct_sec: number | null;
+  criterion_avgs: Record<string, CriterionAvg>;
+};
+
+type BatchSummaryAnalytics = {
+  total_tasks: number;
+  total_assigned: number;
+  total_submitted: number;
+  overall_completion_rate_pct: number | null;
+  overall_pass_rate_pct: number | null;
+  overall_avg_score: number | null;
+  overall_avg_run_count: number | null;
+  overall_avg_attempt_count: number | null;
+  overall_avg_time_to_first_correct_sec: number | null;
+  overall_criterion_avgs: Record<string, CriterionAvg>;
+};
+
+type AnalyticsData = { tasks: TaskAnalytics[]; batch_summary: BatchSummaryAnalytics };
+
+// ─── C2 Data quality types ────────────────────────────────────────────────────
+
+type DataQualityCheck = {
+  key: string;
+  label: string;
+  status: "ok" | "warning" | "error";
+  count: number | null;
+  total: number | null;
+  detail: string;
+  critical: boolean;
+};
+
+type DataQualityData = {
+  checks: DataQualityCheck[];
+  readiness_score: number;
+  readiness_status: "ready" | "warning" | "not_ready";
+  notes: string[];
+};
+
+const STABLE_2C3L_KEYS = [
+  "c1_correctness_result",
+  "c2_semantic_consistency",
+  "l1_logical_reasoning",
+  "l2_learning_process",
+  "l3_difficulty_complexity",
+] as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const STATUS_FILTERS: Array<ReviewStatus | "all"> = ["unsubmitted", "submitted", "review", "completed", "all"];
 const TASK_STATUS_FILTERS: Array<TaskSummaryStatus | "all"> = ["not_start", "in_progress", "delivered", "review", "completed", "all"];
 const EDITABLE_STATUSES = new Set<ReviewStatus>(["submitted", "review", "completed"]);
@@ -125,6 +191,10 @@ export default function TeacherSubmissionReviewPage() {
   const [approvalDraftStudentIds, setApprovalDraftStudentIds] = useState<Set<string>>(new Set());
   const [draftSavedStudentIds, setDraftSavedStudentIds] = useState<Set<string>>(new Set());
   const [deliveredTaskIds, setDeliveredTaskIds] = useState<Set<string>>(new Set());
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [dataQualityData, setDataQualityData] = useState<DataQualityData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     async function loadReview() {
@@ -634,6 +704,63 @@ export default function TeacherSubmissionReviewPage() {
     return student.tasks.reduce((sum, task) => sum + (isTaskEffectivelySubmitted(student, task) ? getTaskScore(student, task) : 0), 0);
   }
 
+  async function toggleAnalyticsPanel() {
+    if (!target) return;
+    if (showAnalytics) {
+      setShowAnalytics(false);
+      return;
+    }
+    if (analyticsData && dataQualityData) {
+      setShowAnalytics(true);
+      return;
+    }
+    setAnalyticsLoading(true);
+    setShowAnalytics(true);
+    const token = await getToken();
+    if (!token) { setAnalyticsLoading(false); return; }
+    const params = new URLSearchParams({
+      class_id: target.classItem.class_id,
+      batch_id: target.setItem.batch_id,
+    });
+    const headers = { Authorization: `Bearer ${token}` };
+    const [analyticsRes, qualityRes] = await Promise.all([
+      fetch(`/api/teacher/analytics?${params}`, { headers }),
+      fetch(`/api/teacher/data-quality?${params}`, { headers }),
+    ]);
+    const [analyticsJson, qualityJson] = await Promise.all([
+      analyticsRes.ok ? analyticsRes.json() : null,
+      qualityRes.ok ? qualityRes.json() : null,
+    ]);
+    setAnalyticsData(analyticsJson as AnalyticsData | null);
+    setDataQualityData(qualityJson as DataQualityData | null);
+    setAnalyticsLoading(false);
+  }
+
+  async function downloadFullCsv() {
+    if (!target) return;
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    const token = authSession?.access_token;
+    if (!token) return;
+    const params = new URLSearchParams({
+      class_id: target.classItem.class_id,
+      batch_id: target.setItem.batch_id,
+      mode,
+    });
+    const res = await fetch(`/api/teacher/export/submissions?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const text = await res.text();
+    // Prepend UTF-8 BOM so Excel on Windows detects the encoding correctly
+    const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${target.classItem.class_code}-${target.setItem.batch_code ?? "export"}-${mode}-full.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function exportReviewCsv() {
     if (!target) return;
     const rows =
@@ -662,7 +789,7 @@ export default function TeacherSubmissionReviewPage() {
             ]),
           ];
     const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -742,6 +869,20 @@ export default function TeacherSubmissionReviewPage() {
             >
               Export
             </button>
+            <button
+              type="button"
+              onClick={downloadFullCsv}
+              className="rounded-xl border border-[#F37021] bg-[#F37021] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E05A10]"
+            >
+              Research
+            </button>
+            <button
+              type="button"
+              onClick={toggleAnalyticsPanel}
+              className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${showAnalytics ? "border-[#0F172A] bg-[#0F172A] text-white hover:bg-[#1E293B]" : "border-[#0F172A] bg-white text-[#0F172A] hover:bg-[#F8FAFC]"}`}
+            >
+              Analytics
+            </button>
           </div>
         </section>
 
@@ -803,6 +944,30 @@ export default function TeacherSubmissionReviewPage() {
                 ))}
           </div>
         </section>
+
+        {showAnalytics && (
+          <section className="space-y-4">
+            {analyticsLoading ? (
+              <div className="bg-white border border-[#FED7AA] rounded-2xl p-6 text-center text-sm text-[#64748B]">
+                Loading analytics…
+              </div>
+            ) : (
+              <>
+                {analyticsData && (
+                  <AnalyticsPanel data={analyticsData} />
+                )}
+                {dataQualityData && (
+                  <DataQualityPanel data={dataQualityData} />
+                )}
+                {!analyticsData && !dataQualityData && (
+                  <div className="bg-white border border-[#FED7AA] rounded-2xl p-6 text-center text-sm text-red-500">
+                    Failed to load analytics. Check class and batch access.
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 shadow-sm">
           {mode === "student" && students.length === 0 ? (
@@ -1294,6 +1459,154 @@ function TaskReviewModal({
     </div>
   );
 }
+
+// ─── Analytics Panel ──────────────────────────────────────────────────────────
+
+function AnalyticsPanel({ data }: { data: AnalyticsData }) {
+  const [show2c3l, setShow2c3l] = useState(false);
+  const s = data.batch_summary;
+
+  function fmt(v: number | null, decimals = 2) {
+    if (v == null) return "—";
+    return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
+  }
+
+  function fmtPct(v: number | null) {
+    if (v == null) return "—";
+    return `${v}%`;
+  }
+
+  return (
+    <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 shadow-sm space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-[#0F172A]">Analytics Summary</h2>
+        <button
+          type="button"
+          onClick={() => setShow2c3l((v) => !v)}
+          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${show2c3l ? "border-[#F37021] bg-[#F37021] text-white" : "border-[#FED7AA] bg-white text-[#64748B] hover:border-[#F37021] hover:text-[#F37021]"}`}
+        >
+          2C3L
+        </button>
+      </div>
+
+      {/* Batch summary strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { label: "Completion", value: fmtPct(s.overall_completion_rate_pct) },
+          { label: "Pass Rate", value: fmtPct(s.overall_pass_rate_pct) },
+          { label: "Avg Score", value: fmt(s.overall_avg_score) },
+          { label: "Avg Runs", value: fmt(s.overall_avg_run_count) },
+          { label: "Avg Time to 1st Correct (s)", value: fmt(s.overall_avg_time_to_first_correct_sec, 0) },
+        ].map((item) => (
+          <div key={item.label} className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8]">{item.label}</p>
+            <p className="mt-1 text-xl font-bold text-[#F37021]">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-task table */}
+      {data.tasks.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#FED7AA] text-[#64748B] font-semibold">
+                <th className="py-2 pr-3">Task</th>
+                <th className="py-2 px-2 text-center">Assigned</th>
+                <th className="py-2 px-2 text-center">Submitted</th>
+                <th className="py-2 px-2 text-center">Complete%</th>
+                <th className="py-2 px-2 text-center">Pass%</th>
+                <th className="py-2 px-2 text-center">Avg Score</th>
+                <th className="py-2 px-2 text-center">Avg Runs</th>
+                <th className="py-2 px-2 text-center">Avg Attempts</th>
+                <th className="py-2 px-2 text-center">Avg Time(s)</th>
+                {show2c3l && STABLE_2C3L_KEYS.map((k) => (
+                  <th key={k} className="py-2 px-2 text-center whitespace-nowrap">{k.split("_")[0].toUpperCase()}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.tasks.map((task) => (
+                <tr key={task.task_id} className="border-b border-[#FED7AA]/60 last:border-0">
+                  <td className="py-2.5 pr-3">
+                    <p className="font-mono font-bold text-[#F37021]">{task.task_code ?? "—"}</p>
+                    <p className="text-[#0F172A] font-semibold truncate max-w-[200px]">{task.task_title ?? "Untitled"}</p>
+                  </td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{task.assigned_count}</td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{task.submitted_count}</td>
+                  <td className="py-2.5 px-2 text-center font-semibold text-[#0F172A]">{fmtPct(task.completion_rate_pct)}</td>
+                  <td className="py-2.5 px-2 text-center font-semibold text-[#F37021]">{fmtPct(task.pass_rate_pct)}</td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{fmt(task.avg_score)}</td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{fmt(task.avg_run_count)}</td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{fmt(task.avg_attempt_count)}</td>
+                  <td className="py-2.5 px-2 text-center text-[#0F172A]">{fmt(task.avg_time_to_first_correct_sec, 0)}</td>
+                  {show2c3l && STABLE_2C3L_KEYS.map((k) => {
+                    const c = task.criterion_avgs[k];
+                    return (
+                      <td key={k} className="py-2.5 px-2 text-center">
+                        {c?.avg_pct != null ? (
+                          <span className={`font-semibold ${c.avg_pct >= 70 ? "text-green-700" : c.avg_pct >= 40 ? "text-amber-600" : "text-red-600"}`}>
+                            {c.avg_pct}%
+                          </span>
+                        ) : "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data.tasks.length === 0 && (
+        <p className="text-center text-sm text-[#94A3B8]">No tasks with analytics data yet.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Data Quality Panel ───────────────────────────────────────────────────────
+
+function DataQualityPanel({ data }: { data: DataQualityData }) {
+  const statusColor = data.readiness_status === "ready"
+    ? "bg-green-50 border-green-200 text-green-700"
+    : data.readiness_status === "warning"
+      ? "bg-amber-50 border-amber-200 text-amber-700"
+      : "bg-red-50 border-red-200 text-red-600";
+
+  const statusLabel = data.readiness_status === "ready" ? "Ready" : data.readiness_status === "warning" ? "Warning" : "Not Ready";
+
+  return (
+    <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-[#0F172A]">Research Data Quality</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[#64748B]">Readiness: <span className="font-bold text-[#0F172A]">{data.readiness_score}%</span></span>
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {data.checks.map((c) => (
+          <div key={c.key} className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${c.status === "ok" ? "border-green-100 bg-green-50" : c.status === "warning" ? "border-amber-100 bg-amber-50" : "border-red-100 bg-red-50"}`}>
+            <span className={`mt-0.5 shrink-0 text-base ${c.status === "ok" ? "text-green-600" : c.status === "warning" ? "text-amber-600" : "text-red-600"}`}>
+              {c.status === "ok" ? "✓" : c.status === "warning" ? "⚠" : "✗"}
+            </span>
+            <div className="min-w-0">
+              <p className={`text-xs font-semibold ${c.status === "ok" ? "text-green-800" : c.status === "warning" ? "text-amber-800" : "text-red-800"}`}>
+                {c.label}
+                {c.critical && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">CRITICAL</span>}
+              </p>
+              <p className={`text-xs mt-0.5 ${c.status === "ok" ? "text-green-700" : c.status === "warning" ? "text-amber-700" : "text-red-700"}`}>{c.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function getTaskStatusKey(profileId: string, taskId: string) {
   return `${profileId}:${taskId}`;
