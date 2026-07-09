@@ -62,6 +62,16 @@ type DraftCriterion = {
   weight: string;   // numeric string in the editor
 };
 
+// Stable 2C3L research framework keys — used as CSV column names in exports.
+// Do NOT rename these keys without updating the export route accordingly.
+const DEFAULT_2C3L_CRITERIA: DraftCriterion[] = [
+  { key: "c1_correctness_result",    label: "C1 Correctness of Result",        keywords: "", weight: "0.30" },
+  { key: "c2_semantic_consistency",  label: "C2 Consistency of Semantics",     keywords: "", weight: "0.20" },
+  { key: "l1_logical_reasoning",     label: "L1 Logical Reasoning",            keywords: "", weight: "0.20" },
+  { key: "l2_learning_process",      label: "L2 Learning Process",             keywords: "", weight: "0.15" },
+  { key: "l3_difficulty_complexity", label: "L3 Difficulty / Complexity",      keywords: "", weight: "0.15" },
+];
+
 function toDraftCriteria(criteria: RubricCriterion[] | undefined): DraftCriterion[] {
   return (criteria ?? []).map((c) => ({
     key: c.key,
@@ -182,7 +192,16 @@ function RubricEditor({ taskId, taskType, maxScore, initialRubric, onSaved }: Ru
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-base font-bold text-[#0F172A]">Scoring Rubric</h2>
         {drafts.length === 0 && (
-          <span className="text-xs text-[#64748B]">No rubric — exact match scoring is used.</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[#64748B]">No rubric — exact match scoring is used.</span>
+            <button
+              type="button"
+              onClick={() => setDrafts(DEFAULT_2C3L_CRITERIA)}
+              className="px-2.5 py-1 text-xs font-semibold border border-[#F37021] text-[#F37021] rounded-xl hover:bg-[#FFF7ED] transition-colors"
+            >
+              Use 2C3L template
+            </button>
+          </div>
         )}
       </div>
 

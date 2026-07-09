@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTeacherOrAdmin } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { RubricScoreRow } from "@/types/dataset";
 
 type BatchFamily = "assignment" | "exam";
 type ReviewStatus = "unsubmitted" | "submitted" | "review" | "completed";
@@ -66,6 +67,8 @@ type SubmissionRow = {
   submitted_at: string | null;
   total_run_count?: number | null;
   total_attempt_count?: number | null;
+  time_to_first_correct_sec?: number | null;
+  rubric_applied_version?: number | null;
 };
 
 type TaskReviewStatus = "submitted" | "reviewed" | "completed";
@@ -210,7 +213,7 @@ export async function GET(request: NextRequest) {
       taskIds.length
         ? supabaseAdmin
             .from("trn_submissions")
-            .select("submission_id, profile_id, batch_id, task_id, final_answer_text, auto_score, review_score, review_status, teacher_feedback, reviewed_by, reviewed_at, final_score, is_passed, submitted_at, total_run_count, total_attempt_count")
+            .select("submission_id, profile_id, batch_id, task_id, final_answer_text, auto_score, review_score, review_status, teacher_feedback, reviewed_by, reviewed_at, final_score, is_passed, submitted_at, total_run_count, total_attempt_count, time_to_first_correct_sec, rubric_applied_version")
             .in("profile_id", profileIds)
             .in("task_id", taskIds)
         : Promise.resolve({ data: [], error: null }),
@@ -219,9 +222,24 @@ export async function GET(request: NextRequest) {
     if (taskError) throw taskError;
     if (submissionError) throw submissionError;
 
+    // B1: batch-fetch criterion-level rubric scores for all submissions
+    const submissions = (submissionRows ?? []) as SubmissionRow[];
+    const submissionIds = submissions.map((s) => s.submission_id).filter(Boolean);
+    const { data: rubricRows } = submissionIds.length
+      ? await supabaseAdmin
+          .from("trn_submission_rubric_scores")
+          .select("submission_id, criterion_key, criterion_label, criterion_score, max_criterion_score")
+          .in("submission_id", submissionIds)
+      : { data: [] };
+    const rubricMap = new Map<string, RubricScoreRow[]>();
+    for (const row of (rubricRows ?? []) as RubricScoreRow[]) {
+      const existing = rubricMap.get(row.submission_id) ?? [];
+      existing.push(row);
+      rubricMap.set(row.submission_id, existing);
+    }
+
     const batchMap = new Map(((batchRows ?? []) as BatchRow[]).map((row) => [row.batch_id, row]));
     const taskMap = new Map(((taskRows ?? []) as TaskRow[]).map((row) => [row.task_id, row]));
-    const submissions = (submissionRows ?? []) as SubmissionRow[];
     const submissionMap = new Map<string, SubmissionRow>();
     for (const submission of submissions) {
       if (!submission.batch_id || !submission.task_id) continue;
@@ -290,6 +308,9 @@ export async function GET(request: NextRequest) {
                     submitted_at: submission.submitted_at,
                     total_run_count: submission.total_run_count ?? null,
                     total_attempt_count: submission.total_attempt_count ?? null,
+                    time_to_first_correct_sec: submission.time_to_first_correct_sec ?? null,
+                    rubric_applied_version: submission.rubric_applied_version ?? null,
+                    rubric_scores: rubricMap.get(submission.submission_id) ?? [],
                   }
                 : null,
             };

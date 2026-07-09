@@ -72,6 +72,14 @@ export interface ScoreResult {
   rubric_breakdown?: RubricCriterionScore[];
 }
 
+export interface RubricScoreRow {
+  submission_id: string;
+  criterion_key: string;
+  criterion_label: string;
+  criterion_score: number;
+  max_criterion_score: number;
+}
+
 export interface StudentBlock {
   block_id: string;
   task_id: string;
