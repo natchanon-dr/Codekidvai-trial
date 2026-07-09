@@ -25,12 +25,21 @@ async function requireOwnedClass(classId: string, profileId: string, role: strin
   if (!data) throw new Error("Class not found.");
 }
 
-async function requireVisibleSet(batchId: string, profileId: string, role: string) {
+type BatchMeta = { batch_id: string; batch_code: string | null; batch_type: string | null; set_type_id: number | null };
+
+function deriveBatchFamily(batch: BatchMeta): BatchFamily {
+  if (batch.set_type_id === 2 || batch.batch_type === "exam_set" || batch.batch_code?.startsWith("SX") || batch.batch_code?.startsWith("SE") || batch.batch_code?.startsWith("X") || batch.batch_code?.startsWith("E")) return "exam";
+  if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || (batch.batch_code?.startsWith("L") && !batch.batch_code?.startsWith("LA"))) return "lab";
+  return "assignment";
+}
+
+async function requireVisibleSet(batchId: string, profileId: string, role: string): Promise<BatchMeta> {
   let query = supabaseAdmin.from("mst_experiment_batches").select("batch_id, batch_code, batch_type, set_type_id").eq("batch_id", batchId);
   if (role !== "admin") query = query.eq("created_by", profileId);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Set not found.");
+  return data as BatchMeta;
 }
 
 async function getActiveClassStudents(classId: string): Promise<ClassStudentRow[]> {
@@ -82,7 +91,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!batchId) throw new Error("Set is required.");
 
     await requireOwnedClass(classId, profile.profile_id, profile.role);
-    await requireVisibleSet(batchId, profile.profile_id, profile.role);
+    const batchMeta = await requireVisibleSet(batchId, profile.profile_id, profile.role);
+
+    // Validate that submitted family matches the batch's actual type
+    const actualFamily = deriveBatchFamily(batchMeta);
+    if (actualFamily !== family) {
+      throw new Error(`Set family mismatch: this set is "${actualFamily}", not "${family}".`);
+    }
 
     // 1. Link set to class in tb_class_sets
     const { error: linkError } = await supabaseAdmin
@@ -114,19 +129,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     await requireOwnedClass(classId, profile.profile_id, profile.role);
 
-    // 1. Remove from tb_class_sets
+    // Unlink from tb_class_sets only — preserve trn_task_assignments and submission history
     const { error: unlinkError } = await supabaseAdmin.from("tb_class_sets").delete().eq("class_id", classId).eq("batch_id", batchId);
     if (unlinkError) throw unlinkError;
 
-    // 2. Remove task assignments for all students in this class
-    const students = await getActiveClassStudents(classId);
-    const profileIds = students.map(s => s.profile_id).filter(Boolean);
-    if (profileIds.length > 0) {
-      const { error: delError } = await supabaseAdmin.from("trn_task_assignments").delete().eq("batch_id", batchId).in("profile_id", profileIds);
-      if (delError) throw delError;
-    }
-
-    return NextResponse.json({ ok: true, removed_students: profileIds.length });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Teacher class set remove API error:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to remove set." }, { status: 400 });
