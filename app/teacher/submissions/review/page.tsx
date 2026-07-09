@@ -634,6 +634,31 @@ export default function TeacherSubmissionReviewPage() {
     return student.tasks.reduce((sum, task) => sum + (isTaskEffectivelySubmitted(student, task) ? getTaskScore(student, task) : 0), 0);
   }
 
+  async function downloadFullCsv() {
+    if (!target) return;
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    const token = authSession?.access_token;
+    if (!token) return;
+    const params = new URLSearchParams({
+      class_id: target.classItem.class_id,
+      batch_id: target.setItem.batch_id,
+      mode,
+    });
+    const res = await fetch(`/api/teacher/export/submissions?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const text = await res.text();
+    // Prepend UTF-8 BOM so Excel on Windows detects the encoding correctly
+    const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${target.classItem.class_code}-${target.setItem.batch_code ?? "export"}-${mode}-full.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function exportReviewCsv() {
     if (!target) return;
     const rows =
@@ -662,7 +687,7 @@ export default function TeacherSubmissionReviewPage() {
             ]),
           ];
     const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -741,6 +766,13 @@ export default function TeacherSubmissionReviewPage() {
               className="rounded-xl border border-[#F37021] bg-white px-4 py-2 text-sm font-semibold text-[#F37021] hover:bg-[#FFF7ED]"
             >
               Export
+            </button>
+            <button
+              type="button"
+              onClick={downloadFullCsv}
+              className="rounded-xl border border-[#F37021] bg-[#F37021] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E05A10]"
+            >
+              Research
             </button>
           </div>
         </section>
