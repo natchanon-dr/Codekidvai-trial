@@ -323,7 +323,7 @@ export default function StudentTaskPage() {
                 <button
                   onClick={() => prevTask && handleNavigate(prevTask.task_id)}
                   disabled={!prevTask}
-                  title="โจทย์ก่อนหน้า"
+                  title="Previous"
                   className="px-2 py-1 hover:bg-[#FFF7ED] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <svg className="w-4 h-4 text-[#64748B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -336,7 +336,7 @@ export default function StudentTaskPage() {
                 <button
                   onClick={() => nextTask && handleNavigate(nextTask.task_id)}
                   disabled={!nextTask}
-                  title="โจทย์ต่อไป"
+                  title="Next"
                   className="px-2 py-1 hover:bg-[#FFF7ED] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <svg className="w-4 h-4 text-[#64748B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -541,7 +541,7 @@ export default function StudentTaskPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
-                    โจทย์ก่อนหน้า
+                    Previous
                   </button>
                   {taskPosition && (
                     <span className="text-xs text-[#64748B] font-semibold">ข้อ {taskPosition}</span>
@@ -551,7 +551,7 @@ export default function StudentTaskPage() {
                     disabled={!nextTask}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-[#64748B] border border-[#FED7AA] rounded-xl hover:border-[#F37021] hover:text-[#F37021] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
-                    โจทย์ต่อไป
+                    Next
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
