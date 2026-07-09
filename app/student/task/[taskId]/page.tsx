@@ -119,20 +119,7 @@ export default function StudentTaskPage() {
   const profileRef = useRef<Profile | null>(null);
   const editTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    initializeTask().catch((e: unknown) => {
-      console.error("initializeTask error:", e);
-      const msg =
-        e instanceof Error
-          ? e.message
-          : typeof e === "object" && e !== null && "message" in e
-          ? String((e as Record<string, unknown>).message)
-          : "Failed to load task.";
-      setInitError(msg);
-    });
-  }, []);
-
-  async function initializeTask() {
+  const initializeTask = useCallback(async () => {
     const p = await getOrCreateCurrentProfile();
     if (!p.consent_accepted) { router.push("/consent"); return; }
 
@@ -196,7 +183,21 @@ export default function StudentTaskPage() {
         }
       }
     }
-  }
+  }, [params.taskId, router]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    initializeTask().catch((e: unknown) => {
+      console.error("initializeTask error:", e);
+      const msg =
+        e instanceof Error
+          ? e.message
+          : typeof e === "object" && e !== null && "message" in e
+          ? String((e as Record<string, unknown>).message)
+          : "Failed to load task.";
+      setInitError(msg);
+    });
+  }, [initializeTask]);
 
   const handleSqlChange = useCallback((value: string) => {
     setAnswer(value);

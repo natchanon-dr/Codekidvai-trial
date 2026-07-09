@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { StudentBlock } from "@/types/dataset";
 
 interface SelectedBlock extends StudentBlock { selected_key: string; }
@@ -19,6 +19,7 @@ interface BlockSqlBuilderProps {
 export default function BlockSqlBuilder({ blocks, disabled, onSqlChange, onBlockEvent }: BlockSqlBuilderProps) {
   const [selectedBlocks, setSelectedBlocks] = useState<SelectedBlock[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const keyCounterRef = useRef(0);
   const sqlText = useMemo(() => selectedBlocks.map((b) => b.block_value).join(" "), [selectedBlocks]);
 
   function emitChange(nextBlocks: SelectedBlock[]) {
@@ -27,7 +28,7 @@ export default function BlockSqlBuilder({ blocks, disabled, onSqlChange, onBlock
 
   function addBlock(block: StudentBlock) {
     if (disabled) return;
-    const next = [...selectedBlocks, { ...block, selected_key: `${block.block_id}-${Date.now()}-${Math.random()}` }];
+    const next = [...selectedBlocks, { ...block, selected_key: `${block.block_id}-${++keyCounterRef.current}` }];
     setSelectedBlocks(next);
     emitChange(next);
     onBlockEvent?.("block_add", block.block_code, { block_id: block.block_id, next_sql: next.map((b) => b.block_value).join(" ") });
