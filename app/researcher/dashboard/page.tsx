@@ -135,6 +135,14 @@ export default function ResearcherDashboardPage() {
                 <p className="text-sm font-mono font-semibold text-[#64748B]">{profile?.participant_code ?? "—"}</p>
               </div>
               <hr className="border-[#FED7AA]" />
+              <div className="flex gap-2">
+                <button className="flex-1 py-1.5 rounded-xl border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                  Switch Academy
+                </button>
+                <button className="flex-1 py-1.5 rounded-xl border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                  Add Academy
+                </button>
+              </div>
               <button
                 onClick={handleLogout}
                 className="w-full py-1.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
