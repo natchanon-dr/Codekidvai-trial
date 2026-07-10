@@ -24,21 +24,23 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    // Deduplicate by batch_code
-    const seen = new Set<string>();
-    const batches: { batch_code: string; batch_name: string; batch_type: string; batch_status: string }[] = [];
+    // Deduplicate by batch_code, collecting all task_types per batch
+    const batchMap = new Map<string, { batch_code: string; batch_name: string; batch_type: string; batch_status: string; task_types: Set<string> }>();
     for (const row of data ?? []) {
       const key = row.batch_code as string;
-      if (!seen.has(key)) {
-        seen.add(key);
-        batches.push({
+      if (!batchMap.has(key)) {
+        batchMap.set(key, {
           batch_code: key,
           batch_name: row.batch_name as string,
           batch_type: row.batch_type as string,
           batch_status: row.batch_status as string,
+          task_types: new Set(),
         });
       }
+      const taskType = row.task_type as string | null;
+      if (taskType) batchMap.get(key)!.task_types.add(taskType);
     }
+    const batches = [...batchMap.values()].map((b) => ({ ...b, task_types: [...b.task_types].sort() }));
 
     // Collect distinct filter options from raw data
     const batchTypes = [...new Set((data ?? []).map((r) => r.batch_type as string))].filter(Boolean).sort();

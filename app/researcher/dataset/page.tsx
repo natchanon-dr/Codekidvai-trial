@@ -10,6 +10,7 @@ type Batch = {
   batch_name: string;
   batch_type: string;
   batch_status: string;
+  task_types: string[];
 };
 
 const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactNode }[] = [
@@ -17,10 +18,10 @@ const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactN
     type: "session",
     label: "Session",
     icon: (
+      // clock
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-        <path d="M9 5h6" /><path d="M9 12h6" /><path d="M9 17h4" />
-        <path d="M5 7.5 6.5 9 9 6" /><path d="M5 14.5 6.5 16 9 13" />
-        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 3" />
       </svg>
     ),
   },
@@ -47,9 +48,9 @@ const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactN
     type: "raw_event",
     label: "Raw Event",
     icon: (
+      // lightning bolt
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
-        <path d="M8 2h8" /><path d="M7 15h10" />
+        <path d="M13 2 4.5 13.5H12L11 22l8.5-11.5H12L13 2Z" />
       </svg>
     ),
   },
@@ -72,9 +73,12 @@ const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode 
     value: "exam_set",
     label: "Exam",
     icon: (
+      // 2×2 squares
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-        <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
+        <rect x="3" y="3" width="8" height="8" rx="1" />
+        <rect x="13" y="3" width="8" height="8" rx="1" />
+        <rect x="3" y="13" width="8" height="8" rx="1" />
+        <rect x="13" y="13" width="8" height="8" rx="1" />
       </svg>
     ),
   },
@@ -89,6 +93,52 @@ const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode 
     ),
   },
 ];
+
+function TaskTypeIcon({ type, className = "w-4 h-4" }: { type: string; className?: string }) {
+  if (type === "exam_set" || type === "exam") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <rect x="3" y="3" width="8" height="8" rx="1" />
+        <rect x="13" y="3" width="8" height="8" rx="1" />
+        <rect x="3" y="13" width="8" height="8" rx="1" />
+        <rect x="13" y="13" width="8" height="8" rx="1" />
+      </svg>
+    );
+  }
+  if (type === "sql_block") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M9 9h6M9 12h6M9 15h4" />
+      </svg>
+    );
+  }
+  if (type === "er_diagram") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <rect x="2" y="9" width="6" height="6" rx="1" />
+        <rect x="16" y="3" width="6" height="6" rx="1" />
+        <rect x="16" y="15" width="6" height="6" rx="1" />
+        <path d="M8 12h4M12 12v-6l4 0M12 12v6l4 0" />
+      </svg>
+    );
+  }
+  if (type === "stored_procedure") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M8 6l4-4 4 4" /><path d="M12 2v10.5" />
+        <path d="M6 12H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-3" />
+      </svg>
+    );
+  }
+  // sql_text / default
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" /><path d="M9 13h6M9 17h4" />
+    </svg>
+  );
+}
 
 function getFilenameFromContentDisposition(header: string | null, fallback: string): string {
   if (!header) return fallback;
@@ -270,12 +320,12 @@ export default function ResearcherDatasetPage() {
                 <button
                   key={value}
                   type="button"
+                  title={label}
                   onClick={() => setBatchTypeFilter(value)}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                  className={`flex items-center justify-center px-3 py-2.5 font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
                     ${batchTypeFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
                 >
-                  {icon}
-                  {label}
+                  {icon ?? <span className="text-sm">All</span>}
                 </button>
               ))}
             </div>
@@ -320,7 +370,7 @@ export default function ResearcherDatasetPage() {
         {/* Batch table */}
         <section className="bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[2.5rem_1fr_2fr_1fr_1fr] gap-x-4 px-5 py-3 border-b border-[#FED7AA] bg-[#FFF7ED]">
+          <div className="grid grid-cols-[2.5rem_1fr_2fr_auto_auto_auto] gap-x-4 px-5 py-3 border-b border-[#FED7AA] bg-[#FFF7ED]">
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -333,6 +383,7 @@ export default function ResearcherDatasetPage() {
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Batch Code</p>
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Batch Name</p>
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Type</p>
+            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Tasks</p>
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Status</p>
           </div>
 
@@ -349,7 +400,7 @@ export default function ResearcherDatasetPage() {
               {batches.map((batch) => (
                 <label
                   key={batch.batch_code}
-                  className="grid grid-cols-[2.5rem_1fr_2fr_1fr_1fr] gap-x-4 px-5 py-3.5 items-center hover:bg-[#FFF7ED] cursor-pointer transition-colors"
+                  className="grid grid-cols-[2.5rem_1fr_2fr_auto_auto_auto] gap-x-4 px-5 py-3.5 items-center hover:bg-[#FFF7ED] cursor-pointer transition-colors"
                 >
                   <input
                     type="checkbox"
@@ -359,8 +410,19 @@ export default function ResearcherDatasetPage() {
                   />
                   <span className="text-sm font-mono font-semibold text-[#F37021] truncate">{batch.batch_code}</span>
                   <span className="text-sm text-[#0F172A] truncate">{batch.batch_name}</span>
-                  <span className="text-xs text-[#64748B] truncate">{batch.batch_type}</span>
-                  <span className={`text-xs font-semibold truncate ${batch.batch_status === "active" ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                  <span className="text-[#64748B]">
+                    {BATCH_TYPE_OPTIONS.find((o) => o.value === batch.batch_type)?.icon ?? (
+                      <span className="text-xs">{batch.batch_type}</span>
+                    )}
+                  </span>
+                  <span className="flex gap-1.5 flex-wrap">
+                    {(batch.task_types ?? []).map((t) => (
+                      <span key={t} title={t} className="text-[#64748B]">
+                        <TaskTypeIcon type={t} />
+                      </span>
+                    ))}
+                  </span>
+                  <span className={`text-xs font-semibold ${batch.batch_status === "active" ? "text-emerald-600" : "text-[#94A3B8]"}`}>
                     {batch.batch_status}
                   </span>
                 </label>
