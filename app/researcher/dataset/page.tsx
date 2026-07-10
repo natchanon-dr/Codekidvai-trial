@@ -73,12 +73,9 @@ const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode 
     value: "exam_set",
     label: "Exam",
     icon: (
-      // 2×2 squares
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <rect x="3" y="3" width="8" height="8" rx="1" />
-        <rect x="13" y="3" width="8" height="8" rx="1" />
-        <rect x="3" y="13" width="8" height="8" rx="1" />
-        <rect x="13" y="13" width="8" height="8" rx="1" />
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
       </svg>
     ),
   },
