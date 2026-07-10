@@ -17,5 +17,6 @@ export function convertRowsToCsv(rows: Record<string, unknown>[]): string {
   for (const row of rows) {
     lines.push(headers.map((header) => escapeCsvValue(row[header])).join(","));
   }
-  return lines.join("\n");
+  // BOM (﻿) tells Excel to read this file as UTF-8, preventing Thai character corruption.
+  return "﻿" + lines.join("\n");
 }
