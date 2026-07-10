@@ -52,6 +52,9 @@ notebooks/models/*.joblib
 # nbconvert temp artifacts (created when runner cwd is notebooks/)
 notebooks/notebooks/
 
+# Test script temp outputs
+scripts/_csv_schema_test_tmp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
