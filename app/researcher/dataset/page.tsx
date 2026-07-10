@@ -92,47 +92,36 @@ const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode 
 ];
 
 function TaskTypeIcon({ type, className = "w-4 h-4" }: { type: string; className?: string }) {
-  if (type === "exam_set" || type === "exam") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <rect x="3" y="3" width="8" height="8" rx="1" />
-        <rect x="13" y="3" width="8" height="8" rx="1" />
-        <rect x="3" y="13" width="8" height="8" rx="1" />
-        <rect x="13" y="13" width="8" height="8" rx="1" />
-      </svg>
-    );
-  }
   if (type === "sql_block") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M9 9h6M9 12h6M9 15h4" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M8.5 3h3v3a2 2 0 1 0 4 0V3h3A2.5 2.5 0 0 1 21 5.5v3h-3a2 2 0 1 0 0 4h3v3A2.5 2.5 0 0 1 18.5 18h-3v-3a2 2 0 1 0-4 0v3h-3A2.5 2.5 0 0 1 6 15.5v-3H3a2 2 0 1 1 0-4h3v-3A2.5 2.5 0 0 1 8.5 3Z" />
       </svg>
     );
   }
   if (type === "er_diagram") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <rect x="2" y="9" width="6" height="6" rx="1" />
-        <rect x="16" y="3" width="6" height="6" rx="1" />
-        <rect x="16" y="15" width="6" height="6" rx="1" />
-        <path d="M8 12h4M12 12v-6l4 0M12 12v6l4 0" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <rect x="3" y="4" width="7" height="5" rx="1.5" />
+        <rect x="14" y="15" width="7" height="5" rx="1.5" />
+        <path d="M10 6.5h4.5a3 3 0 0 1 3 3V15" />
+        <path d="M6.5 9v5a3 3 0 0 0 3 3H14" />
       </svg>
     );
   }
   if (type === "stored_procedure") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="M8 6l4-4 4 4" /><path d="M12 2v10.5" />
-        <path d="M6 12H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-3" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <ellipse cx="12" cy="5" rx="7" ry="3" />
+        <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+        <path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
       </svg>
     );
   }
   // sql_text / default
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-      <path d="M14 2v6h6" /><path d="M9 13h6M9 17h4" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M7 4h10" /><path d="M9 4v16" /><path d="M15 4v16" /><path d="M7 20h10" />
     </svg>
   );
 }
@@ -140,9 +129,8 @@ function TaskTypeIcon({ type, className = "w-4 h-4" }: { type: string; className
 function StatusDot({ status }: { status: string }) {
   const active = status === "active";
   return (
-    <span className="flex items-center justify-center gap-1.5">
-      <span className={`w-2 h-2 rounded-full ${active ? "bg-emerald-500" : "bg-[#CBD5E1]"}`} />
-      <span className={`text-xs font-semibold ${active ? "text-emerald-600" : "text-[#94A3B8]"}`}>{status}</span>
+    <span className="flex items-center justify-center" title={status}>
+      <span className={`w-2.5 h-2.5 rounded-full ${active ? "bg-emerald-500" : "bg-[#CBD5E1]"}`} />
     </span>
   );
 }
