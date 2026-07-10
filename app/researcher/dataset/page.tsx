@@ -353,12 +353,12 @@ export default function ResearcherDatasetPage() {
                   <button
                     key={t}
                     type="button"
-                    title={t}
+                    title={TASK_TYPE_LABEL[t] ?? t}
                     onClick={() => setTaskTypeFilter(t)}
-                    className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors whitespace-nowrap
+                    className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] last:border-r-0 transition-colors
                       ${taskTypeFilter === t ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
                   >
-                    {TASK_TYPE_LABEL[t] ?? t}
+                    <TaskTypeIcon type={t} />
                   </button>
                 ))}
               </div>
