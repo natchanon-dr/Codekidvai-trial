@@ -137,6 +137,13 @@ function TaskTypeIcon({ type, className = "w-4 h-4" }: { type: string; className
   );
 }
 
+const TASK_TYPE_LABEL: Record<string, string> = {
+  sql_text: "SQL Text",
+  sql_block: "SQL Block",
+  er_diagram: "ER",
+  stored_procedure: "Store",
+};
+
 function getFilenameFromContentDisposition(header: string | null, fallback: string): string {
   if (!header) return fallback;
   const match = header.match(/filename="?([^";]+)"?/);
@@ -348,10 +355,10 @@ export default function ResearcherDatasetPage() {
                     type="button"
                     title={t}
                     onClick={() => setTaskTypeFilter(t)}
-                    className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] last:border-r-0 transition-colors
+                    className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors whitespace-nowrap
                       ${taskTypeFilter === t ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
                   >
-                    <TaskTypeIcon type={t} />
+                    {TASK_TYPE_LABEL[t] ?? t}
                   </button>
                 ))}
               </div>
