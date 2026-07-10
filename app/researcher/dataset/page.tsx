@@ -59,6 +59,16 @@ const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactN
 const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] = [
   { value: "", label: "All", icon: null },
   {
+    value: "lab_set",
+    label: "Lab",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
+        <path d="M8 2h8" /><path d="M7 15h10" />
+      </svg>
+    ),
+  },
+  {
     value: "assignment_set",
     label: "Assignment",
     icon: (
@@ -76,16 +86,6 @@ const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
         <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
-      </svg>
-    ),
-  },
-  {
-    value: "lab_set",
-    label: "Lab",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
-        <path d="M8 2h8" /><path d="M7 15h10" />
       </svg>
     ),
   },
