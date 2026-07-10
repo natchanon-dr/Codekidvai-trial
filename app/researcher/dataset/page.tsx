@@ -12,11 +12,82 @@ type Batch = {
   batch_status: string;
 };
 
-const EXPORT_TYPES: { type: DatasetExportType; label: string }[] = [
-  { type: "session",   label: "Session" },
-  { type: "attempt",   label: "Attempt" },
-  { type: "sequence",  label: "Sequence" },
-  { type: "raw_event", label: "Raw Event" },
+const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactNode }[] = [
+  {
+    type: "session",
+    label: "Session",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M9 5h6" /><path d="M9 12h6" /><path d="M9 17h4" />
+        <path d="M5 7.5 6.5 9 9 6" /><path d="M5 14.5 6.5 16 9 13" />
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+      </svg>
+    ),
+  },
+  {
+    type: "attempt",
+    label: "Attempt",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
+      </svg>
+    ),
+  },
+  {
+    type: "sequence",
+    label: "Sequence",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+      </svg>
+    ),
+  },
+  {
+    type: "raw_event",
+    label: "Raw Event",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
+        <path d="M8 2h8" /><path d="M7 15h10" />
+      </svg>
+    ),
+  },
+];
+
+const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] = [
+  { value: "", label: "All", icon: null },
+  {
+    value: "assignment_set",
+    label: "Assignment",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M9 5h6" /><path d="M9 12h6" /><path d="M9 17h4" />
+        <path d="M5 7.5 6.5 9 9 6" /><path d="M5 14.5 6.5 16 9 13" />
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+      </svg>
+    ),
+  },
+  {
+    value: "exam_set",
+    label: "Exam",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
+      </svg>
+    ),
+  },
+  {
+    value: "lab_set",
+    label: "Lab",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
+        <path d="M8 2h8" /><path d="M7 15h10" />
+      </svg>
+    ),
+  },
 ];
 
 function getFilenameFromContentDisposition(header: string | null, fallback: string): string {
@@ -158,69 +229,85 @@ export default function ResearcherDatasetPage() {
         </section>
 
         {/* Filters */}
-        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-          <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Filters</p>
-
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
           {/* Date range */}
-          <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex items-end gap-2">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-[#64748B] font-medium">From</label>
               <input
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+                className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
               />
             </div>
+            <span className="text-sm text-[#94A3B8] pb-2.5">—</span>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-[#64748B] font-medium">To</label>
               <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+                className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
               />
             </div>
             {(fromDate || toDate) && (
               <button
                 type="button"
                 onClick={() => { setFromDate(""); setToDate(""); }}
-                className="pb-0.5 text-xs font-semibold text-[#F37021] hover:underline self-end"
+                className="pb-2.5 text-xs font-semibold text-[#F37021] hover:underline"
               >
-                Clear dates
+                Clear
               </button>
             )}
           </div>
 
-          {/* Batch Type + Task Type */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Batch Type</label>
-              <select
-                value={batchTypeFilter}
-                onChange={(e) => setBatchTypeFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] min-w-[160px]"
-              >
-                <option value="">All types</option>
-                {batchTypeOptions.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Task Type</label>
-              <select
-                value={taskTypeFilter}
-                onChange={(e) => setTaskTypeFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] min-w-[160px]"
-              >
-                <option value="">All task types</option>
-                {taskTypeOptions.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+          {/* Batch Type toggle */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Batch Type</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              {BATCH_TYPE_OPTIONS.map(({ value, label, icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setBatchTypeFilter(value)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                    ${batchTypeFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* Task Type toggle */}
+          {taskTypeOptions.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[#64748B] font-medium">Task Type</label>
+              <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+                <button
+                  type="button"
+                  onClick={() => setTaskTypeFilter("")}
+                  className={`px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] transition-colors
+                    ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                >
+                  All
+                </button>
+                {taskTypeOptions.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTaskTypeFilter(t)}
+                    className={`px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                      ${taskTypeFilter === t ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Error */}
@@ -302,7 +389,7 @@ export default function ResearcherDatasetPage() {
 
         {/* Export buttons */}
         <section className="grid grid-cols-4 gap-3">
-          {EXPORT_TYPES.map(({ type, label }) => {
+          {EXPORT_TYPES.map(({ type, label, icon }) => {
             const isLoading = loadingExport === type;
             return (
               <button
@@ -310,28 +397,21 @@ export default function ResearcherDatasetPage() {
                 type="button"
                 disabled={exporting}
                 onClick={() => handleExport(type)}
-                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-colors
+                className={`flex flex-col items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-sm font-semibold transition-colors
                   ${isLoading || exporting
                     ? "bg-[#FED7AA] text-[#C2410C] cursor-not-allowed"
                     : "bg-[#F37021] hover:bg-[#C2410C] text-white"
                   }`}
               >
                 {isLoading ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Downloading…
-                  </>
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
                 ) : (
-                  <>
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path fillRule="evenodd" d="M10 3a.75.75 0 01.75.75v7.19l2.47-2.47a.75.75 0 111.06 1.06l-3.75 3.75a.75.75 0 01-1.06 0L5.72 9.53a.75.75 0 111.06-1.06L9.25 10.94V3.75A.75.75 0 0110 3zM3.75 15a.75.75 0 000 1.5h12.5a.75.75 0 000-1.5H3.75z" clipRule="evenodd" />
-                    </svg>
-                    Export {label}
-                  </>
+                  icon
                 )}
+                <span>{label}</span>
               </button>
             );
           })}
