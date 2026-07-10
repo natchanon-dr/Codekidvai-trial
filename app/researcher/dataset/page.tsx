@@ -320,7 +320,7 @@ export default function ResearcherDatasetPage() {
 
           {/* Batch Type toggle */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#64748B] font-medium">Batch Type</label>
+            <label className="text-xs text-[#64748B] font-medium">Type</label>
             <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
               {BATCH_TYPE_OPTIONS.map(({ value, label, icon }) => (
                 <button
@@ -340,7 +340,7 @@ export default function ResearcherDatasetPage() {
           {/* Task Type toggle */}
           {taskTypeOptions.length > 0 && (
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Task Type</label>
+              <label className="text-xs text-[#64748B] font-medium">Task</label>
               <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
                 <button
                   type="button"
