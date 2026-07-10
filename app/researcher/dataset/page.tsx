@@ -137,6 +137,16 @@ function TaskTypeIcon({ type, className = "w-4 h-4" }: { type: string; className
   );
 }
 
+function StatusDot({ status }: { status: string }) {
+  const active = status === "active";
+  return (
+    <span className="flex items-center justify-center gap-1.5">
+      <span className={`w-2 h-2 rounded-full ${active ? "bg-emerald-500" : "bg-[#CBD5E1]"}`} />
+      <span className={`text-xs font-semibold ${active ? "text-emerald-600" : "text-[#94A3B8]"}`}>{status}</span>
+    </span>
+  );
+}
+
 const TASK_TYPE_LABEL: Record<string, string> = {
   sql_text: "SQL Text",
   sql_block: "SQL Block",
@@ -160,6 +170,7 @@ export default function ResearcherDatasetPage() {
   const [toDate, setToDate] = useState("");
   const [batchTypeFilter, setBatchTypeFilter] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   // Options
   const [batchTypeOptions, setBatchTypeOptions] = useState<string[]>([]);
@@ -211,10 +222,10 @@ export default function ResearcherDatasetPage() {
   useEffect(() => { loadBatches(); }, [loadBatches]);
 
   function toggleAll() {
-    if (selected.size === batches.length && batches.length > 0) {
+    if (selected.size === filteredBatches.length && filteredBatches.length > 0) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(batches.map((b) => b.batch_code)));
+      setSelected(new Set(filteredBatches.map((b) => b.batch_code)));
     }
   }
 
@@ -263,7 +274,9 @@ export default function ResearcherDatasetPage() {
     }
   }
 
-  const allSelected = batches.length > 0 && selected.size === batches.length;
+  const filteredBatches = statusFilter ? batches.filter((b) => b.batch_status === statusFilter) : batches;
+
+  const allSelected = filteredBatches.length > 0 && selected.size === filteredBatches.length;
   const someSelected = selected.size > 0 && !allSelected;
   const exporting = loadingExport !== null;
 
@@ -370,6 +383,32 @@ export default function ResearcherDatasetPage() {
               </div>
             </div>
           )}
+          {/* Status toggle */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Status</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              {[
+                { value: "", label: "All" },
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatusFilter(value)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                    ${statusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                >
+                  {value !== "" && (
+                    <span className={`w-2 h-2 rounded-full ${
+                      statusFilter === value ? "bg-white" : value === "active" ? "bg-emerald-500" : "bg-[#CBD5E1]"
+                    }`} />
+                  )}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         {/* Error */}
@@ -403,13 +442,13 @@ export default function ResearcherDatasetPage() {
             <div className="flex items-center justify-center py-12 text-sm text-[#64748B]">
               Loading batches…
             </div>
-          ) : batches.length === 0 ? (
+          ) : filteredBatches.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">
               No batches found for the selected filters.
             </div>
           ) : (
             <div className="divide-y divide-[#FED7AA]">
-              {batches.map((batch) => (
+              {filteredBatches.map((batch) => (
                 <label
                   key={batch.batch_code}
                   className="grid grid-cols-[2rem_7rem_1fr_3.5rem_6rem_4.5rem] gap-x-3 px-5 py-3.5 items-center hover:bg-[#FFF7ED] cursor-pointer transition-colors"
@@ -443,9 +482,7 @@ export default function ResearcherDatasetPage() {
                       </span>
                     ))}
                   </span>
-                  <span className={`text-xs font-semibold text-center ${batch.batch_status === "active" ? "text-emerald-600" : "text-[#94A3B8]"}`}>
-                    {batch.batch_status}
-                  </span>
+                  <StatusDot status={batch.batch_status} />
                 </label>
               ))}
             </div>
@@ -456,7 +493,7 @@ export default function ResearcherDatasetPage() {
             <p className="text-xs text-[#64748B]">
               {selected.size === 0
                 ? "ไม่ได้เลือก batch — จะ export ทั้งหมด"
-                : `เลือก ${selected.size} / ${batches.length} batch`}
+                : `เลือก ${selected.size} / ${filteredBatches.length} batch`}
             </p>
             {selected.size > 0 && (
               <button
