@@ -16,10 +16,15 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get("type") ?? "session";
     const batchCode = searchParams.get("batch_code");
+    const batchCodes = searchParams.get("batch_codes");
     const viewName = viewMap[type];
     if (!viewName) throw new Error("Invalid dataset type.");
     let query = supabaseAdmin.from(viewName).select("*");
-    if (batchCode) query = query.eq("batch_code", batchCode);
+    if (batchCodes) {
+      query = query.in("batch_code", batchCodes.split(",").map((s) => s.trim()).filter(Boolean));
+    } else if (batchCode) {
+      query = query.eq("batch_code", batchCode);
+    }
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as Record<string, unknown>[];
