@@ -5,10 +5,10 @@ import json, subprocess, os, sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-SESSION_FILE = "session_20260710_E2EMOCK.csv"
-ATTEMPT_FILE = "attempt_20260710_E2EMOCK.csv"
+SESSION_FILE = "session_20260710_SIM_E2E.csv"
+ATTEMPT_FILE = "attempt_20260710_SIM_E2E.csv"
 SNAPSHOT_DATE = "20260710"
-BATCH_CODE_VAL = "E2EMOCK"
+BATCH_CODE_VAL = "SIM_E2E"
 
 def patch_and_run(nb_name):
     with open(nb_name, encoding="utf-8") as f:

@@ -30,8 +30,9 @@ export async function POST(request: NextRequest) {
       { session_id: sessionId, profile_id: profile.profile_id, task_id: taskId },
       userClient,
     );
-    const task = await getPublishedTaskForScoring(taskId, userClient);
-    const result = await scoreTask({ task, answer_text: answerText, answer_json: answerJson }, userClient);
+    // Task metadata is published content — read with admin client so RLS on mst_tasks doesn't block students
+    const task = await getPublishedTaskForScoring(taskId);
+    const result = await scoreTask({ task, answer_text: answerText, answer_json: answerJson });
     const executionTimeMs = Date.now() - started;
 
     await insertServerEvent(
