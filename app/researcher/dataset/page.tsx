@@ -382,7 +382,7 @@ export default function ResearcherDatasetPage() {
         {/* Batch table */}
         <section className="bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[2.5rem_1fr_2fr_auto_auto_auto] gap-x-4 px-5 py-3 border-b border-[#FED7AA] bg-[#FFF7ED]">
+          <div className="grid grid-cols-[2rem_7rem_1fr_3.5rem_6rem_4.5rem] gap-x-3 px-5 py-3 border-b border-[#FED7AA] bg-[#FFF7ED]">
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -394,9 +394,9 @@ export default function ResearcherDatasetPage() {
             </div>
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Batch Code</p>
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Batch Name</p>
-            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Type</p>
-            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Tasks</p>
-            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Status</p>
+            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider text-center">Type</p>
+            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider text-center">Tasks</p>
+            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider text-center">Status</p>
           </div>
 
           {loadingBatches ? (
@@ -412,7 +412,7 @@ export default function ResearcherDatasetPage() {
               {batches.map((batch) => (
                 <label
                   key={batch.batch_code}
-                  className="grid grid-cols-[2.5rem_1fr_2fr_auto_auto_auto] gap-x-4 px-5 py-3.5 items-center hover:bg-[#FFF7ED] cursor-pointer transition-colors"
+                  className="grid grid-cols-[2rem_7rem_1fr_3.5rem_6rem_4.5rem] gap-x-3 px-5 py-3.5 items-center hover:bg-[#FFF7ED] cursor-pointer transition-colors"
                 >
                   <input
                     type="checkbox"
@@ -422,12 +422,12 @@ export default function ResearcherDatasetPage() {
                   />
                   <span className="text-sm font-mono font-semibold text-[#F37021] truncate">{batch.batch_code}</span>
                   <span className="text-sm text-[#0F172A] truncate">{batch.batch_name}</span>
-                  <span className="text-[#64748B]">
+                  <span className="flex items-center justify-center text-[#64748B]">
                     {BATCH_TYPE_OPTIONS.find((o) => o.value === batch.batch_type)?.icon ?? (
                       <span className="text-xs">{batch.batch_type}</span>
                     )}
                   </span>
-                  <span className="flex gap-1.5 flex-wrap text-[#64748B]">
+                  <span className="flex items-center justify-center gap-1 text-[#64748B]">
                     {(batch.task_types ?? []).length >= 4 ? (
                       <span title={batch.task_types.join(", ")}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -443,7 +443,7 @@ export default function ResearcherDatasetPage() {
                       </span>
                     ))}
                   </span>
-                  <span className={`text-xs font-semibold ${batch.batch_status === "active" ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                  <span className={`text-xs font-semibold text-center ${batch.batch_status === "active" ? "text-emerald-600" : "text-[#94A3B8]"}`}>
                     {batch.batch_status}
                   </span>
                 </label>
