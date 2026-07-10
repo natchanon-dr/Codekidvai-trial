@@ -427,9 +427,18 @@ export default function ResearcherDatasetPage() {
                       <span className="text-xs">{batch.batch_type}</span>
                     )}
                   </span>
-                  <span className="flex gap-1.5 flex-wrap">
-                    {(batch.task_types ?? []).map((t) => (
-                      <span key={t} title={t} className="text-[#64748B]">
+                  <span className="flex gap-1.5 flex-wrap text-[#64748B]">
+                    {(batch.task_types ?? []).length >= 4 ? (
+                      <span title={batch.task_types.join(", ")}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                          <rect x="3" y="3" width="8" height="8" rx="1" />
+                          <rect x="13" y="3" width="8" height="8" rx="1" />
+                          <rect x="3" y="13" width="8" height="8" rx="1" />
+                          <rect x="13" y="13" width="8" height="8" rx="1" />
+                        </svg>
+                      </span>
+                    ) : (batch.task_types ?? []).map((t) => (
+                      <span key={t} title={TASK_TYPE_LABEL[t] ?? t}>
                         <TaskTypeIcon type={t} />
                       </span>
                     ))}
