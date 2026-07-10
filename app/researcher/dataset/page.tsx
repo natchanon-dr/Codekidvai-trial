@@ -144,6 +144,8 @@ const TASK_TYPE_LABEL: Record<string, string> = {
   stored_procedure: "Store",
 };
 
+const TASK_TYPE_ORDER = ["sql_text", "sql_block", "er_diagram", "stored_procedure"];
+
 function getFilenameFromContentDisposition(header: string | null, fallback: string): string {
   if (!header) return fallback;
   const match = header.match(/filename="?([^";]+)"?/);
@@ -349,7 +351,11 @@ export default function ResearcherDatasetPage() {
                 >
                   All
                 </button>
-                {taskTypeOptions.map((t) => (
+                {[...taskTypeOptions].sort((a, b) => {
+                  const ai = TASK_TYPE_ORDER.indexOf(a);
+                  const bi = TASK_TYPE_ORDER.indexOf(b);
+                  return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                }).map((t) => (
                   <button
                     key={t}
                     type="button"
