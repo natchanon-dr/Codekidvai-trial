@@ -107,7 +107,7 @@ Before exporting for notebooks, manually verify:
 
 ## Area 11 — Admin Dataset Export
 
-- [ ] Admin can access `/admin/dataset` (or equivalent export page)
+- [ ] Researcher/Admin can access `/researcher/dataset` (dataset export portal)
 - [ ] Export produces a session CSV with all required columns:
   - `session_id`, `academy_member_id`, `task_id`, `batch_id`, `learner_group`
   - `submitted_at`, `auto_score`, `review_score`, `max_score`
