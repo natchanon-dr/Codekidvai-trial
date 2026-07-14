@@ -157,10 +157,6 @@ export default function MockLab() {
     missingRate: 7,
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
   });
-  const [className, setClassName]   = useState("SQL Mock Class 2026");
-  const [course, setCourse]         = useState("SQL Fundamentals");
-  const [semester, setSemester]     = useState("1");
-  const [academicYear, setAcademicYear] = useState("2026");
   const [configError, setConfigError] = useState<string | null>(null);
 
   // pipeline state
@@ -426,30 +422,13 @@ export default function MockLab() {
             </div>
           </div>
 
-          {/* Class Information */}
+          {/* System */}
           <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-[#0F172A]">Class Information <span className="text-xs font-normal text-[#94A3B8] ml-1">(display only)</span></h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Class Name</label>
-                <input type="text" value={className} onChange={e => setClassName(e.target.value)}
-                  disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Course</label>
-                <input type="text" value={course} onChange={e => setCourse(e.target.value)}
-                  disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Academic Year</label>
-                <input type="text" value={academicYear} onChange={e => setAcademicYear(e.target.value)}
-                  disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">API Base URL</label>
-                <input type="text" value={config.apiBase} onChange={e => updateConfig("apiBase", e.target.value)}
-                  disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
+            <h3 className="text-sm font-bold text-[#0F172A]">System</h3>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">API Base URL</label>
+              <input type="text" value={config.apiBase} onChange={e => updateConfig("apiBase", e.target.value)}
+                disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
             </div>
           </div>
         </div>
@@ -459,14 +438,11 @@ export default function MockLab() {
           <h3 className="text-sm font-bold text-[#0F172A]">Current Configuration</h3>
           <dl className="space-y-2.5 text-sm">
             {[
-              ["Class",              className],
-              ["Course",             course],
-              ["Academic Year",      academicYear],
-              ["Batch Code",         config.batchCode],
-              ["Students",           String(config.nStudents)],
-              ["SQL Tasks",          String(config.nTasks)],
-              ["Expected At-Risk",   `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)} students)`],
-              ["Expected Missing",   `${config.missingRate}%`],
+              ["Batch Code",        config.batchCode],
+              ["Students",          String(config.nStudents)],
+              ["SQL Tasks",         String(config.nTasks)],
+              ["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)} students)`],
+              ["Expected Missing",  `${config.missingRate}%`],
             ].map(([k, v]) => (
               <div key={k} className="flex flex-col gap-0.5">
                 <dt className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</dt>
