@@ -422,15 +422,6 @@ export default function MockLab() {
             </div>
           </div>
 
-          {/* System */}
-          <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-[#0F172A]">System</h3>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">API Base URL</label>
-              <input type="text" value={config.apiBase} onChange={e => updateConfig("apiBase", e.target.value)}
-                disabled={isRunning} className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-            </div>
-          </div>
         </div>
 
         {/* Summary card — right 1/3 */}
