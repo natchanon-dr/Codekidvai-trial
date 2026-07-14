@@ -15,12 +15,14 @@ export type MockStep =
 
 export interface MockConfig {
   batchCode: string;
-  classCode?: string;
   nStudents: number;
   nTasks: number;
   atRiskRate: number;
   missingRate: number;
   apiBase: string;
+  // optional: use real task IDs from a real class instead of generating dummy tasks
+  taskIds?: string[];
+  taskSetId?: string;
 }
 
 export interface MockOutcomeData {
@@ -43,7 +45,8 @@ export function validateMockConfig(config: MockConfig): string | null {
   if (config.nStudents < 5 || config.nStudents > 200) {
     return "Students must be between 5 and 200";
   }
-  if (config.nTasks < 1 || config.nTasks > 10) {
+  // skip nTasks range check when real task IDs are provided
+  if (!config.taskIds?.length && (config.nTasks < 1 || config.nTasks > 10)) {
     return "Tasks must be between 1 and 10";
   }
   if (config.atRiskRate < 0 || config.atRiskRate > 100) {

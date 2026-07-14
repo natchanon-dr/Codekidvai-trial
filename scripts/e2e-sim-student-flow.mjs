@@ -37,6 +37,8 @@ const BATCH_CODE   = opts["batch"]         ?? "SIM_E2E_2026_001";
 const AT_RISK_RATE = Math.max(0, Math.min(100, parseInt(opts["at-risk-rate"] ?? "35", 10)));
 const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"] ?? "7",  10)));
 const API_BASE     = opts["api-base"]      ?? "http://localhost:3000";
+// real task IDs — when provided, load tasks by ID instead of BATCH_CODE_T% pattern
+const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
 
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
@@ -77,10 +79,15 @@ const { data: batch } = await admin.from("mst_experiment_batches")
   .select("batch_id, batch_code").eq("batch_code", BATCH_CODE).single();
 if (!batch) throw new Error(`Batch ${BATCH_CODE} not found — run e2e-sim-create-test-data.mjs first`);
 
-const { data: taskRows } = await admin.from("mst_tasks")
+let taskQuery = admin.from("mst_tasks")
   .select("task_id, task_code, expected_sql, scoring_rubric_json, difficulty_level")
-  .like("task_code", `${BATCH_CODE}_T%`)
-  .eq("is_active", true).order("task_code");
+  .eq("is_active", true);
+if (REAL_TASK_IDS.length > 0) {
+  taskQuery = taskQuery.in("task_id", REAL_TASK_IDS);
+} else {
+  taskQuery = taskQuery.like("task_code", `${BATCH_CODE}_T%`).order("task_code");
+}
+const { data: taskRows } = await taskQuery;
 if (!taskRows?.length) throw new Error(`No tasks found for batch ${BATCH_CODE}`);
 
 // Derive correct/wrong answer per task from expected_sql

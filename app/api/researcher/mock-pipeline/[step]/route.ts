@@ -67,25 +67,36 @@ async function runStep(
     .replace(/_/g, "-") || config.batchCode;
 
   switch (step) {
-    case "data":
-      await runProcess(send, "data", "node", [
+    case "data": {
+      const dataArgs: string[] = [
         path.join(SCRIPTS_DIR, "e2e-sim-create-test-data.mjs"),
         ...batchArgs,
         "--students", String(config.nStudents),
-        "--tasks",    String(config.nTasks),
         ...rateArgs,
-      ], PROJECT_ROOT);
+      ];
+      if (config.taskIds?.length) {
+        dataArgs.push("--task-ids", config.taskIds.join(","));
+      } else {
+        dataArgs.push("--tasks", String(config.nTasks));
+      }
+      await runProcess(send, "data", "node", dataArgs, PROJECT_ROOT);
       break;
+    }
 
-    case "extract":
+    case "extract": {
       send(makeSseChunk("progress", { step: "extract", pct: 10 }));
-      await runProcess(send, "extract", "node", [
+      const extractArgs: string[] = [
         path.join(SCRIPTS_DIR, "e2e-sim-student-flow.mjs"),
         ...batchArgs,
         ...rateArgs,
         "--api-base", config.apiBase,
-      ], PROJECT_ROOT);
+      ];
+      if (config.taskIds?.length) {
+        extractArgs.push("--task-ids", config.taskIds.join(","));
+      }
+      await runProcess(send, "extract", "node", extractArgs, PROJECT_ROOT);
       break;
+    }
 
     case "process":
       send(makeSseChunk("progress", { step: "process", pct: 10 }));

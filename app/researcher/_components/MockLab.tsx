@@ -5,6 +5,22 @@ import { supabase } from "@/lib/supabase-client";
 import type { MockConfig, MockStep } from "@/lib/mock-pipeline";
 
 // ── types ─────────────────────────────────────────────────────────────────────
+interface ClassOption {
+  class_id: string;
+  class_code: string;
+  class_name: string;
+  academic_year: string;
+  term: string;
+}
+
+interface TaskSetOption {
+  batch_id: string;
+  batch_code: string | null;
+  batch_name: string | null;
+  task_count: number;
+  task_ids: string[];
+}
+
 interface OutcomeReport {
   lrAuc?: number | null; lrF1?: number | null;
   rfAuc?: number | null; rfF1?: number | null;
@@ -159,6 +175,14 @@ export default function MockLab() {
   });
   const [configError, setConfigError] = useState<string | null>(null);
 
+  // class + task set selection
+  const [classes, setClasses]                   = useState<ClassOption[]>([]);
+  const [classesLoading, setClassesLoading]     = useState(false);
+  const [selectedClassId, setSelectedClassId]   = useState<string>("");
+  const [taskSets, setTaskSets]                 = useState<TaskSetOption[]>([]);
+  const [taskSetsLoading, setTaskSetsLoading]   = useState(false);
+  const [selectedSetId, setSelectedSetId]       = useState<string>("");
+
   // pipeline state
   const [running, setRunning]         = useState<MockStep | null>(null);
   const [stepStatus, setStepStatus]   = useState<Record<string, StepStatus>>({});
@@ -180,6 +204,44 @@ export default function MockLab() {
     return () => clearInterval(iv);
   }, [startTime]);
 
+  // fetch class list on mount
+  useEffect(() => {
+    setClassesLoading(true);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const token = session?.access_token ?? "";
+      fetch("/api/researcher/classes", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(d => setClasses(d.classes ?? []))
+        .catch(() => setClasses([]))
+        .finally(() => setClassesLoading(false));
+    });
+  }, []);
+
+  // fetch task sets when class changes
+  useEffect(() => {
+    if (!selectedClassId) {
+      setTaskSets([]);
+      setSelectedSetId("");
+      setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+      return;
+    }
+    setTaskSetsLoading(true);
+    setSelectedSetId("");
+    setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const token = session?.access_token ?? "";
+      fetch(`/api/researcher/classes/${selectedClassId}/sets`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(d => setTaskSets((d.sets ?? []).filter((s: TaskSetOption) => s.task_count > 0)))
+        .catch(() => setTaskSets([]))
+        .finally(() => setTaskSetsLoading(false));
+    });
+  }, [selectedClassId]);
+
   const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev.slice(-800), msg]);
     setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
@@ -188,6 +250,21 @@ export default function MockLab() {
   function updateConfig<K extends keyof MockConfig>(key: K, val: MockConfig[K]) {
     setConfig(prev => ({ ...prev, [key]: val }));
     setConfigError(null);
+  }
+
+  function handleTaskSetSelect(setId: string) {
+    setSelectedSetId(setId);
+    const found = taskSets.find(s => s.batch_id === setId);
+    if (found) {
+      setConfig(prev => ({
+        ...prev,
+        taskIds: found.task_ids,
+        taskSetId: found.batch_id,
+        nTasks: found.task_count,
+      }));
+    } else {
+      setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+    }
   }
 
   function validateBatchCode(code: string): string | null {
@@ -383,21 +460,63 @@ export default function MockLab() {
               />
               {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
-                <input type="number" min={5} max={200} value={config.nStudents}
-                  onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
+              <input type="number" min={5} max={200} value={config.nStudents}
+                onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
+                disabled={isRunning}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+            </div>
+
+            {/* Task Set — Class + Set dropdowns */}
+            <div className="space-y-3 pt-1 border-t border-[#F1F5F9]">
+              <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Task Set (from real class)</p>
+              <div className="space-y-2">
+                <select
+                  value={selectedClassId}
+                  onChange={e => setSelectedClassId(e.target.value)}
+                  disabled={isRunning || classesLoading}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
+                >
+                  <option value="">{classesLoading ? "Loading classes…" : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
+                  {classes.map(c => (
+                    <option key={c.class_id} value={c.class_id}>
+                      {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedSetId}
+                  onChange={e => handleTaskSetSelect(e.target.value)}
+                  disabled={isRunning || !selectedClassId || taskSetsLoading}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
+                >
+                  <option value="">
+                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets…" : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
+                  </option>
+                  {taskSets.map(s => (
+                    <option key={s.batch_id} value={s.batch_id}>
+                      {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">SQL Tasks (1–10)</label>
-                <input type="number" min={1} max={10} value={config.nTasks}
-                  onChange={e => updateConfig("nTasks", Math.max(1, Math.min(10, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
+              {config.taskIds?.length ? (
+                <p className="text-[11px] text-emerald-600 font-semibold">
+                  ✅ {config.taskIds.length} real task{config.taskIds.length !== 1 ? "s" : ""} selected — dummy task creation skipped
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-[11px] text-[#94A3B8]">Or use dummy tasks (no class selected):</p>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-[#64748B]">Count (1–10)</label>
+                    <input type="number" min={1} max={10} value={config.nTasks}
+                      onChange={e => updateConfig("nTasks", Math.max(1, Math.min(10, +e.target.value)))}
+                      disabled={isRunning || !!config.taskIds?.length}
+                      className="w-24 px-3 py-1.5 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -428,13 +547,16 @@ export default function MockLab() {
         <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 h-fit space-y-4 lg:sticky lg:top-4">
           <h3 className="text-sm font-bold text-[#0F172A]">Current Configuration</h3>
           <dl className="space-y-2.5 text-sm">
-            {[
+            {([
               ["Batch Code",        config.batchCode],
               ["Students",          String(config.nStudents)],
-              ["SQL Tasks",         String(config.nTasks)],
+              ["Task Source",       config.taskIds?.length ? `Real (${config.taskIds.length} tasks)` : `Dummy (${config.nTasks} tasks)`],
+              ...(config.taskIds?.length
+                ? [["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? selectedSetId]]
+                : []),
               ["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)} students)`],
               ["Expected Missing",  `${config.missingRate}%`],
-            ].map(([k, v]) => (
+            ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="flex flex-col gap-0.5">
                 <dt className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</dt>
                 <dd className="font-mono text-xs text-[#0F172A] break-all">{v}</dd>
@@ -682,7 +804,7 @@ export default function MockLab() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
                     ["Students (config)",   String(config.nStudents)],
-                    ["SQL Tasks",           String(config.nTasks)],
+                    ["SQL Tasks",           config.taskIds?.length ? `${config.taskIds.length} (real)` : String(config.nTasks)],
                     ["Total Samples",       outcome?.sampleCount != null ? String(outcome.sampleCount) : "—"],
                     ["At-Risk Count",       outcome?.atRiskCount  != null ? String(outcome.atRiskCount)  : "—"],
                     ["At-Risk Rate",        `${config.atRiskRate}%`],

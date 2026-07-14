@@ -37,6 +37,8 @@ const N_STUDENTS   = Math.max(5, Math.min(200, parseInt(opts["students"]      ??
 const N_TASKS      = Math.max(1, Math.min(10,  parseInt(opts["tasks"]         ?? "3",  10)));
 const AT_RISK_RATE = Math.max(0, Math.min(100, parseInt(opts["at-risk-rate"]  ?? "35", 10)));
 const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"]  ?? "7",  10)));
+// real task IDs from a selected task set — if provided, skip dummy task creation
+const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
 
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
@@ -50,7 +52,7 @@ console.log(`\n── Sim Setup Config ──
   Batch      : ${BATCH_CODE}
   Class      : ${CLASS_CODE}
   Students   : ${N_STUDENTS}
-  Tasks      : ${N_TASKS}
+  Tasks      : ${REAL_TASK_IDS.length ? `(real) ${REAL_TASK_IDS.join(", ")}` : N_TASKS}
   At-Risk %  : ${AT_RISK_RATE}%
   Missing %  : ${MISSING_RATE}%
 `);
@@ -207,27 +209,43 @@ if (!batch) {
 console.log(`  batch_id: ${batch.batch_id}`);
 
 // ── 4. Tasks ──────────────────────────────────────────────────────────────────
-console.log(`[4/7] ${N_TASKS} SQL tasks...`);
 const tasks = [];
-for (let i = 1; i <= N_TASKS; i++) {
-  const tpl = TASK_TEMPLATES[(i - 1) % TASK_TEMPLATES.length];
-  const code = taskCode(i);
-  let { data: existing } = await admin.from("mst_tasks").select("task_id, task_code")
-    .eq("task_code", code).maybeSingle();
-  if (!existing) {
-    const { data, error } = await admin.from("mst_tasks").insert({
-      task_code: code, task_title: `[${SIM_TAG}] SQL Task ${i} (${tpl.difficulty})`,
-      task_type: "sql_text", difficulty_level: tpl.difficulty,
-      task_status: "published", is_active: true, max_score: 10,
-      problem_statement: tpl.problem, expected_answer: tpl.correct, expected_sql: tpl.correct,
-      database_schema_json: DB_SCHEMA, sample_data_json: SAMPLE_DATA,
-      scoring_rubric_json: tpl.rubric, research_tags: { sim_e2e: true, tag: SIM_TAG },
-    }).select("task_id").single();
-    if (error) throw new Error(`Task insert ${code}: ${error.message}`);
-    existing = { task_id: data.task_id, task_code: code };
+if (REAL_TASK_IDS.length > 0) {
+  console.log(`[4/7] Using ${REAL_TASK_IDS.length} real task IDs (skipping dummy task creation)...`);
+  const { data: realTasks, error: rtErr } = await admin.from("mst_tasks")
+    .select("task_id, task_code, expected_sql, scoring_rubric_json, difficulty_level")
+    .in("task_id", REAL_TASK_IDS)
+    .eq("is_active", true);
+  if (rtErr) throw new Error(`Real task fetch: ${rtErr.message}`);
+  if (!realTasks?.length) throw new Error(`None of the provided task IDs found in mst_tasks`);
+  tasks.push(...realTasks.map(t => ({
+    ...t,
+    correct: (t.expected_sql ?? "SELECT * FROM students").replace(/;$/, "").trim(),
+    wrong:   "SELECT name FROM nonexistent_table_xyz",
+  })));
+  console.log(`  ✅ Loaded: ${tasks.map(t => t.task_code).join(", ")}`);
+} else {
+  console.log(`[4/7] ${N_TASKS} SQL tasks (dummy)...`);
+  for (let i = 1; i <= N_TASKS; i++) {
+    const tpl = TASK_TEMPLATES[(i - 1) % TASK_TEMPLATES.length];
+    const code = taskCode(i);
+    let { data: existing } = await admin.from("mst_tasks").select("task_id, task_code")
+      .eq("task_code", code).maybeSingle();
+    if (!existing) {
+      const { data, error } = await admin.from("mst_tasks").insert({
+        task_code: code, task_title: `[${SIM_TAG}] SQL Task ${i} (${tpl.difficulty})`,
+        task_type: "sql_text", difficulty_level: tpl.difficulty,
+        task_status: "published", is_active: true, max_score: 10,
+        problem_statement: tpl.problem, expected_answer: tpl.correct, expected_sql: tpl.correct,
+        database_schema_json: DB_SCHEMA, sample_data_json: SAMPLE_DATA,
+        scoring_rubric_json: tpl.rubric, research_tags: { sim_e2e: true, tag: SIM_TAG },
+      }).select("task_id").single();
+      if (error) throw new Error(`Task insert ${code}: ${error.message}`);
+      existing = { task_id: data.task_id, task_code: code };
+    }
+    tasks.push({ ...existing, ...tpl });
+    console.log(`  ✅ ${code} → ${existing.task_id}`);
   }
-  tasks.push({ ...existing, ...tpl });
-  console.log(`  ✅ ${code} → ${existing.task_id}`);
 }
 
 // ── 5. Class ──────────────────────────────────────────────────────────────────
@@ -273,6 +291,6 @@ const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
 console.log(`[7/7] ✅ Setup complete.
   Batch    : ${BATCH_CODE}
   Class    : ${CLASS_CODE}
-  Tasks    : ${tasks.map(t => t.task_code).join(", ")}
+  Tasks    : ${tasks.map(t => t.task_code ?? t.task_id).join(", ")}
   Students : ${students.length} (at-risk target: ${atRiskCount}, missing-submit target: ${missingCount})
 `);
