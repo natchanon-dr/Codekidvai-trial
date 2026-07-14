@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
 import type { MockConfig, MockOutcomeData, MockStep } from "@/lib/mock-pipeline";
 
@@ -59,17 +59,50 @@ function ConfusionMatrix({ matrix }: { matrix: number[][] }) {
 }
 
 // ── step button ───────────────────────────────────────────────────────────────
-type StepDef = { id: MockStep; label: string; variant: "primary" | "secondary" | "danger" | "full" };
+type StepDef = { id: MockStep; label: string; variant: "primary" | "secondary" | "danger" | "full"; icon: React.ReactNode };
+
+const STEP_ICONS: Record<string, React.ReactNode> = {
+  data: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+    </svg>
+  ),
+  extract: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+    </svg>
+  ),
+  process: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  ),
+  train: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+    </svg>
+  ),
+  evaluate: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+  ),
+  outcome: (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+};
 
 const STEPS: StepDef[] = [
-  { id: "data",      label: "1. Mock Data",     variant: "primary" },
-  { id: "extract",   label: "2. Mock Extract",  variant: "primary" },
-  { id: "process",   label: "3. Mock Process",  variant: "primary" },
-  { id: "train",     label: "4. Mock Train",    variant: "primary" },
-  { id: "evaluate",  label: "5. Mock Evaluate", variant: "primary" },
-  { id: "outcome",   label: "6. Mock Outcome",  variant: "secondary" },
-  { id: "reset",     label: "Mock Reset",       variant: "danger" },
-  { id: "run-all",   label: "Run Full Mock Pipeline", variant: "full" },
+  { id: "data",      label: "Mock Data",     variant: "primary",   icon: STEP_ICONS.data },
+  { id: "extract",   label: "Mock Extract",  variant: "primary",   icon: STEP_ICONS.extract },
+  { id: "process",   label: "Mock Process",  variant: "primary",   icon: STEP_ICONS.process },
+  { id: "train",     label: "Mock Train",    variant: "primary",   icon: STEP_ICONS.train },
+  { id: "evaluate",  label: "Mock Evaluate", variant: "primary",   icon: STEP_ICONS.evaluate },
+  { id: "outcome",   label: "Mock Outcome",  variant: "secondary", icon: STEP_ICONS.outcome },
+  { id: "reset",     label: "Mock Reset",    variant: "danger",    icon: null },
+  { id: "run-all",   label: "Run Full Mock Pipeline", variant: "full", icon: null },
 ];
 
 const BTN_CLASS: Record<string, string> = {
@@ -291,8 +324,14 @@ export default function MockLab() {
                 key={s.id}
                 onClick={() => runStep(s.id)}
                 disabled={isRunning}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${BTN_CLASS[s.variant]}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${BTN_CLASS[s.variant]}`}
               >
+                {running === s.id ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : s.icon}
                 {running === s.id ? "Running…" : s.label}
               </button>
             ))}
