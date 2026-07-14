@@ -118,10 +118,12 @@ const runAnswerTotal    = N_STUDENTS * simTasks.length * 3; // 2 wrong + 1 final
 const submitAnswerTotal = (N_STUDENTS - missingCount) * simTasks.length;
 const estimatedSeconds  = Math.round((runAnswerTotal + submitAnswerTotal) * 0.4);
 
+const totalCallsEst = runAnswerTotal + submitAnswerTotal;
+
 console.log(`[WORKLOAD] ${JSON.stringify({
   students: N_STUDENTS, tasks: simTasks.length,
   runAnswerCalls: runAnswerTotal, submitAnswerCalls: submitAnswerTotal,
-  totalCalls: totalApiCalls, estimatedSeconds,
+  totalCalls: totalCallsEst, estimatedSeconds,
 })}`);
 
 console.log(`  batch  : ${batch.batch_code} (${batch.batch_id})`);
@@ -129,7 +131,7 @@ console.log(`  tasks  : ${taskAnswers.length} loaded → ${simTasks.length} simu
 console.log(`  students loaded: ${N_STUDENTS}`);
 console.log(`  at-risk threshold: student ${atRiskFrom}+ (${Math.round(N_STUDENTS * AT_RISK_RATE / 100)} students)`);
 console.log(`  missing-submit: ${missingCount} students`);
-console.log(`  estimated API calls: ${totalApiCalls} (run=${runAnswerTotal} submit=${submitAnswerTotal})`);
+console.log(`  estimated API calls: ${totalCallsEst} (run=${runAnswerTotal} submit=${submitAnswerTotal})`);
 console.log(`  estimated duration: ~${Math.ceil(estimatedSeconds / 60)}m ${estimatedSeconds % 60}s`);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
