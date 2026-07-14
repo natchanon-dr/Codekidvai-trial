@@ -440,18 +440,6 @@ export default function MockLab() {
 
   return (
     <section className="space-y-5">
-      {/* Warning banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex gap-3 items-start">
-        <svg className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-        </svg>
-        <p className="text-xs text-amber-700 leading-relaxed">
-          <span className="font-bold">Technical Validation Only</span> — Mock data and mock evaluation are not research findings.
-          All pipeline runs use synthetic data under batch codes prefixed <code className="font-mono">SIM_E2E_</code> or <code className="font-mono">MOCK_</code>.
-          Reset never touches real pilot data.
-        </p>
-      </div>
-
       {/* ── Status Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {topStatus.map(({ label, status }) => (

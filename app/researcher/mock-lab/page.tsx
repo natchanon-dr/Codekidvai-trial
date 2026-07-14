@@ -121,15 +121,6 @@ export default function MockLabPage() {
         <section className="space-y-1">
           <h1 className="text-2xl font-bold text-[#0F172A]">Mock Lab</h1>
           <p className="text-sm text-[#64748B]">Simulated baseline AI pipeline for technical validation.</p>
-          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex gap-3 items-start">
-            <svg className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            <div className="text-xs text-amber-700 leading-relaxed space-y-0.5">
-              <p className="font-bold">Mock data and mock results are for technical validation only.</p>
-              <p>They are not real research findings. Real-data evaluation remains pending.</p>
-            </div>
-          </div>
         </section>
 
         {/* MockLab feature */}
