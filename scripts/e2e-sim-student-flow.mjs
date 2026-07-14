@@ -114,10 +114,9 @@ const simTasks = (TASKS_TO_SIMULATE > 0 && TASKS_TO_SIMULATE < taskAnswers.lengt
   : taskAnswers;
 
 // Workload estimation (machine-readable for UI + human-readable)
-const runAnswerTotal   = N_STUDENTS * simTasks.length * 3; // 2 wrong + 1 final per task
+const runAnswerTotal    = N_STUDENTS * simTasks.length * 3; // 2 wrong + 1 final per task
 const submitAnswerTotal = (N_STUDENTS - missingCount) * simTasks.length;
-totalApiCalls = runAnswerTotal + submitAnswerTotal;
-const estimatedSeconds = Math.round(totalApiCalls * 0.4);
+const estimatedSeconds  = Math.round((runAnswerTotal + submitAnswerTotal) * 0.4);
 
 console.log(`[WORKLOAD] ${JSON.stringify({
   students: N_STUDENTS, tasks: simTasks.length,
@@ -139,7 +138,7 @@ const REQUEST_TIMEOUT_MS = 30000;
 
 // Shared counters — safe in single-threaded Node.js event loop
 let completedCalls  = 0;
-let totalApiCalls   = 0; // set after simTasks is known
+let totalApiCalls   = runAnswerTotal + submitAnswerTotal;
 let flowStartTime   = 0; // set at start of student flow
 const requestDurations = [];
 let slowestMs = 0;
