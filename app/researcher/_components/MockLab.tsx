@@ -532,14 +532,14 @@ export default function MockLab() {
           <h3 className="text-sm font-bold text-[#0F172A]">Current Configuration</h3>
           <dl className="space-y-2.5 text-sm">
             {([
-              ["Batch Code",        config.batchCode],
+              ["Mock Code",         config.batchCode],
               ["Students",          String(config.nStudents)],
-              ["Task Source",       config.taskIds?.length ? `Real (${config.taskIds.length} tasks)` : `Dummy (${config.nTasks} tasks)`],
               ...(config.taskIds?.length
-                ? [["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? selectedSetId]]
+                ? [["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? selectedSetId],
+                   ["Tasks",    String(config.taskIds.length)]]
                 : []),
               ["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)} students)`],
-              ["Expected Missing",  `${config.missingRate}%`],
+              ["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)} students)`],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="flex flex-col gap-0.5">
                 <dt className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</dt>
