@@ -209,7 +209,7 @@ async function runStep(
     case "outcome": {
       const fs = await import("node:fs/promises");
       const modelsDir  = path.join(NB_DIR, "models");
-      const figuresDir = path.join(NB_DIR, "figures");
+      const figuresDir = path.join(NB_DIR, "reports");
       try {
         const files = await fs.readdir(modelsDir);
         const jsonFiles = files.filter(f => f.startsWith("metadata_") && f.endsWith(".json")).sort().reverse();
@@ -240,8 +240,8 @@ async function runStep(
         try {
           const splitRaw = await fs.readFile(path.join(NB_DIR, "data", "processed", "split_metadata.json"), "utf-8");
           const split = JSON.parse(splitRaw);
-          nTrain = split.n_train ?? 0;
-          nTest  = split.n_test  ?? 0;
+          nTrain = split.n_train ?? split.train_rows ?? 0;
+          nTest  = split.n_test  ?? split.test_rows  ?? 0;
           splitIntegrity = nTrain > 0 && nTest > 0 ? "pass" : "fail";
         } catch { /* split_metadata may not exist */ }
 
@@ -253,9 +253,9 @@ async function runStep(
           } catch { return undefined; }
         }
         const [cmPng, rocPng, fiPng] = await Promise.all([
-          tryReadPng("confusion_matrix.png"),
-          tryReadPng("roc_curve.png"),
-          tryReadPng("feature_importance.png"),
+          tryReadPng("confusion_matrices.png"),
+          tryReadPng("roc_curves.png"),
+          tryReadPng("rf_feature_importance.png"),
         ]);
 
         const outcome: import("@/lib/mock-pipeline").MockOutcome = {
