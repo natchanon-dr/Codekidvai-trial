@@ -448,24 +448,26 @@ export default function MockLab() {
           {/* Batch Configuration */}
           <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-[#0F172A]">Batch Configuration</h3>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Batch Code</label>
-              <input
-                type="text"
-                value={config.batchCode}
-                onChange={e => updateConfig("batchCode", e.target.value)}
-                disabled={isRunning}
-                placeholder="MOCK_20260714_001"
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50"
-              />
-              {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
-              <input type="number" min={5} max={200} value={config.nStudents}
-                onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                disabled={isRunning}
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Mock Code</label>
+                <input
+                  type="text"
+                  value={config.batchCode}
+                  onChange={e => updateConfig("batchCode", e.target.value)}
+                  disabled={isRunning}
+                  placeholder="MOCK_20260714_001"
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50"
+                />
+                {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
+                <input type="number" min={5} max={200} value={config.nStudents}
+                  onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
+                  disabled={isRunning}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+              </div>
             </div>
 
             {/* Task Set — Class + Set dropdowns */}
@@ -503,20 +505,9 @@ export default function MockLab() {
               </div>
               {config.taskIds?.length ? (
                 <p className="text-[11px] text-emerald-600 font-semibold">
-                  ✅ {config.taskIds.length} real task{config.taskIds.length !== 1 ? "s" : ""} selected — dummy task creation skipped
+                  ✅ {config.taskIds.length} real task{config.taskIds.length !== 1 ? "s" : ""} selected
                 </p>
-              ) : (
-                <div className="space-y-1">
-                  <p className="text-[11px] text-[#94A3B8]">Or use dummy tasks (no class selected):</p>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-[#64748B]">Count (1–10)</label>
-                    <input type="number" min={1} max={10} value={config.nTasks}
-                      onChange={e => updateConfig("nTasks", Math.max(1, Math.min(10, +e.target.value)))}
-                      disabled={isRunning || !!config.taskIds?.length}
-                      className="w-24 px-3 py-1.5 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-                  </div>
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
 
