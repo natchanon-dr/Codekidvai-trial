@@ -184,7 +184,6 @@ export default function MockLab() {
     atRiskRate: 35,
     missingRate: 7,
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
-    tasksToSimulate: 0,
   });
   const [configError, setConfigError] = useState<string | null>(null);
 
@@ -566,22 +565,6 @@ export default function MockLab() {
               ) : null}
             </div>
 
-            {/* Tasks to Simulate */}
-            <div className="space-y-1 pt-1 border-t border-[#F1F5F9]">
-              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Tasks to Simulate</label>
-              <select
-                value={config.tasksToSimulate ?? 3}
-                onChange={e => updateConfig("tasksToSimulate", +e.target.value)}
-                disabled={isRunning}
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
-              >
-                <option value={3}>3 tasks — Quick Test</option>
-                <option value={5}>5 tasks</option>
-                <option value={10}>10 tasks</option>
-                <option value={0}>All selected tasks</option>
-              </select>
-              <p className="text-[11px] text-[#94A3B8]">Limits simulation scope without changing the selected task set.</p>
-            </div>
           </div>
 
         </div>
@@ -592,14 +575,12 @@ export default function MockLab() {
           <dl className="space-y-2.5 text-sm">
             {((): [string, string][] => {
               const totalTasks = config.taskIds?.length ?? config.nTasks;
-              const simTasks   = (config.tasksToSimulate ?? 0) === 0
-                ? totalTasks
-                : Math.min(config.tasksToSimulate ?? 3, totalTasks);
               const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
-              const runCalls   = config.nStudents * simTasks * 3;
-              const subCalls   = nonMissing * simTasks;
+              const runCalls   = config.nStudents * totalTasks * 3;
+              const subCalls   = nonMissing * totalTasks;
               const totalCalls = runCalls + subCalls;
               const estMin     = Math.ceil(totalCalls * 0.4 / 60);
+              void estMin;
               const rows: [string, string][] = [
                 ["Mock Code",         config.batchCode],
                 ["Students",          String(config.nStudents)],
@@ -608,7 +589,6 @@ export default function MockLab() {
                 rows.push(["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? "—"]);
                 rows.push(["Tasks (selected)", String(config.taskIds.length)]);
               }
-              rows.push(["Tasks to Simulate", simTasks === totalTasks ? `${simTasks} (all)` : `${simTasks} of ${totalTasks}`]);
               rows.push(["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)})`]);
               rows.push(["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)})`]);
               return rows;
@@ -623,12 +603,9 @@ export default function MockLab() {
           {/* Workload estimation */}
           {(() => {
             const totalTasks = config.taskIds?.length ?? config.nTasks;
-            const simTasks   = (config.tasksToSimulate ?? 0) === 0
-              ? totalTasks
-              : Math.min(config.tasksToSimulate ?? 3, totalTasks);
             const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
-            const runCalls   = config.nStudents * simTasks * 3;
-            const subCalls   = nonMissing * simTasks;
+            const runCalls   = config.nStudents * totalTasks * 3;
+            const subCalls   = nonMissing * totalTasks;
             const totalCalls = runCalls + subCalls;
             const estSec     = Math.round(totalCalls * 0.4);
             const estMin     = Math.floor(estSec / 60);

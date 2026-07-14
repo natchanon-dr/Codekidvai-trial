@@ -39,7 +39,6 @@ const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"] ?? 
 const API_BASE     = opts["api-base"]      ?? "http://localhost:3000";
 // real task IDs — when provided, load tasks by ID instead of BATCH_CODE_T% pattern
 const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
-const TASKS_TO_SIMULATE = parseInt(opts["tasks-to-simulate"] ?? "0", 10);
 
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
@@ -108,26 +107,21 @@ const N_STUDENTS  = profileRows.length;
 const atRiskFrom  = N_STUDENTS - Math.round(N_STUDENTS * AT_RISK_RATE / 100) + 1;
 const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
 
-// Slice tasks for simulation (TASKS_TO_SIMULATE = 0 means all)
-const simTasks = (TASKS_TO_SIMULATE > 0 && TASKS_TO_SIMULATE < taskAnswers.length)
-  ? taskAnswers.slice(0, TASKS_TO_SIMULATE)
-  : taskAnswers;
-
 // Workload estimation (machine-readable for UI + human-readable)
-const runAnswerTotal    = N_STUDENTS * simTasks.length * 3; // 2 wrong + 1 final per task
-const submitAnswerTotal = (N_STUDENTS - missingCount) * simTasks.length;
+const runAnswerTotal    = N_STUDENTS * taskAnswers.length * 3; // 2 wrong + 1 final per task
+const submitAnswerTotal = (N_STUDENTS - missingCount) * taskAnswers.length;
 const estimatedSeconds  = Math.round((runAnswerTotal + submitAnswerTotal) * 0.4);
 
 const totalCallsEst = runAnswerTotal + submitAnswerTotal;
 
 console.log(`[WORKLOAD] ${JSON.stringify({
-  students: N_STUDENTS, tasks: simTasks.length,
+  students: N_STUDENTS, tasks: taskAnswers.length,
   runAnswerCalls: runAnswerTotal, submitAnswerCalls: submitAnswerTotal,
   totalCalls: totalCallsEst, estimatedSeconds,
 })}`);
 
 console.log(`  batch  : ${batch.batch_code} (${batch.batch_id})`);
-console.log(`  tasks  : ${taskAnswers.length} loaded → ${simTasks.length} simulated`);
+console.log(`  tasks  : ${taskAnswers.length} loaded → ${taskAnswers.length} simulated`);
 console.log(`  students loaded: ${N_STUDENTS}`);
 console.log(`  at-risk threshold: student ${atRiskFrom}+ (${Math.round(N_STUDENTS * AT_RISK_RATE / 100)} students)`);
 console.log(`  missing-submit: ${missingCount} students`);
@@ -251,15 +245,15 @@ console.log(`  ✅ ${studentTokens.size} tokens acquired`);
 
 // ── 3. Simulate student flow ──────────────────────────────────────────────────
 flowStartTime = Date.now();
-console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${simTasks.length} tasks, ${totalApiCalls} est. API calls)...`);
+console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${taskAnswers.length} tasks, ${totalApiCalls} est. API calls)...`);
 
 const results = { sessions: 0, runs: 0, submits: 0, skipped: 0, errors: [] };
 const CONCURRENCY = 5;
 
 async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, studentIdx, totalStudents) {
-  const taskCount = simTasks.length;
+  const taskCount = taskAnswers.length;
   for (let ti = 0; ti < taskCount; ti++) {
-    const task = simTasks[ti];
+    const task = taskAnswers[ti];
     const taskLabel = task.task_code ?? task.task_id;
     let sessionId;
     try {
