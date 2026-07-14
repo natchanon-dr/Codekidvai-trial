@@ -468,6 +468,20 @@ export default function MockLab() {
                   disabled={isRunning}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
+                <input type="number" min={0} max={100} value={config.atRiskRate}
+                  onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
+                  disabled={isRunning}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Missing Submission %</label>
+                <input type="number" min={0} max={100} value={config.missingRate}
+                  onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
+                  disabled={isRunning}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+              </div>
             </div>
 
             {/* Task Set — Class + Set dropdowns */}
@@ -508,27 +522,6 @@ export default function MockLab() {
                   ✅ {config.taskIds.length} real task{config.taskIds.length !== 1 ? "s" : ""} selected
                 </p>
               ) : null}
-            </div>
-          </div>
-
-          {/* Simulation Configuration */}
-          <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-[#0F172A]">Simulation Configuration</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
-                <input type="number" min={0} max={100} value={config.atRiskRate}
-                  onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Missing Submission %</label>
-                <input type="number" min={0} max={100} value={config.missingRate}
-                  onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
             </div>
           </div>
 
