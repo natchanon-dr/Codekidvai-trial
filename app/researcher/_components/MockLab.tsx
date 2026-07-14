@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
-import type { MockConfig, MockStep } from "@/lib/mock-pipeline";
+import type { MockConfig, MockOutcome, MockStep } from "@/lib/mock-pipeline";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 interface ClassOption {
@@ -21,15 +21,6 @@ interface TaskSetOption {
   task_ids: string[];
 }
 
-interface OutcomeReport {
-  lrAuc?: number | null; lrF1?: number | null;
-  rfAuc?: number | null; rfF1?: number | null;
-  majorityAuc?: number | null; majorityF1?: number | null;
-  confusionMatrix?: number[][] | null;
-  splitInfo?: string | null;
-  sampleCount?: number | null;
-  atRiskCount?: number | null;
-}
 
 interface LiveProgress {
   student: string;
@@ -193,7 +184,7 @@ export default function MockLab() {
     atRiskRate: 35,
     missingRate: 7,
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
-    tasksToSimulate: 3,
+    tasksToSimulate: 0,
   });
   const [configError, setConfigError] = useState<string | null>(null);
 
@@ -209,7 +200,7 @@ export default function MockLab() {
   const [running, setRunning]         = useState<MockStep | null>(null);
   const [stepStatus, setStepStatus]   = useState<Record<string, StepStatus>>({});
   const [logs, setLogs]               = useState<string[]>([]);
-  const [outcome, setOutcome]         = useState<OutcomeReport | null>(null);
+  const [outcome, setOutcome]         = useState<MockOutcome | null>(null);
   const [errorCount, setErrorCount]   = useState(0);
   const [startTime, setStartTime]     = useState<number | null>(null);
   const [elapsed, setElapsed]         = useState(0);
@@ -448,18 +439,11 @@ export default function MockLab() {
     abortRef.current?.abort();
   }
 
-  function parseOutcome(payload: { report?: OutcomeReport }) {
-    const r = payload.report ?? {};
-    setOutcome({
-      lrAuc: r.lrAuc ?? null, lrF1: r.lrF1 ?? null,
-      rfAuc: r.rfAuc ?? null, rfF1: r.rfF1 ?? null,
-      majorityAuc: r.majorityAuc ?? null, majorityF1: r.majorityF1 ?? null,
-      confusionMatrix: r.confusionMatrix ?? null,
-      splitInfo: r.splitInfo ?? null,
-      sampleCount: r.sampleCount ?? null,
-      atRiskCount: r.atRiskCount ?? null,
-    });
-    setActiveTab("summary");
+  function parseOutcome(payload: { report?: MockOutcome }) {
+    if (payload.report) {
+      setOutcome(payload.report);
+      setActiveTab("summary");
+    }
   }
 
   const isRunning = running !== null;
@@ -912,22 +896,31 @@ export default function MockLab() {
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-[#0F172A]">Pipeline Summary</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {[
-                    { label: "Pipeline Status",   value: isRunning ? "Running" : pipelineProgress > 0 ? "Completed" : "Not started", ok: !isRunning && pipelineProgress > 0 },
-                    { label: "Dataset Ready",      value: stepStatus["data"] === "completed" ? "Yes" : "No",     ok: stepStatus["data"] === "completed" },
-                    { label: "Training Ready",     value: stepStatus["train"] === "completed" ? "Yes" : "No",    ok: stepStatus["train"] === "completed" },
-                    { label: "Evaluation Ready",   value: stepStatus["evaluate"] === "completed" ? "Yes" : "No", ok: stepStatus["evaluate"] === "completed" },
-                    { label: "Report Ready",       value: outcome ? "Yes" : "No",   ok: !!outcome },
-                    { label: "Samples",            value: outcome?.sampleCount != null ? String(outcome.sampleCount) : "—", ok: null },
-                  ].map(({ label, value, ok }) => (
+                  {([
+                    { label: "Pipeline Status", value: isRunning ? "Running" : pipelineProgress > 0 ? "Completed" : "Not started", ok: !isRunning && pipelineProgress > 0 },
+                    { label: "Dataset Ready",   value: stepStatus["data"]     === "completed" ? "Yes" : "No", ok: stepStatus["data"]     === "completed" },
+                    { label: "Training Ready",  value: stepStatus["train"]    === "completed" ? "Yes" : "No", ok: stepStatus["train"]    === "completed" },
+                    { label: "Eval Ready",      value: stepStatus["evaluate"] === "completed" ? "Yes" : "No", ok: stepStatus["evaluate"] === "completed" },
+                    { label: "Report Ready",    value: outcome ? "Yes" : "No", ok: !!outcome },
+                    { label: "Samples",         value: outcome ? String(outcome.dataset.samples) : "—", ok: null },
+                  ] as { label: string; value: string; ok: boolean | null }[]).map(({ label, value, ok }) => (
                     <div key={label} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2.5 space-y-0.5">
                       <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{label}</p>
                       <p className={`text-sm font-bold ${ok === true ? "text-emerald-600" : ok === false ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>{value}</p>
                     </div>
                   ))}
                 </div>
-                {outcome?.splitInfo && (
-                  <p className="text-xs font-mono text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2">{outcome.splitInfo}</p>
+                {outcome && (
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["pii", "leakage", "splitIntegrity"] as const).map(k => (
+                      <div key={k} className={`rounded-xl px-3 py-2.5 border text-center ${outcome.checks[k] === "pass" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                        <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k === "splitIntegrity" ? "Split Integrity" : k.toUpperCase()}</p>
+                        <p className={`text-sm font-bold mt-0.5 ${outcome.checks[k] === "pass" ? "text-emerald-600" : "text-red-600"}`}>
+                          {outcome.checks[k] === "pass" ? "✓ Pass" : "✗ Fail"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -938,21 +931,17 @@ export default function MockLab() {
                 <h4 className="text-sm font-bold text-[#0F172A]">Evaluation Metrics</h4>
                 {outcome ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div className="space-y-3">
-                      <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">Majority Baseline</p>
-                      <MetricBar label="AUC-ROC" value={outcome.majorityAuc} color="#94A3B8" />
-                      <MetricBar label="F1"      value={outcome.majorityF1}  color="#CBD5E1" />
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">Logistic Regression</p>
-                      <MetricBar label="AUC-ROC" value={outcome.lrAuc} color="#F37021" />
-                      <MetricBar label="F1"      value={outcome.lrF1}  color="#FB923C" />
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">Random Forest</p>
-                      <MetricBar label="AUC-ROC" value={outcome.rfAuc} color="#0EA5E9" />
-                      <MetricBar label="F1"      value={outcome.rfF1}  color="#38BDF8" />
-                    </div>
+                    {([
+                      { key: "majorityBaseline",   label: "Majority Baseline",   aucColor: "#94A3B8", f1Color: "#CBD5E1" },
+                      { key: "logisticRegression", label: "Logistic Regression", aucColor: "#F37021", f1Color: "#FB923C" },
+                      { key: "randomForest",       label: "Random Forest",       aucColor: "#0EA5E9", f1Color: "#38BDF8" },
+                    ] as const).map(({ key, label, aucColor, f1Color }) => (
+                      <div key={key} className="space-y-3">
+                        <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">{label}</p>
+                        <MetricBar label="AUC-ROC" value={outcome.metrics[key].auc} color={aucColor} />
+                        <MetricBar label="F1"      value={outcome.metrics[key].f1}  color={f1Color} />
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <p className="text-sm text-[#94A3B8]">Run Mock Outcome to load metrics.</p>
@@ -965,16 +954,20 @@ export default function MockLab() {
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-[#0F172A]">Charts</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {outcome?.confusionMatrix ? (
-                    <div className="border border-[#E2E8F0] rounded-2xl p-4">
-                      <ConfusionMatrix matrix={outcome.confusionMatrix} />
-                    </div>
-                  ) : (
-                    <ChartPlaceholder label="Confusion Matrix" />
+                  {([
+                    { key: "confusionMatrix",  label: "Confusion Matrix" },
+                    { key: "rocCurve",         label: "ROC Curve" },
+                    { key: "featureImportance",label: "Feature Importance" },
+                  ] as const).map(({ key, label }) =>
+                    outcome?.charts[key] ? (
+                      <div key={key} className="border border-[#E2E8F0] rounded-2xl p-3">
+                        <p className="text-[11px] font-semibold text-[#64748B] mb-2">{label}</p>
+                        <img src={outcome.charts[key]} alt={label} className="w-full rounded-xl" />
+                      </div>
+                    ) : (
+                      <ChartPlaceholder key={key} label={label} />
+                    )
                   )}
-                  {(["ROC Curve", "Feature Importance", "Dataset Distribution", "Class Balance"] as const).map(name => (
-                    <ChartPlaceholder key={name} label={name} />
-                  ))}
                 </div>
               </div>
             )}
@@ -984,26 +977,28 @@ export default function MockLab() {
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-[#0F172A]">Dataset Info</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {[
-                    ["Students (config)",   String(config.nStudents)],
-                    ["SQL Tasks",           config.taskIds?.length ? `${config.taskIds.length} (real)` : String(config.nTasks)],
-                    ["Total Samples",       outcome?.sampleCount != null ? String(outcome.sampleCount) : "—"],
-                    ["At-Risk Count",       outcome?.atRiskCount  != null ? String(outcome.atRiskCount)  : "—"],
-                    ["At-Risk Rate",        `${config.atRiskRate}%`],
-                    ["Missing Rate",        `${config.missingRate}%`],
-                    ["Split Method",        "GroupShuffleSplit"],
-                    ["Group Key",           "academy_member_id"],
-                    ["PII Status",          "Anonymised"],
-                  ].map(([k, v]) => (
+                  {([
+                    ["Batch Code",    outcome?.batchCode ?? config.batchCode],
+                    ["Students",      outcome ? String(outcome.dataset.students)    : String(config.nStudents)],
+                    ["Tasks",         outcome ? String(outcome.dataset.tasks)       : String(config.taskIds?.length ?? config.nTasks)],
+                    ["Samples",       outcome ? String(outcome.dataset.samples)     : "—"],
+                    ["Train",         outcome ? String(outcome.dataset.trainSamples): "—"],
+                    ["Test",          outcome ? String(outcome.dataset.testSamples) : "—"],
+                    ["Sessions",      outcome ? String(outcome.dataset.sessions)    : "—"],
+                    ["Attempts",      outcome ? String(outcome.dataset.attempts)    : "—"],
+                    ["Submissions",   outcome ? String(outcome.dataset.submissions) : "—"],
+                    ["At-Risk Rate",  `${config.atRiskRate}%`],
+                    ["Missing Rate",  `${config.missingRate}%`],
+                    ["Split Method",  "GroupShuffleSplit"],
+                    ["Group Key",     "academy_member_id"],
+                    ["PII",           "Anonymised"],
+                  ] as [string, string][]).map(([k, v]) => (
                     <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2.5 space-y-0.5">
                       <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</p>
                       <p className="text-sm font-mono font-bold text-[#0F172A]">{v}</p>
                     </div>
                   ))}
                 </div>
-                {outcome?.splitInfo && (
-                  <p className="text-xs font-mono text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2">{outcome.splitInfo}</p>
-                )}
               </div>
             )}
 
@@ -1011,24 +1006,25 @@ export default function MockLab() {
             {activeTab === "reports" && (
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-[#0F172A]">Reports</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { label: "Metadata JSON", desc: "notebooks/models/metadata_*.json", action: "Open Metadata" },
-                    { label: "Pipeline Log",  desc: "Full SSE stream log from this session", action: "View Logs", onClick: () => setActiveTab("logs") },
-                  ].map(({ label, desc, action, onClick }) => (
-                    <div key={label} className="border border-[#E2E8F0] rounded-2xl p-4 space-y-2">
-                      <p className="text-sm font-bold text-[#0F172A]">{label}</p>
-                      <p className="text-xs text-[#64748B] font-mono">{desc}</p>
-                      <button
-                        onClick={onClick}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#FED7AA] text-[#C2410C] hover:border-[#F37021] transition-colors"
-                      >
-                        {action}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {!outcome && (
+                {outcome ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {([
+                      { key: "metadata",   label: "Metadata JSON",   desc: outcome.reports.metadata   ?? "notebooks/models/metadata_*.json" },
+                      { key: "evaluation", label: "Evaluation Report",desc: outcome.reports.evaluation ?? "Not generated" },
+                      { key: "log",        label: "Pipeline Log",     desc: "Full SSE stream from this session", onClick: () => setActiveTab("logs") },
+                    ] as { key: string; label: string; desc: string; onClick?: () => void }[]).map(({ key, label, desc, onClick }) => (
+                      <div key={key} className="border border-[#E2E8F0] rounded-2xl p-4 space-y-2">
+                        <p className="text-sm font-bold text-[#0F172A]">{label}</p>
+                        <p className="text-xs text-[#64748B] font-mono break-all">{desc}</p>
+                        {onClick && (
+                          <button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#FED7AA] text-[#C2410C] hover:border-[#F37021] transition-colors">
+                            View Logs
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                   <p className="text-sm text-[#94A3B8]">Run the full pipeline to generate reports.</p>
                 )}
               </div>

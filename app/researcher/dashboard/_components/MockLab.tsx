@@ -2,18 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
-import type { MockConfig, MockOutcomeData, MockStep } from "@/lib/mock-pipeline";
-
-// ── types ─────────────────────────────────────────────────────────────────────
-interface OutcomeReport {
-  lrAuc?: number | null; lrF1?: number | null;
-  rfAuc?: number | null; rfF1?: number | null;
-  majorityAuc?: number | null; majorityF1?: number | null;
-  confusionMatrix?: number[][] | null;
-  splitInfo?: string | null;
-  sampleCount?: number | null;
-  atRiskCount?: number | null;
-}
+import type { MockConfig, MockOutcome, MockStep } from "@/lib/mock-pipeline";
 
 // ── mini chart helpers ────────────────────────────────────────────────────────
 function MetricBar({ label, value, color }: { label: string; value: number | null; color: string }) {
@@ -31,32 +20,6 @@ function MetricBar({ label, value, color }: { label: string; value: number | nul
   );
 }
 
-function ConfusionMatrix({ matrix }: { matrix: number[][] }) {
-  const labels = ["Not at-risk", "At-risk"];
-  return (
-    <div>
-      <p className="text-xs font-semibold text-[#64748B] mb-2">Confusion Matrix (predicted vs actual)</p>
-      <table className="text-xs border-collapse">
-        <thead>
-          <tr>
-            <th className="p-1.5 text-[#94A3B8]" />
-            {labels.map(l => <th key={l} className="p-1.5 font-semibold text-[#0F172A] text-center">{l}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {matrix.map((row, ri) => (
-            <tr key={ri}>
-              <td className="p-1.5 font-semibold text-[#0F172A] pr-3">{labels[ri]}</td>
-              {row.map((v, ci) => (
-                <td key={ci} className={`p-1.5 text-center font-mono font-semibold rounded ${ri === ci ? "bg-[#FED7AA] text-[#C2410C]" : "bg-[#F1F5F9] text-[#475569]"}`}>{v}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 // ── step button ───────────────────────────────────────────────────────────────
 type StepDef = { id: MockStep; label: string; variant: "primary" | "secondary" | "danger" | "full" };
@@ -92,7 +55,7 @@ export default function MockLab() {
 
   const [running, setRunning]     = useState<MockStep | null>(null);
   const [logs, setLogs]           = useState<string[]>([]);
-  const [outcome, setOutcome]     = useState<MockOutcomeData | null>(null);
+  const [outcome, setOutcome]     = useState<MockOutcome | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -170,20 +133,8 @@ export default function MockLab() {
     }
   }
 
-  function parseOutcome(payload: { report?: OutcomeReport }) {
-    const r = payload.report ?? {};
-    setOutcome({
-      lrAuc:           r.lrAuc          ?? null,
-      lrF1:            r.lrF1           ?? null,
-      rfAuc:           r.rfAuc          ?? null,
-      rfF1:            r.rfF1           ?? null,
-      majorityAuc:     r.majorityAuc    ?? null,
-      majorityF1:      r.majorityF1     ?? null,
-      confusionMatrix: r.confusionMatrix ?? null,
-      splitInfo:       r.splitInfo      ?? null,
-      sampleCount:     r.sampleCount    ?? null,
-      atRiskCount:     r.atRiskCount    ?? null,
-    });
+  function parseOutcome(payload: { report?: MockOutcome }) {
+    if (payload.report) setOutcome(payload.report);
   }
 
   const isRunning = running !== null;
@@ -335,37 +286,29 @@ export default function MockLab() {
           <div className="space-y-4 pt-2 border-t border-[#FED7AA]">
             <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">
               Evaluation Results
-              {outcome.sampleCount != null && (
-                <span className="ml-2 font-normal normal-case">({outcome.sampleCount} samples, {outcome.atRiskCount} at-risk)</span>
-              )}
+              <span className="ml-2 font-normal normal-case">({outcome.dataset.samples} samples)</span>
             </p>
-            {outcome.splitInfo && (
-              <p className="text-xs text-[#64748B] font-mono">{outcome.splitInfo}</p>
-            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              {/* LR */}
               <div className="space-y-2">
                 <p className="text-xs font-bold text-[#0F172A]">Logistic Regression</p>
-                <MetricBar label="AUC-ROC" value={outcome.lrAuc} color="#F37021" />
-                <MetricBar label="F1"      value={outcome.lrF1}  color="#FB923C" />
+                <MetricBar label="AUC-ROC" value={outcome.metrics.logisticRegression.auc} color="#F37021" />
+                <MetricBar label="F1"      value={outcome.metrics.logisticRegression.f1}  color="#FB923C" />
               </div>
-              {/* RF */}
               <div className="space-y-2">
                 <p className="text-xs font-bold text-[#0F172A]">Random Forest</p>
-                <MetricBar label="AUC-ROC" value={outcome.rfAuc} color="#0EA5E9" />
-                <MetricBar label="F1"      value={outcome.rfF1}  color="#38BDF8" />
+                <MetricBar label="AUC-ROC" value={outcome.metrics.randomForest.auc} color="#0EA5E9" />
+                <MetricBar label="F1"      value={outcome.metrics.randomForest.f1}  color="#38BDF8" />
               </div>
-              {/* Majority */}
               <div className="space-y-2">
                 <p className="text-xs font-bold text-[#0F172A]">Majority Baseline</p>
-                <MetricBar label="AUC-ROC" value={outcome.majorityAuc} color="#94A3B8" />
-                <MetricBar label="F1"      value={outcome.majorityF1}  color="#CBD5E1" />
+                <MetricBar label="AUC-ROC" value={outcome.metrics.majorityBaseline.auc} color="#94A3B8" />
+                <MetricBar label="F1"      value={outcome.metrics.majorityBaseline.f1}  color="#CBD5E1" />
               </div>
             </div>
 
-            {outcome.confusionMatrix && (
-              <ConfusionMatrix matrix={outcome.confusionMatrix} />
+            {outcome.charts.confusionMatrix && (
+              <img src={outcome.charts.confusionMatrix} alt="Confusion Matrix" className="rounded-xl max-w-xs" />
             )}
           </div>
         )}

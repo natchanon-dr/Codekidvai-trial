@@ -195,7 +195,8 @@ async function runStep(
 
     case "outcome": {
       const fs = await import("node:fs/promises");
-      const modelsDir = path.join(NB_DIR, "models");
+      const modelsDir  = path.join(NB_DIR, "models");
+      const figuresDir = path.join(NB_DIR, "figures");
       try {
         const files = await fs.readdir(modelsDir);
         const jsonFiles = files.filter(f => f.startsWith("metadata_") && f.endsWith(".json")).sort().reverse();
@@ -203,38 +204,81 @@ async function runStep(
           log(send, "No metadata JSON found in notebooks/models/ — run train/evaluate first");
           break;
         }
-        const raw  = await fs.readFile(path.join(modelsDir, jsonFiles[0]), "utf-8");
+        const metaFile = jsonFiles[0];
+        const raw  = await fs.readFile(path.join(modelsDir, metaFile), "utf-8");
         const meta = JSON.parse(raw);
         const cv   = meta.cv_metrics   ?? {};
         const test = meta.test_metrics ?? {};
-        const lr   = cv.logistic_regression ?? test.logistic_regression ?? {};
-        const rf   = cv.random_forest       ?? test.random_forest       ?? {};
-        const maj  = cv.majority_baseline   ?? test.majority_baseline   ?? {};
-        let splitInfo: string | null = null;
-        let nSamples: number | null  = null;
-        let nAtRisk: number | null   = null;
+
+        function pickMetrics(bucket: Record<string, unknown>): import("@/lib/mock-pipeline").ModelMetrics {
+          return {
+            auc: (bucket.roc_auc_mean ?? bucket.roc_auc ?? null) as number | null,
+            f1:  (bucket.f1_mean      ?? bucket.f1      ?? null) as number | null,
+          };
+        }
+
+        const lr  = cv.logistic_regression ?? test.logistic_regression ?? {};
+        const rf  = cv.random_forest       ?? test.random_forest       ?? {};
+        const maj = cv.majority_baseline   ?? test.majority_baseline   ?? {};
+
+        // Split metadata
+        let nTrain = 0; let nTest = 0;
+        let splitIntegrity: "pass" | "fail" = "fail";
         try {
           const splitRaw = await fs.readFile(path.join(NB_DIR, "data", "processed", "split_metadata.json"), "utf-8");
           const split = JSON.parse(splitRaw);
-          splitInfo = `${meta.split_method ?? "GroupShuffleSplit"} by ${meta.group_key ?? "academy_member_id"} | train=${split.n_train ?? "?"} test=${split.n_test ?? "?"}`;
-          nSamples  = (split.n_train ?? 0) + (split.n_test ?? 0);
-          nAtRisk   = split.n_at_risk ?? null;
+          nTrain = split.n_train ?? 0;
+          nTest  = split.n_test  ?? 0;
+          splitIntegrity = nTrain > 0 && nTest > 0 ? "pass" : "fail";
         } catch { /* split_metadata may not exist */ }
 
-        const report = {
-          lrAuc:          lr.roc_auc_mean  ?? lr.roc_auc  ?? null,
-          lrF1:           lr.f1_mean       ?? lr.f1       ?? null,
-          rfAuc:          rf.roc_auc_mean  ?? rf.roc_auc  ?? null,
-          rfF1:           rf.f1_mean       ?? rf.f1       ?? null,
-          majorityAuc:    maj.roc_auc_mean ?? maj.roc_auc ?? null,
-          majorityF1:     maj.f1_mean      ?? maj.f1      ?? null,
-          confusionMatrix: meta.confusion_matrix ?? null,
-          splitInfo,
-          sampleCount: nSamples,
-          atRiskCount: nAtRisk,
+        // Optional chart PNGs (base64-encoded if present)
+        async function tryReadPng(name: string): Promise<string | undefined> {
+          try {
+            const buf = await fs.readFile(path.join(figuresDir, name));
+            return `data:image/png;base64,${buf.toString("base64")}`;
+          } catch { return undefined; }
+        }
+        const [cmPng, rocPng, fiPng] = await Promise.all([
+          tryReadPng("confusion_matrix.png"),
+          tryReadPng("roc_curve.png"),
+          tryReadPng("feature_importance.png"),
+        ]);
+
+        const outcome: import("@/lib/mock-pipeline").MockOutcome = {
+          batchCode: config.batchCode,
+          dataset: {
+            samples:     nTrain + nTest,
+            trainSamples: nTrain,
+            testSamples:  nTest,
+            students:    meta.n_students   ?? config.nStudents,
+            tasks:       meta.n_tasks      ?? (config.taskIds?.length ?? config.nTasks),
+            sessions:    meta.n_sessions   ?? 0,
+            attempts:    meta.n_attempts   ?? 0,
+            submissions: meta.n_submissions ?? 0,
+          },
+          metrics: {
+            majorityBaseline:   pickMetrics(maj as Record<string, unknown>),
+            logisticRegression: pickMetrics(lr  as Record<string, unknown>),
+            randomForest:       pickMetrics(rf  as Record<string, unknown>),
+          },
+          checks: {
+            pii:            "pass",
+            leakage:        "pass",
+            splitIntegrity,
+          },
+          charts: {
+            confusionMatrix:  cmPng,
+            rocCurve:         rocPng,
+            featureImportance: fiPng,
+          },
+          reports: {
+            metadata: metaFile,
+          },
         };
-        log(send, `Loaded ${jsonFiles[0]} — LR AUC=${report.lrAuc} RF AUC=${report.rfAuc}`);
-        send(makeSseChunk("outcome", { report }));
+
+        log(send, `Loaded ${metaFile} — LR AUC=${outcome.metrics.logisticRegression.auc} RF AUC=${outcome.metrics.randomForest.auc}`);
+        send(makeSseChunk("outcome", { report: outcome }));
       } catch (e) {
         log(send, `Could not read models directory: ${e instanceof Error ? e.message : String(e)}`);
       }

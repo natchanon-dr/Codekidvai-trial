@@ -27,18 +27,44 @@ export interface MockConfig {
   tasksToSimulate?: number;
 }
 
-export interface MockOutcomeData {
-  lrAuc: number | null;
-  lrF1: number | null;
-  rfAuc: number | null;
-  rfF1: number | null;
-  majorityAuc: number | null;
-  majorityF1: number | null;
-  confusionMatrix: number[][] | null;
-  splitInfo: string | null;
-  sampleCount: number | null;
-  atRiskCount: number | null;
-}
+export type ModelMetrics = {
+  auc: number | null;
+  f1: number | null;
+};
+
+export type MockOutcome = {
+  batchCode: string;
+  dataset: {
+    samples: number;
+    trainSamples: number;
+    testSamples: number;
+    students: number;
+    tasks: number;
+    sessions: number;
+    attempts: number;
+    submissions: number;
+  };
+  metrics: {
+    majorityBaseline: ModelMetrics;
+    logisticRegression: ModelMetrics;
+    randomForest: ModelMetrics;
+  };
+  checks: {
+    pii: "pass" | "fail";
+    leakage: "pass" | "fail";
+    splitIntegrity: "pass" | "fail";
+  };
+  charts: {
+    confusionMatrix?: string;
+    rocCurve?: string;
+    featureImportance?: string;
+  };
+  reports: {
+    evaluation?: string;
+    metadata?: string;
+    log?: string;
+  };
+};
 
 export function validateMockConfig(config: MockConfig): string | null {
   if (!config.batchCode.startsWith("SIM_E2E_") && !config.batchCode.startsWith("MOCK_")) {
