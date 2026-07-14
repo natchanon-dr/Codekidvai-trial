@@ -31,6 +31,27 @@ interface OutcomeReport {
   atRiskCount?: number | null;
 }
 
+interface LiveProgress {
+  student: string;
+  totalStudents: number;
+  task: string;
+  totalTasks: number;
+  op: string;
+  completedCalls: number;
+  totalCalls: number;
+  elapsedMs: number;
+  etaSec: number;
+}
+
+interface FinalStats {
+  totalRequests: number;
+  totalDurationSec: number;
+  slowestMs: number;
+  slowestEndpoint: string;
+  p50Ms: number;
+  p95Ms: number;
+}
+
 type StepStatus = "waiting" | "running" | "completed" | "failed" | "aborted";
 type OutcomeTab = "summary" | "metrics" | "charts" | "dataset" | "reports" | "logs";
 
@@ -172,6 +193,7 @@ export default function MockLab() {
     atRiskRate: 35,
     missingRate: 7,
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
+    tasksToSimulate: 3,
   });
   const [configError, setConfigError] = useState<string | null>(null);
 
@@ -192,6 +214,11 @@ export default function MockLab() {
   const [startTime, setStartTime]     = useState<number | null>(null);
   const [elapsed, setElapsed]         = useState(0);
   const [completedSteps, setCompleted] = useState<string[]>([]);
+
+  // live extract progress
+  const [liveProgress, setLiveProgress]   = useState<LiveProgress | null>(null);
+  const [lastProgressAt, setLastProgressAt] = useState<number | null>(null);
+  const [finalStats, setFinalStats]       = useState<FinalStats | null>(null);
 
   // UI state
   const [activeTab, setActiveTab]     = useState<OutcomeTab>("summary");
@@ -284,6 +311,9 @@ export default function MockLab() {
     setErrorCount(0);
     setStartTime(Date.now());
     setElapsed(0);
+    setLiveProgress(null);
+    setLastProgressAt(null);
+    setFinalStats(null);
     if (step !== "outcome") setOutcome(null);
     if (step === "run-all") {
       setStepStatus({});
@@ -338,6 +368,23 @@ export default function MockLab() {
             const payload = JSON.parse(dataMatch[1]);
             if (eventType === "log") {
               const msg = payload.msg ?? "";
+              // intercept machine-readable structured lines — don't show in log panel
+              if (msg.startsWith("[PROGRESS] ")) {
+                try {
+                  const p: LiveProgress = JSON.parse(msg.slice(11));
+                  setLiveProgress(p);
+                  setLastProgressAt(Date.now());
+                } catch { /* ignore */ }
+                continue;
+              }
+              if (msg.startsWith("[WORKLOAD] ")) {
+                // already computed client-side; no state update needed
+                continue;
+              }
+              if (msg.startsWith("[STATS] ")) {
+                try { setFinalStats(JSON.parse(msg.slice(8))); } catch { /* ignore */ }
+                continue;
+              }
               addLog(msg);
               if (msg.includes("❌")) setErrorCount(c => c + 1);
               // detect step transitions in run-all
@@ -534,6 +581,23 @@ export default function MockLab() {
                 </p>
               ) : null}
             </div>
+
+            {/* Tasks to Simulate */}
+            <div className="space-y-1 pt-1 border-t border-[#F1F5F9]">
+              <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Tasks to Simulate</label>
+              <select
+                value={config.tasksToSimulate ?? 3}
+                onChange={e => updateConfig("tasksToSimulate", +e.target.value)}
+                disabled={isRunning}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
+              >
+                <option value={3}>3 tasks — Quick Test</option>
+                <option value={5}>5 tasks</option>
+                <option value={10}>10 tasks</option>
+                <option value={0}>All selected tasks</option>
+              </select>
+              <p className="text-[11px] text-[#94A3B8]">Limits simulation scope without changing the selected task set.</p>
+            </div>
           </div>
 
         </div>
@@ -542,22 +606,65 @@ export default function MockLab() {
         <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 h-fit space-y-4 lg:sticky lg:top-4">
           <h3 className="text-sm font-bold text-[#0F172A]">Current Configuration</h3>
           <dl className="space-y-2.5 text-sm">
-            {([
-              ["Mock Code",         config.batchCode],
-              ["Students",          String(config.nStudents)],
-              ...(config.taskIds?.length
-                ? [["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? selectedSetId],
-                   ["Tasks",    String(config.taskIds.length)]]
-                : []),
-              ["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)} students)`],
-              ["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)} students)`],
-            ] as [string, string][]).map(([k, v]) => (
+            {((): [string, string][] => {
+              const totalTasks = config.taskIds?.length ?? config.nTasks;
+              const simTasks   = (config.tasksToSimulate ?? 0) === 0
+                ? totalTasks
+                : Math.min(config.tasksToSimulate ?? 3, totalTasks);
+              const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
+              const runCalls   = config.nStudents * simTasks * 3;
+              const subCalls   = nonMissing * simTasks;
+              const totalCalls = runCalls + subCalls;
+              const estMin     = Math.ceil(totalCalls * 0.4 / 60);
+              const rows: [string, string][] = [
+                ["Mock Code",         config.batchCode],
+                ["Students",          String(config.nStudents)],
+              ];
+              if (config.taskIds?.length) {
+                rows.push(["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? "—"]);
+                rows.push(["Tasks (selected)", String(config.taskIds.length)]);
+              }
+              rows.push(["Tasks to Simulate", simTasks === totalTasks ? `${simTasks} (all)` : `${simTasks} of ${totalTasks}`]);
+              rows.push(["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)})`]);
+              rows.push(["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)})`]);
+              return rows;
+            })().map(([k, v]) => (
               <div key={k} className="flex flex-col gap-0.5">
                 <dt className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</dt>
                 <dd className="font-mono text-xs text-[#0F172A] break-all">{v}</dd>
               </div>
             ))}
           </dl>
+
+          {/* Workload estimation */}
+          {(() => {
+            const totalTasks = config.taskIds?.length ?? config.nTasks;
+            const simTasks   = (config.tasksToSimulate ?? 0) === 0
+              ? totalTasks
+              : Math.min(config.tasksToSimulate ?? 3, totalTasks);
+            const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
+            const runCalls   = config.nStudents * simTasks * 3;
+            const subCalls   = nonMissing * simTasks;
+            const totalCalls = runCalls + subCalls;
+            const estSec     = Math.round(totalCalls * 0.4);
+            const estMin     = Math.floor(estSec / 60);
+            const estSecRem  = estSec % 60;
+            return (
+              <div className="border-t border-[#F1F5F9] pt-3 space-y-1.5">
+                <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">Extract Workload Estimate</p>
+                <div className="grid grid-cols-2 gap-1 text-[11px]">
+                  <span className="text-[#64748B]">run-answer calls</span>
+                  <span className="font-mono font-semibold text-[#0F172A] text-right">{runCalls.toLocaleString()}</span>
+                  <span className="text-[#64748B]">submit-answer calls</span>
+                  <span className="font-mono font-semibold text-[#0F172A] text-right">{subCalls.toLocaleString()}</span>
+                  <span className="text-[#64748B] font-semibold">total API calls</span>
+                  <span className="font-mono font-bold text-[#F37021] text-right">{totalCalls.toLocaleString()}</span>
+                  <span className="text-[#64748B]">est. duration</span>
+                  <span className="font-mono font-semibold text-[#0F172A] text-right">~{estMin}m {estSecRem}s</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -706,6 +813,73 @@ export default function MockLab() {
               <p className={`text-sm font-bold ${errorCount > 0 ? "text-red-600" : "text-[#0F172A]"}`}>{errorCount}</p>
             </div>
           </div>
+
+          {/* Live Extract Progress */}
+          {liveProgress && (
+            <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-[#0F172A]">Extract Live Progress</p>
+                {isRunning && lastProgressAt && Date.now() - lastProgressAt > 30000 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-[10px] font-bold text-amber-700">
+                    ⚠ No progress for {Math.floor((Date.now() - lastProgressAt) / 1000)}s — possible hang
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
+                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Student</p>
+                  <p className="font-mono font-bold text-[#0F172A]">{liveProgress.student}</p>
+                </div>
+                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
+                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Task</p>
+                  <p className="font-mono font-bold text-[#0F172A]">{liveProgress.task}</p>
+                </div>
+                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
+                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Operation</p>
+                  <p className="font-mono font-bold text-[#0F172A] truncate">{liveProgress.op}</p>
+                </div>
+              </div>
+              {liveProgress.totalCalls > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] text-[#64748B]">
+                    <span>{liveProgress.completedCalls} / {liveProgress.totalCalls} API calls</span>
+                    <span>ETA ≈ {Math.floor(liveProgress.etaSec / 60)}m {liveProgress.etaSec % 60}s</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[#F37021] transition-all duration-300"
+                      style={{ width: `${Math.round(liveProgress.completedCalls / liveProgress.totalCalls * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#94A3B8] text-right">
+                    {Math.round(liveProgress.completedCalls / liveProgress.totalCalls * 100)}% — elapsed {fmtElapsed(Math.floor(liveProgress.elapsedMs / 1000))}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Final Stats (after extract completes) */}
+          {finalStats && !isRunning && (
+            <div className="border-t border-[#F1F5F9] pt-4 space-y-2">
+              <p className="text-xs font-bold text-[#0F172A]">Extract Performance Report</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                {[
+                  ["Total Requests",   String(finalStats.totalRequests)],
+                  ["Total Duration",   `${finalStats.totalDurationSec}s`],
+                  ["p50 Latency",      `${finalStats.p50Ms}ms`],
+                  ["p95 Latency",      `${finalStats.p95Ms}ms`],
+                  ["Slowest",          `${finalStats.slowestMs}ms`],
+                  ["Slowest Endpoint", finalStats.slowestEndpoint.split(":")[0]],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 space-y-0.5">
+                    <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">{k}</p>
+                    <p className="font-mono font-bold text-[#0F172A] truncate">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

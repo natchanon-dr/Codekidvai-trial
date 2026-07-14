@@ -23,6 +23,8 @@ export interface MockConfig {
   // optional: use real task IDs from a real class instead of generating dummy tasks
   taskIds?: string[];
   taskSetId?: string;
+  // limit how many tasks to simulate (0 = all selected tasks)
+  tasksToSimulate?: number;
 }
 
 export interface MockOutcomeData {

@@ -163,6 +163,9 @@ async function runStep(
       if (config.taskIds?.length) {
         extractArgs.push("--task-ids", config.taskIds.join(","));
       }
+      if (config.tasksToSimulate != null && config.tasksToSimulate > 0) {
+        extractArgs.push("--tasks-to-simulate", String(config.tasksToSimulate));
+      }
       await runProcess(send, "extract", "node", extractArgs, PROJECT_ROOT, signal);
       break;
     }

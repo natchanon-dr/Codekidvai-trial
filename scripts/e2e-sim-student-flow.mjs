@@ -39,6 +39,7 @@ const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"] ?? 
 const API_BASE     = opts["api-base"]      ?? "http://localhost:3000";
 // real task IDs — when provided, load tasks by ID instead of BATCH_CODE_T% pattern
 const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
+const TASKS_TO_SIMULATE = parseInt(opts["tasks-to-simulate"] ?? "0", 10);
 
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
@@ -103,26 +104,114 @@ const { data: profileRows } = await admin.from("mst_profiles")
   .order("participant_code");
 if (!profileRows?.length) throw new Error(`No student profiles found for batch ${BATCH_CODE}`);
 
-const N_STUDENTS = profileRows.length;
-const atRiskFrom = N_STUDENTS - Math.round(N_STUDENTS * AT_RISK_RATE / 100) + 1;
+const N_STUDENTS  = profileRows.length;
+const atRiskFrom  = N_STUDENTS - Math.round(N_STUDENTS * AT_RISK_RATE / 100) + 1;
 const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
 
+// Slice tasks for simulation (TASKS_TO_SIMULATE = 0 means all)
+const simTasks = (TASKS_TO_SIMULATE > 0 && TASKS_TO_SIMULATE < taskAnswers.length)
+  ? taskAnswers.slice(0, TASKS_TO_SIMULATE)
+  : taskAnswers;
+
+// Workload estimation (machine-readable for UI + human-readable)
+const runAnswerTotal   = N_STUDENTS * simTasks.length * 3; // 2 wrong + 1 final per task
+const submitAnswerTotal = (N_STUDENTS - missingCount) * simTasks.length;
+totalApiCalls = runAnswerTotal + submitAnswerTotal;
+const estimatedSeconds = Math.round(totalApiCalls * 0.4);
+
+console.log(`[WORKLOAD] ${JSON.stringify({
+  students: N_STUDENTS, tasks: simTasks.length,
+  runAnswerCalls: runAnswerTotal, submitAnswerCalls: submitAnswerTotal,
+  totalCalls: totalApiCalls, estimatedSeconds,
+})}`);
+
 console.log(`  batch  : ${batch.batch_code} (${batch.batch_id})`);
-console.log(`  tasks  : ${taskAnswers.map(t => t.task_code).join(", ")}`);
+console.log(`  tasks  : ${taskAnswers.length} loaded → ${simTasks.length} simulated`);
 console.log(`  students loaded: ${N_STUDENTS}`);
 console.log(`  at-risk threshold: student ${atRiskFrom}+ (${Math.round(N_STUDENTS * AT_RISK_RATE / 100)} students)`);
 console.log(`  missing-submit: ${missingCount} students`);
+console.log(`  estimated API calls: ${totalApiCalls} (run=${runAnswerTotal} submit=${submitAnswerTotal})`);
+console.log(`  estimated duration: ~${Math.ceil(estimatedSeconds / 60)}m ${estimatedSeconds % 60}s`);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-async function apiPost(path, body, jwt) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
+const SLOW_THRESHOLD_MS  = 5000;
+const REQUEST_TIMEOUT_MS = 30000;
+
+// Shared counters — safe in single-threaded Node.js event loop
+let completedCalls  = 0;
+let totalApiCalls   = 0; // set after simTasks is known
+let flowStartTime   = 0; // set at start of student flow
+const requestDurations = [];
+let slowestMs = 0;
+let slowestEndpoint = "";
+
+/**
+ * Instrumented fetch with 30-second hard timeout.
+ * Throws on timeout — caller should let the error propagate to stop the pipeline.
+ * @param {string} ctx.student  "S3/10"
+ * @param {string} ctx.task     "T2/5"
+ */
+async function timedFetch(path, body, jwt, label, ctx = {}) {
+  const url = `${API_BASE}${path}`;
+  const t0 = Date.now();
+  const ctxTag = ctx.student ? ` [${ctx.student}][${ctx.task}]` : "";
+  console.log(`    [HTTP] START ${ctxTag} ${label} → POST ${path}`);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let res, text;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    text = await res.text();
+    clearTimeout(timeout);
+  } catch (err) {
+    clearTimeout(timeout);
+    const ms = Date.now() - t0;
+    if (err.name === "AbortError") {
+      console.log(`    [HTTP] TIMEOUT${ctxTag} ${label} → no response after ${ms}ms — stopping pipeline`);
+      throw new Error(`TIMEOUT: ${label} on ${path}${ctxTag} after ${ms}ms`);
+    }
+    console.log(`    [HTTP] ERROR ${ctxTag} ${label} → ${err.message} (${ms}ms)`);
+    return { ok: false, status: 0, data: null };
+  }
+
+  const ms = Date.now() - t0;
+  requestDurations.push(ms);
+  if (ms > slowestMs) { slowestMs = ms; slowestEndpoint = `${label}:${path}`; }
+
+  console.log(`    [HTTP] ${res.ok ? "DONE " : "FAIL "} ${ctxTag} ${label} → ${res.status} (${ms}ms)`);
+  if (ms >= SLOW_THRESHOLD_MS) {
+    console.log(`    [HTTP] WARNING${ctxTag} ${label} took ${ms}ms — exceeded ${SLOW_THRESHOLD_MS}ms threshold`);
+  }
+
+  // Emit machine-readable progress for the UI
+  completedCalls++;
+  const elapsedMs = Date.now() - flowStartTime;
+  const avgMs     = elapsedMs / completedCalls;
+  const etaSec    = totalApiCalls > 0
+    ? Math.round(avgMs * Math.max(0, totalApiCalls - completedCalls) / 1000)
+    : 0;
+  console.log(`[PROGRESS] ${JSON.stringify({
+    ...ctx,
+    op: label,
+    completedCalls,
+    totalCalls: totalApiCalls,
+    elapsedMs,
+    etaSec,
+  })}`);
+
   try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
   catch { return { ok: res.ok, status: res.status, data: text }; }
+}
+
+async function apiPost(path, body, jwt, label, ctx) {
+  return timedFetch(path, body, jwt, label ?? path, ctx);
 }
 
 async function createSession(profileId, taskId, batchId) {
@@ -143,29 +232,33 @@ const studentTokens = new Map();
 for (const prof of profileRows) {
   // Email derived from participant_code
   const email = `${prof.participant_code.toLowerCase().replace(/_/g, ".")}@ckv-mock.local`;
+  const loginT0 = Date.now();
   const { data: authData, error } = await anonClient.auth.signInWithPassword({ email, password: PASSWORD });
+  const loginMs = Date.now() - loginT0;
   if (error || !authData?.session?.access_token) {
-    console.warn(`  ⚠️  Sign-in failed for ${email}: ${error?.message ?? "no session"}`);
+    console.warn(`  ⚠️  Login ✗ ${prof.participant_code} (${loginMs}ms): ${error?.message ?? "no session"}`);
     await new Promise(r => setTimeout(r, 500));
     continue;
   }
   studentTokens.set(prof.participant_code, { jwt: authData.session.access_token, profileId: prof.profile_id });
   const num = parseInt(prof.participant_code.split("_S").pop() ?? "0", 10);
-  if (num % 10 === 0) console.log(`  ${num}/${N_STUDENTS} signed in`);
+  const slowTag = loginMs >= SLOW_THRESHOLD_MS ? ` ⚠️ SLOW (${loginMs}ms)` : ``;
+  if (num % 5 === 0 || loginMs >= SLOW_THRESHOLD_MS) console.log(`  Login ✓ ${prof.participant_code} (${loginMs}ms)${slowTag}`);
   await new Promise(r => setTimeout(r, 250));
 }
 console.log(`  ✅ ${studentTokens.size} tokens acquired`);
 
 // ── 3. Simulate student flow ──────────────────────────────────────────────────
-console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${taskAnswers.length} tasks)...`);
+flowStartTime = Date.now();
+console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${simTasks.length} tasks, ${totalApiCalls} est. API calls)...`);
 
 const results = { sessions: 0, runs: 0, submits: 0, skipped: 0, errors: [] };
 const CONCURRENCY = 5;
 
 async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, studentIdx, totalStudents) {
-  const taskCount = taskAnswers.length;
+  const taskCount = simTasks.length;
   for (let ti = 0; ti < taskCount; ti++) {
-    const task = taskAnswers[ti];
+    const task = simTasks[ti];
     const taskLabel = task.task_code ?? task.task_id;
     let sessionId;
     try {
@@ -176,42 +269,40 @@ async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, stu
       continue;
     }
 
+    const prefix = `  [S${studentIdx}/${totalStudents}][T${ti+1}/${taskCount}] ${code}/${taskLabel}`;
+    const ctx = { student: `S${studentIdx}/${totalStudents}`, task: `T${ti+1}/${taskCount}` };
+    console.log(`${prefix} — starting`);
+
     // Run wrong × 2
     for (let r = 0; r < 2; r++) {
-      const t0 = Date.now();
       const run = await apiPost("/api/student/run-answer", {
         session_id: sessionId, task_id: task.task_id, answer_text: task.wrong,
-      }, jwt);
-      const ms = Date.now() - t0;
+      }, jwt, `run-wrong-${r+1}`, ctx);
       if (run.ok) results.runs++;
       else results.errors.push(`run-wrong ${code} ${taskLabel}: ${run.status}`);
-      console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} run-wrong-${r+1} ${run.ok ? "✓" : "✗"} ${ms}ms`);
+      console.log(`${prefix} Run SQL (wrong ${r+1}/2) ${run.ok ? "✓" : "✗"}`);
       await new Promise(r => setTimeout(r, 50));
     }
 
     // 3rd run: correct for passing, wrong for at_risk
-    const t1 = Date.now();
     const run3 = await apiPost("/api/student/run-answer", {
       session_id: sessionId, task_id: task.task_id,
       answer_text: isAtRisk ? task.wrong : task.correct,
-    }, jwt);
-    const ms1 = Date.now() - t1;
+    }, jwt, `run-final`, ctx);
     if (run3.ok) results.runs++;
     else results.errors.push(`run-3rd ${code} ${taskLabel}: ${run3.status}`);
-    console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} run-final ${run3.ok ? "✓" : "✗"} ${ms1}ms`);
+    console.log(`${prefix} Run SQL (final) ${run3.ok ? "✓" : "✗"}`);
     await new Promise(r => setTimeout(r, 50));
 
     // Submit (skip if missing)
     if (isMissing) { results.skipped++; continue; }
-    const t2 = Date.now();
     const sub = await apiPost("/api/student/submit-answer", {
       session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
       answer_text: isAtRisk ? task.wrong : task.correct,
-    }, jwt);
-    const ms2 = Date.now() - t2;
+    }, jwt, `submit`, ctx);
     if (sub.ok) results.submits++;
     else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
-    console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} submit ${sub.ok ? "✓" : "✗"} ${ms2}ms`);
+    console.log(`${prefix} Submit ${sub.ok ? "✓" : "✗"}`);
     await new Promise(r => setTimeout(r, 80));
   }
 }
@@ -252,4 +343,18 @@ console.log(`
 if (results.errors.length > 0) {
   results.errors.slice(0, 10).forEach(e => console.log(`  ⚠️  ${e}`));
 }
+// ── 5. Stats report ───────────────────────────────────────────────────────────
+const sorted = [...requestDurations].sort((a, b) => a - b);
+const p50 = sorted.length ? sorted[Math.floor(sorted.length * 0.5)] : 0;
+const p95 = sorted.length ? sorted[Math.floor(sorted.length * 0.95)] : 0;
+const totalDurationSec = Math.round((Date.now() - flowStartTime) / 1000);
+console.log(`[STATS] ${JSON.stringify({
+  totalRequests: sorted.length,
+  totalDurationSec,
+  slowestMs,
+  slowestEndpoint,
+  p50Ms: p50,
+  p95Ms: p95,
+})}`);
+console.log(`  p50=${p50}ms  p95=${p95}ms  slowest=${slowestMs}ms (${slowestEndpoint})  total=${totalDurationSec}s`);
 console.log("✅ Flow complete.");
