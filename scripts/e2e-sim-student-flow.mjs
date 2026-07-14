@@ -139,11 +139,13 @@ for (const prof of profileRows) {
   const { data: authData, error } = await anonClient.auth.signInWithPassword({ email, password: PASSWORD });
   if (error || !authData?.session?.access_token) {
     console.warn(`  ⚠️  Sign-in failed for ${email}: ${error?.message ?? "no session"}`);
+    await new Promise(r => setTimeout(r, 500));
     continue;
   }
   studentTokens.set(prof.participant_code, { jwt: authData.session.access_token, profileId: prof.profile_id });
   const num = parseInt(prof.participant_code.split("_S").pop() ?? "0", 10);
   if (num % 10 === 0) console.log(`  ${num}/${N_STUDENTS} signed in`);
+  await new Promise(r => setTimeout(r, 250));
 }
 console.log(`  ✅ ${studentTokens.size} tokens acquired`);
 
