@@ -178,14 +178,30 @@ async function runStep(
     case "train":
     case "evaluate": {
       send(makeSseChunk("progress", { step, pct: 10 }));
-      const sessionFile = `session_${today}_${batchTag}.csv`;
-      const attemptFile = `attempt_${today}_${batchTag}.csv`;
+      // Resolve actual snapshot date from existing CSV to handle midnight crossover:
+      // process step may have written session_YYYYMMDD_TAG.csv on a different calendar
+      // day than when train/evaluate runs.
+      const rawDir = path.join(NB_DIR, "data", "raw");
+      const fsSync = await import("node:fs");
+      let snapshotDate = today;
+      try {
+        const existing = fsSync.readdirSync(rawDir)
+          .filter(f => f.startsWith("session_") && f.endsWith(`_${batchTag}.csv`))
+          .sort()
+          .reverse();
+        if (existing.length > 0) {
+          const m = existing[0].match(/^session_(\d{8})_/);
+          if (m) snapshotDate = m[1];
+        }
+      } catch { /* rawDir missing — fall through to today */ }
+      const sessionFile = `session_${snapshotDate}_${batchTag}.csv`;
+      const attemptFile = `attempt_${snapshotDate}_${batchTag}.csv`;
       await runProcess(send, step, "python", [
         "run_e2e_notebooks.py",
         "--session-file", sessionFile,
         "--attempt-file", attemptFile,
         "--batch-tag",    batchTag,
-        "--snapshot-date", today,
+        "--snapshot-date", snapshotDate,
       ], NB_DIR, signal);
       break;
     }
