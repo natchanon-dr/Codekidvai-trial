@@ -33,8 +33,30 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const BATCH_CODE = "TEST_BATCH_E2E_001";
+// ── CLI args ──────────────────────────────────────────────────────────────────
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const out = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith("--")) {
+      const key = args[i].slice(2);
+      const val = args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : "true";
+      out[key] = val;
+    }
+  }
+  return out;
+}
+const cliOpts = parseArgs();
+const BATCH_CODE = cliOpts["batch"] ?? "SIM_E2E_2026_001";
+
+if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_") && !BATCH_CODE.startsWith("TEST_")) {
+  console.error(`ERROR: Batch code must start with SIM_E2E_, MOCK_, or TEST_. Got: ${BATCH_CODE}`);
+  process.exit(1);
+}
+
 const TODAY = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+// Derive short batch tag for filename (strip SIM_E2E_ prefix, replace _ with -)
+const BATCH_TAG = BATCH_CODE.replace(/^(SIM_E2E_|MOCK_|TEST_BATCH_E2E_)/, "").replace(/_/g, "-") || BATCH_CODE;
 const OUT_DIR = path.join("notebooks", "data", "raw");
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -163,8 +185,8 @@ const attemptRows = attemptRaw.map(r => ({
 }));
 
 // ── 5. Write CSVs ─────────────────────────────────────────────────────────────
-const sessionFile = path.join(OUT_DIR, `session_${TODAY}_SIM_E2E.csv`);
-const attemptFile = path.join(OUT_DIR, `attempt_${TODAY}_SIM_E2E.csv`);
+const sessionFile = path.join(OUT_DIR, `session_${TODAY}_${BATCH_TAG}.csv`);
+const attemptFile = path.join(OUT_DIR, `attempt_${TODAY}_${BATCH_TAG}.csv`);
 fs.writeFileSync(sessionFile, "﻿" + toCsv(sessionRows), "utf8");
 fs.writeFileSync(attemptFile, "﻿" + toCsv(attemptRows), "utf8");
 

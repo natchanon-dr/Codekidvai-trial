@@ -30,7 +30,21 @@ function loadEnv(p) {
 }
 loadEnv(".env.local");
 
-const EXECUTE = process.argv.includes("--execute");
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const out = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith("--")) {
+      const key = args[i].slice(2);
+      const val = args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : "true";
+      out[key] = val;
+    }
+  }
+  return out;
+}
+const resetOpts = parseArgs();
+const EXECUTE         = resetOpts["execute"] === "true" || process.argv.includes("--execute");
+const TARGET_BATCH    = resetOpts["batch"] ?? null; // if set, scope to this batch only
 const MODE = EXECUTE ? "EXECUTE" : "DRY-RUN";
 
 const admin = createClient(
@@ -39,7 +53,12 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-console.log(`\n══ SIM_E2E_2026 Reset [${MODE}] ══`);
+if (TARGET_BATCH && !TARGET_BATCH.startsWith("SIM_E2E_") && !TARGET_BATCH.startsWith("MOCK_")) {
+  console.error(`ERROR: --batch must start with SIM_E2E_ or MOCK_. Got: ${TARGET_BATCH}`);
+  process.exit(1);
+}
+
+console.log(`\n══ SIM_E2E Reset [${MODE}]${TARGET_BATCH ? ` — batch: ${TARGET_BATCH}` : " — all SIM/MOCK"} ══`);
 if (!EXECUTE) console.log("   Pass --execute to actually delete. Showing counts only.\n");
 
 let stepErrors = 0;
@@ -127,24 +146,37 @@ async function delChunked(label, table, col, ids) {
 }
 
 // ── resolve IDs ───────────────────────────────────────────────────────────────
-const { data: batchRow } = await admin.from("mst_experiment_batches")
-  .select("batch_id").eq("batch_code", "TEST_BATCH_E2E_001").maybeSingle();
-const batchId = batchRow?.batch_id;
+// If TARGET_BATCH specified, find that batch; otherwise find any SIM/MOCK batch rows
+const batchQuery = TARGET_BATCH
+  ? admin.from("mst_experiment_batches").select("batch_id").eq("batch_code", TARGET_BATCH)
+  : admin.from("mst_experiment_batches").select("batch_id").or("batch_code.like.SIM_E2E_%,batch_code.like.MOCK_%");
+const { data: batchRows } = await batchQuery;
+const batchId = TARGET_BATCH ? batchRows?.[0]?.batch_id ?? null : null; // single-batch mode only for FK filters
+const allBatchIds = (batchRows ?? []).map(b => b.batch_id);
 
-const { data: classRow } = await admin.from("tb_classes")
-  .select("class_id").eq("class_code", "TEST_CLASS_E2E").maybeSingle();
-const classId = classRow?.class_id;
+// For class: derive from batch code if possible
+const classCodeGuess = TARGET_BATCH ? `${TARGET_BATCH}_CLASS` : null;
+const classQuery = classCodeGuess
+  ? admin.from("tb_classes").select("class_id").eq("class_code", classCodeGuess)
+  : admin.from("tb_classes").select("class_id").like("class_code", "SIM_E2E_%");
+const { data: classRows } = await classQuery;
+const classId = classRows?.[0]?.class_id ?? null;
+
+console.log(`  target batch_id: ${batchId ?? "(multi-batch or not found)"}`);
+console.log(`  all matching batch_ids: ${allBatchIds.length}`);
 
 console.log(`  batch_id: ${batchId ?? "(not found — may already be deleted)"}`);
 console.log(`  class_id: ${classId ?? "(not found — may already be deleted)"}`);
 
-// Sim + Mock profile sets
-const simProfiles = await admin.from("mst_profiles").select("profile_id")
-  .or("participant_code.like.SIM_E2E_%,participant_code.in.(SIM_TEACHER_E2E,SIM_RESEARCHER_E2E)");
-const mockProfiles = await admin.from("mst_profiles").select("profile_id")
-  .like("participant_code", "MOCK_E2E_%");
-const simProfileIds = (simProfiles.data ?? []).map(p => p.profile_id);
-const mockProfileIds = (mockProfiles.data ?? []).map(p => p.profile_id);
+// Sim + Mock profile sets — scoped to TARGET_BATCH if set
+const profilePrefix = TARGET_BATCH ? `${TARGET_BATCH}_%` : null;
+const simProfilesQ = profilePrefix
+  ? admin.from("mst_profiles").select("profile_id").like("participant_code", profilePrefix)
+  : admin.from("mst_profiles").select("profile_id")
+      .or("participant_code.like.SIM_E2E_%,participant_code.like.MOCK_%,participant_code.in.(SIM_TEACHER_E2E,SIM_RESEARCHER_E2E)");
+const { data: simProfileData } = await simProfilesQ;
+const simProfileIds  = (simProfileData ?? []).map(p => p.profile_id);
+const mockProfileIds: string[] = []; // legacy — already covered by prefix query
 const allSimIds = [...new Set([...simProfileIds, ...mockProfileIds])];
 
 console.log(`  sim profiles: ${simProfileIds.length} | mock profiles: ${mockProfileIds.length}`);
@@ -238,22 +270,36 @@ await del("TEST_CLASS_E2E", "tb_classes", q => q.eq("class_code", "TEST_CLASS_E2
 
 // ── Step 9: Tasks ─────────────────────────────────────────────────────────────
 console.log("\n[Step 9] Tasks");
-await del("TEST_TASK_SQL_E2E_* tasks", "mst_tasks",
-  q => q.like("task_code", "TEST_TASK_SQL_E2E_%"));
+const taskPattern = TARGET_BATCH ? `${TARGET_BATCH}_T%` : "SIM_E2E_%_T%";
+await del(`tasks (${taskPattern})`, "mst_tasks", q => q.like("task_code", taskPattern));
+// Legacy pattern
+if (!TARGET_BATCH) {
+  await del("TEST_TASK_SQL_E2E_* tasks (legacy)", "mst_tasks",
+    q => q.like("task_code", "TEST_TASK_SQL_E2E_%"));
+}
 
 // ── Step 10: Batch ────────────────────────────────────────────────────────────
 console.log("\n[Step 10] Batch");
-await del("TEST_BATCH_E2E_001", "mst_experiment_batches",
-  q => q.eq("batch_code", "TEST_BATCH_E2E_001"));
+if (TARGET_BATCH) {
+  await del(`batch ${TARGET_BATCH}`, "mst_experiment_batches", q => q.eq("batch_code", TARGET_BATCH));
+} else {
+  await del("SIM_E2E_* batches", "mst_experiment_batches", q => q.like("batch_code", "SIM_E2E_%"));
+  await del("MOCK_* batches", "mst_experiment_batches", q => q.like("batch_code", "MOCK_%"));
+  // Legacy
+  await del("TEST_BATCH_E2E_001 (legacy)", "mst_experiment_batches", q => q.eq("batch_code", "TEST_BATCH_E2E_001"));
+}
 
 // ── Step 11: Profiles ─────────────────────────────────────────────────────────
 console.log("\n[Step 11] Profiles");
-await del("SIM_E2E_* profiles", "mst_profiles",
-  q => q.like("participant_code", "SIM_E2E_%"));
-await del("SIM_TEACHER/RESEARCHER_E2E profiles", "mst_profiles",
-  q => q.in("participant_code", ["SIM_TEACHER_E2E", "SIM_RESEARCHER_E2E"]));
-await del("MOCK_E2E_* profiles", "mst_profiles",
-  q => q.like("participant_code", "MOCK_E2E_%"));
+if (TARGET_BATCH) {
+  await del(`${TARGET_BATCH}_* profiles`, "mst_profiles",
+    q => q.like("participant_code", `${TARGET_BATCH}_%`));
+} else {
+  await del("SIM_E2E_* profiles", "mst_profiles", q => q.like("participant_code", "SIM_E2E_%"));
+  await del("MOCK_* profiles",    "mst_profiles", q => q.like("participant_code", "MOCK_%"));
+  await del("Legacy teacher/researcher", "mst_profiles",
+    q => q.in("participant_code", ["SIM_TEACHER_E2E", "SIM_RESEARCHER_E2E"]));
+}
 
 // ── Step 12: Auth users (admin API) ───────────────────────────────────────────
 console.log("\n[Step 12] Auth users (@ckv-mock.local)");

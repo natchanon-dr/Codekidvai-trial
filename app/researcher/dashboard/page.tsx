@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
+import MockLab from "./_components/MockLab";
 
 type ProfileDetail = {
   display_name: string | null;
@@ -196,6 +197,8 @@ export default function ResearcherDashboardPage() {
             )}
           </div>
         </section>
+        {/* Mock Evaluation Lab */}
+        <MockLab />
       </main>
     </div>
   );

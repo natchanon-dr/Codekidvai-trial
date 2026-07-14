@@ -2,21 +2,50 @@
  * e2e-sim-student-flow.mjs
  *
  * Phase 2 — Simulated Student Activity
- * For each of 40 sim students, exercises the REAL application API:
- *   1. supabase.auth.signInWithPassword → get JWT
- *   2. admin client inserts trn_learning_sessions (mimics browser startLearningSession)
- *   3. fetch POST /api/student/run-answer (wrong × 2, then correct/wrong × 1)
- *   4. fetch POST /api/student/submit-answer
+ * For each sim student, exercises the REAL application API.
  *
- * Distribution:
- *   Students 001–030 (passing):  3 runs per task (wrong×2, correct×1), submit correct
- *   Students 031–040 (at_risk):  3 runs per task (wrong×3),            submit wrong
+ * CLI args:
+ *   --batch         SIM_E2E_2026_001  (required)
+ *   --students      40                (total students to process, default: all in batch)
+ *   --at-risk-rate  35                (% at-risk, default 35)
+ *   --missing-rate  7                 (% who skip submit, default 7)
+ *   --api-base      http://localhost:3000
  *
- * Rules: no direct submission/attempt/rubric inserts — all go through real API.
+ * Flow per student per task:
+ *   run-answer (wrong × 2) → run-answer (correct or wrong) → submit-answer
+ *   missing-rate students: do runs but skip submit
  */
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
+// ── CLI args ──────────────────────────────────────────────────────────────────
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const out = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith("--")) {
+      const key = args[i].slice(2);
+      const val = args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : "true";
+      out[key] = val;
+    }
+  }
+  return out;
+}
+const opts = parseArgs();
+
+const BATCH_CODE   = opts["batch"]         ?? "SIM_E2E_2026_001";
+const AT_RISK_RATE = Math.max(0, Math.min(100, parseInt(opts["at-risk-rate"] ?? "35", 10)));
+const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"] ?? "7",  10)));
+const API_BASE     = opts["api-base"]      ?? "http://localhost:3000";
+
+if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
+  console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
+  process.exit(1);
+}
+
+const PASSWORD = "69056020";
+
+// ── env ───────────────────────────────────────────────────────────────────────
 function loadEnv(p) {
   if (!fs.existsSync(p)) return;
   for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
@@ -42,56 +71,46 @@ const anonClient = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const API_BASE = "http://localhost:3000";
-const PASSWORD = "69056020";
-const N_STUDENTS = 40;
-const AT_RISK_FROM = 31; // students 031-040 are at_risk
-
 // ── 1. Load batch + tasks + student profiles ──────────────────────────────────
-console.log("[0] Loading test data from DB...");
-const { data: batch } = await admin
-  .from("mst_experiment_batches")
-  .select("batch_id, batch_code")
-  .eq("batch_code", "TEST_BATCH_E2E_001")
-  .single();
-if (!batch) throw new Error("TEST_BATCH_E2E_001 not found — run e2e-sim-create-test-data.mjs first");
+console.log(`[0] Loading test data for batch ${BATCH_CODE}...`);
+const { data: batch } = await admin.from("mst_experiment_batches")
+  .select("batch_id, batch_code").eq("batch_code", BATCH_CODE).single();
+if (!batch) throw new Error(`Batch ${BATCH_CODE} not found — run e2e-sim-create-test-data.mjs first`);
 
-const { data: taskRows } = await admin
-  .from("mst_tasks")
-  .select("task_id, task_code, expected_answer, scoring_rubric_json, difficulty_level")
-  .like("task_code", "TEST_TASK_SQL_E2E_%")
-  .eq("is_active", true)
-  .order("task_code");
-if (!taskRows?.length) throw new Error("No TEST_TASK_SQL_E2E tasks found");
+const { data: taskRows } = await admin.from("mst_tasks")
+  .select("task_id, task_code, expected_sql, scoring_rubric_json, difficulty_level")
+  .like("task_code", `${BATCH_CODE}_T%`)
+  .eq("is_active", true).order("task_code");
+if (!taskRows?.length) throw new Error(`No tasks found for batch ${BATCH_CODE}`);
 
-// Determine correct/wrong SQL per task from rubric keywords or expected_answer
-const taskAnswers = taskRows.map(t => {
-  const rubric = t.scoring_rubric_json;
-  // Correct: use expected_answer
-  const correct = (t.expected_answer ?? "SELECT * FROM students;").replace(/;$/, "").trim();
-  // Wrong: generic SQL that won't match rubric keywords enough
-  const wrong = "SELECT * FROM students";
-  return { ...t, correct, wrong };
-});
-console.log(`  batch: ${batch.batch_code} (${batch.batch_id})`);
-console.log(`  tasks: ${taskAnswers.map(t => t.task_code).join(", ")}`);
+// Derive correct/wrong answer per task from expected_sql
+const taskAnswers = taskRows.map(t => ({
+  ...t,
+  correct: (t.expected_sql ?? "SELECT * FROM students").replace(/;$/, "").trim(),
+  wrong:   "SELECT name FROM nonexistent_table_xyz",
+}));
 
-const { data: profileRows } = await admin
-  .from("mst_profiles")
+const { data: profileRows } = await admin.from("mst_profiles")
   .select("profile_id, participant_code")
-  .like("participant_code", "SIM_E2E_S%")
-  .order("participant_code")
-  .limit(N_STUDENTS);
-console.log(`  students loaded: ${profileRows.length}`);
+  .like("participant_code", `${BATCH_CODE}_S%`)
+  .order("participant_code");
+if (!profileRows?.length) throw new Error(`No student profiles found for batch ${BATCH_CODE}`);
+
+const N_STUDENTS = profileRows.length;
+const atRiskFrom = N_STUDENTS - Math.round(N_STUDENTS * AT_RISK_RATE / 100) + 1;
+const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
+
+console.log(`  batch  : ${batch.batch_code} (${batch.batch_id})`);
+console.log(`  tasks  : ${taskAnswers.map(t => t.task_code).join(", ")}`);
+console.log(`  students loaded: ${N_STUDENTS}`);
+console.log(`  at-risk threshold: student ${atRiskFrom}+ (${Math.round(N_STUDENTS * AT_RISK_RATE / 100)} students)`);
+console.log(`  missing-submit: ${missingCount} students`);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 async function apiPost(path, body, jwt) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${jwt}`,
-    },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
     body: JSON.stringify(body),
   });
   const text = await res.text();
@@ -100,134 +119,113 @@ async function apiPost(path, body, jwt) {
 }
 
 async function createSession(profileId, taskId, batchId) {
-  const { data, error } = await admin
-    .from("trn_learning_sessions")
-    .insert({
-      profile_id: profileId,
-      task_id: taskId,
-      batch_id: batchId,
-      started_at: new Date().toISOString(),
-      status: "in_progress",
-      device_type: "desktop",
-      browser_name: "SimulatedE2E",
-      user_agent: "SIM_E2E_2026/1.0",
-      last_event_at: new Date().toISOString(),
-    })
-    .select("session_id")
-    .single();
+  const { data, error } = await admin.from("trn_learning_sessions").insert({
+    profile_id: profileId, task_id: taskId, batch_id: batchId,
+    started_at: new Date().toISOString(), status: "in_progress",
+    device_type: "desktop", browser_name: "SimulatedE2E",
+    user_agent: `${BATCH_CODE}/1.0`, last_event_at: new Date().toISOString(),
+  }).select("session_id").single();
   if (error) throw new Error(`Session insert: ${error.message}`);
   return data.session_id;
 }
 
-// ── 2. Sign in all students first ────────────────────────────────────────────
-console.log(`\n[1] Signing in ${N_STUDENTS} students (this may take ~20s)...`);
-const studentTokens = new Map(); // participantCode → access_token
+// ── 2. Sign in all students ───────────────────────────────────────────────────
+console.log(`\n[1] Signing in ${N_STUDENTS} students...`);
+const studentTokens = new Map();
 
 for (const prof of profileRows) {
-  const num = parseInt(prof.participant_code.replace("SIM_E2E_S", ""), 10);
-  const email = `sim.e2e.s${String(num).padStart(3, "0")}@ckv-mock.local`;
-
-  const { data: authData, error } = await anonClient.auth.signInWithPassword({
-    email,
-    password: PASSWORD,
-  });
+  // Email derived from participant_code
+  const email = `${prof.participant_code.toLowerCase().replace(/_/g, ".")}@ckv-mock.local`;
+  const { data: authData, error } = await anonClient.auth.signInWithPassword({ email, password: PASSWORD });
   if (error || !authData?.session?.access_token) {
     console.warn(`  ⚠️  Sign-in failed for ${email}: ${error?.message ?? "no session"}`);
     continue;
   }
-  studentTokens.set(prof.participant_code, {
-    jwt: authData.session.access_token,
-    profileId: prof.profile_id,
-  });
-  if (num % 10 === 0) process.stdout.write(`  ${num}/${N_STUDENTS} signed in\n`);
+  studentTokens.set(prof.participant_code, { jwt: authData.session.access_token, profileId: prof.profile_id });
+  const num = parseInt(prof.participant_code.split("_S").pop() ?? "0", 10);
+  if (num % 10 === 0) console.log(`  ${num}/${N_STUDENTS} signed in`);
 }
-console.log(`  ✅  ${studentTokens.size} tokens acquired`);
+console.log(`  ✅ ${studentTokens.size} tokens acquired`);
 
 // ── 3. Simulate student flow ──────────────────────────────────────────────────
-console.log(`\n[2] Simulating student flow (${profileRows.length} students × ${taskAnswers.length} tasks)...`);
+console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${taskAnswers.length} tasks)...`);
 
-const results = { sessions: 0, runs: 0, submits: 0, errors: [] };
+const results = { sessions: 0, runs: 0, submits: 0, skipped: 0, errors: [] };
 const CONCURRENCY = 5;
 
-async function simulateOneStudent(prof, jwt, profileId, isAtRisk) {
+async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing) {
   for (const task of taskAnswers) {
     let sessionId;
     try {
       sessionId = await createSession(profileId, task.task_id, batch.batch_id);
       results.sessions++;
     } catch (e) {
-      results.errors.push(`session ${prof} task ${task.task_code}: ${e.message}`);
+      results.errors.push(`session ${code} ${task.task_code}: ${e.message}`);
       continue;
     }
 
     // Run wrong × 2
     for (let r = 0; r < 2; r++) {
       const run = await apiPost("/api/student/run-answer", {
-        session_id: sessionId,
-        task_id: task.task_id,
-        answer_text: task.wrong,
+        session_id: sessionId, task_id: task.task_id, answer_text: task.wrong,
       }, jwt);
-      if (!run.ok) results.errors.push(`run-wrong ${prof} ${task.task_code}: ${run.status}`);
-      else results.runs++;
-      await new Promise(res => setTimeout(res, 50)); // small delay
+      if (run.ok) results.runs++;
+      else results.errors.push(`run-wrong ${code} ${task.task_code}: ${run.status}`);
+      await new Promise(r => setTimeout(r, 50));
     }
 
-    // Run 3rd: correct for passing, wrong for at_risk
-    const thirdAnswer = isAtRisk ? task.wrong : task.correct;
+    // 3rd run: correct for passing, wrong for at_risk
     const run3 = await apiPost("/api/student/run-answer", {
-      session_id: sessionId,
-      task_id: task.task_id,
-      answer_text: thirdAnswer,
+      session_id: sessionId, task_id: task.task_id,
+      answer_text: isAtRisk ? task.wrong : task.correct,
     }, jwt);
-    if (!run3.ok) results.errors.push(`run-3rd ${prof} ${task.task_code}: ${run3.status}`);
-    else results.runs++;
-    await new Promise(res => setTimeout(res, 50));
+    if (run3.ok) results.runs++;
+    else results.errors.push(`run-3rd ${code} ${task.task_code}: ${run3.status}`);
+    await new Promise(r => setTimeout(r, 50));
 
-    // Submit
-    const submitAnswer = isAtRisk ? task.wrong : task.correct;
+    // Submit (skip if missing)
+    if (isMissing) { results.skipped++; continue; }
     const sub = await apiPost("/api/student/submit-answer", {
-      session_id: sessionId,
-      task_id: task.task_id,
-      batch_id: batch.batch_id,
-      answer_text: submitAnswer,
+      session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
+      answer_text: isAtRisk ? task.wrong : task.correct,
     }, jwt);
-    if (!sub.ok) results.errors.push(`submit ${prof} ${task.task_code}: ${sub.status} ${JSON.stringify(sub.data).slice(0,120)}`);
-    else results.submits++;
-    await new Promise(res => setTimeout(res, 80));
+    if (sub.ok) results.submits++;
+    else results.errors.push(`submit ${code} ${task.task_code}: ${sub.status}`);
+    await new Promise(r => setTimeout(r, 80));
   }
 }
 
-// Process in batches of CONCURRENCY
 const studentList = [...studentTokens.entries()];
+const missingSet = new Set(studentList.slice(0, missingCount).map(([c]) => c));
 let processed = 0;
+
 for (let i = 0; i < studentList.length; i += CONCURRENCY) {
   const chunk = studentList.slice(i, i + CONCURRENCY);
   await Promise.all(chunk.map(([code, { jwt, profileId }]) => {
-    const num = parseInt(code.replace("SIM_E2E_S", ""), 10);
-    const isAtRisk = num >= AT_RISK_FROM;
-    return simulateOneStudent(code, jwt, profileId, isAtRisk);
+    const num = parseInt(code.split("_S").pop() ?? "0", 10);
+    const isAtRisk = num >= atRiskFrom;
+    const isMissing = missingSet.has(code);
+    return simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing);
   }));
   processed += chunk.length;
-  process.stdout.write(`  ${processed}/${studentList.length} students done\n`);
+  console.log(`  ${processed}/${studentList.length} students done`);
 }
 
 // ── 4. Report ─────────────────────────────────────────────────────────────────
-const passing = [...studentTokens.keys()].filter(c => parseInt(c.replace("SIM_E2E_S",""),10) < AT_RISK_FROM).length;
-const atRisk = studentTokens.size - passing;
+const passing = studentList.filter(([c]) => parseInt(c.split("_S").pop() ?? "0", 10) < atRiskFrom).length;
+const atRisk  = studentTokens.size - passing;
 
 console.log(`
 ── Student Flow Complete ──
-  Sessions created : ${results.sessions}
-  Run-answer calls : ${results.runs}
-  Submit calls     : ${results.submits}
-  Passing students : ${passing} (SIM_E2E_S001–S030, submitted correct SQL)
-  At-risk students : ${atRisk}  (SIM_E2E_S031–S040, submitted wrong SQL)
-  Errors           : ${results.errors.length}
+  Sessions   : ${results.sessions}
+  Run calls  : ${results.runs}
+  Submits    : ${results.submits}
+  Skipped    : ${results.skipped} (missing-rate)
+  Passing    : ${passing}
+  At-risk    : ${atRisk}
+  Errors     : ${results.errors.length}
 `);
-
 if (results.errors.length > 0) {
-  console.log("Errors (first 10):");
-  results.errors.slice(0, 10).forEach(e => console.log("  ⚠️ ", e));
+  results.errors.slice(0, 10).forEach(e => console.log(`  ⚠️  ${e}`));
 }
-
-console.log("✅  Flow complete — run e2e-sim-verify-db.mjs next");
+console.log("✅ Flow complete.");
