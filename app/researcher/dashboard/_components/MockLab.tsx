@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase-client";
 import type { MockConfig, MockOutcomeData, MockStep } from "@/lib/mock-pipeline";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 interface OutcomeReport {
-  lrAuc?: number; lrF1?: number;
-  rfAuc?: number; rfF1?: number;
-  majorityAuc?: number; majorityF1?: number;
-  confusion_matrix?: number[][];
-  split_info?: string;
-  n_samples?: number;
-  n_at_risk?: number;
+  lrAuc?: number | null; lrF1?: number | null;
+  rfAuc?: number | null; rfF1?: number | null;
+  majorityAuc?: number | null; majorityF1?: number | null;
+  confusionMatrix?: number[][] | null;
+  splitInfo?: string | null;
+  sampleCount?: number | null;
+  atRiskCount?: number | null;
 }
 
 // ── mini chart helpers ────────────────────────────────────────────────────────
@@ -122,9 +123,14 @@ export default function MockLab() {
     addLog(`── Starting: ${step} ──`);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
       const res = await fetch(`/api/researcher/mock-pipeline/${step}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(config),
       });
 
@@ -167,16 +173,16 @@ export default function MockLab() {
   function parseOutcome(payload: { report?: OutcomeReport }) {
     const r = payload.report ?? {};
     setOutcome({
-      lrAuc:          r.lrAuc          ?? null,
-      lrF1:           r.lrF1           ?? null,
-      rfAuc:          r.rfAuc          ?? null,
-      rfF1:           r.rfF1           ?? null,
-      majorityAuc:    r.majorityAuc    ?? null,
-      majorityF1:     r.majorityF1     ?? null,
-      confusionMatrix: r.confusion_matrix ?? null,
-      splitInfo:       r.split_info    ?? null,
-      sampleCount:     r.n_samples     ?? null,
-      atRiskCount:     r.n_at_risk     ?? null,
+      lrAuc:           r.lrAuc          ?? null,
+      lrF1:            r.lrF1           ?? null,
+      rfAuc:           r.rfAuc          ?? null,
+      rfF1:            r.rfF1           ?? null,
+      majorityAuc:     r.majorityAuc    ?? null,
+      majorityF1:      r.majorityF1     ?? null,
+      confusionMatrix: r.confusionMatrix ?? null,
+      splitInfo:       r.splitInfo      ?? null,
+      sampleCount:     r.sampleCount    ?? null,
+      atRiskCount:     r.atRiskCount    ?? null,
     });
   }
 

@@ -111,21 +111,50 @@ async function runStep(
     }
 
     case "outcome": {
-      // Parse latest report JSON if available — send as outcome event
       const fs = await import("node:fs/promises");
-      const reportDir = path.join(NB_DIR, "reports");
+      const modelsDir = path.join(NB_DIR, "models");
       try {
-        const files = await fs.readdir(reportDir);
-        const jsonFiles = files.filter(f => f.endsWith(".json")).sort().reverse();
-        if (jsonFiles.length > 0) {
-          const raw = await fs.readFile(path.join(reportDir, jsonFiles[0]), "utf-8");
-          const report = JSON.parse(raw);
-          send(makeSseChunk("outcome", { report, file: jsonFiles[0] }));
-        } else {
-          log(send, "No report JSON found in notebooks/reports/ — run train/evaluate first");
+        const files = await fs.readdir(modelsDir);
+        const jsonFiles = files.filter(f => f.startsWith("metadata_") && f.endsWith(".json")).sort().reverse();
+        if (jsonFiles.length === 0) {
+          log(send, "No metadata JSON found in notebooks/models/ — run train/evaluate first");
+          break;
         }
-      } catch {
-        log(send, "Could not read reports directory");
+        const raw = await fs.readFile(path.join(modelsDir, jsonFiles[0]), "utf-8");
+        const meta = JSON.parse(raw);
+        const cv   = meta.cv_metrics   ?? {};
+        const test = meta.test_metrics ?? {};
+        const lr   = cv.logistic_regression  ?? test.logistic_regression  ?? {};
+        const rf   = cv.random_forest        ?? test.random_forest        ?? {};
+        const maj  = cv.majority_baseline    ?? test.majority_baseline    ?? {};
+        // Read split info from data/processed/split_metadata.json if present
+        let splitInfo: string | null = null;
+        let nSamples: number | null = null;
+        let nAtRisk: number | null = null;
+        try {
+          const splitRaw = await fs.readFile(path.join(NB_DIR, "data", "processed", "split_metadata.json"), "utf-8");
+          const split = JSON.parse(splitRaw);
+          splitInfo  = `${meta.split_method ?? "GroupShuffleSplit"} by ${meta.group_key ?? "academy_member_id"} | train=${split.n_train ?? "?"} test=${split.n_test ?? "?"}`;
+          nSamples   = (split.n_train ?? 0) + (split.n_test ?? 0);
+          nAtRisk    = split.n_at_risk ?? null;
+        } catch { /* split_metadata may not exist */ }
+
+        const report = {
+          lrAuc:          lr.roc_auc_mean  ?? lr.roc_auc  ?? null,
+          lrF1:           lr.f1_mean       ?? lr.f1       ?? null,
+          rfAuc:          rf.roc_auc_mean  ?? rf.roc_auc  ?? null,
+          rfF1:           rf.f1_mean       ?? rf.f1       ?? null,
+          majorityAuc:    maj.roc_auc_mean ?? maj.roc_auc ?? null,
+          majorityF1:     maj.f1_mean      ?? maj.f1      ?? null,
+          confusionMatrix: meta.confusion_matrix ?? null,
+          splitInfo,
+          sampleCount: nSamples,
+          atRiskCount: nAtRisk,
+        };
+        log(send, `Loaded ${jsonFiles[0]} — LR AUC=${report.lrAuc} RF AUC=${report.rfAuc}`);
+        send(makeSseChunk("outcome", { report }));
+      } catch (e) {
+        log(send, `Could not read models directory: ${e instanceof Error ? e.message : String(e)}`);
       }
       break;
     }

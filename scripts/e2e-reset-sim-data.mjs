@@ -176,7 +176,7 @@ const simProfilesQ = profilePrefix
       .or("participant_code.like.SIM_E2E_%,participant_code.like.MOCK_%,participant_code.in.(SIM_TEACHER_E2E,SIM_RESEARCHER_E2E)");
 const { data: simProfileData } = await simProfilesQ;
 const simProfileIds  = (simProfileData ?? []).map(p => p.profile_id);
-const mockProfileIds: string[] = []; // legacy — already covered by prefix query
+const mockProfileIds = []; // legacy — already covered by prefix query
 const allSimIds = [...new Set([...simProfileIds, ...mockProfileIds])];
 
 console.log(`  sim profiles: ${simProfileIds.length} | mock profiles: ${mockProfileIds.length}`);
