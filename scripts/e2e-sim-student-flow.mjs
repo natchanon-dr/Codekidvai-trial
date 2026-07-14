@@ -162,44 +162,56 @@ console.log(`\n[2] Simulating student flow (${studentTokens.size} students × ${
 const results = { sessions: 0, runs: 0, submits: 0, skipped: 0, errors: [] };
 const CONCURRENCY = 5;
 
-async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing) {
-  for (const task of taskAnswers) {
+async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, studentIdx, totalStudents) {
+  const taskCount = taskAnswers.length;
+  for (let ti = 0; ti < taskCount; ti++) {
+    const task = taskAnswers[ti];
+    const taskLabel = task.task_code ?? task.task_id;
     let sessionId;
     try {
       sessionId = await createSession(profileId, task.task_id, batch.batch_id);
       results.sessions++;
     } catch (e) {
-      results.errors.push(`session ${code} ${task.task_code}: ${e.message}`);
+      results.errors.push(`session ${code} ${taskLabel}: ${e.message}`);
       continue;
     }
 
     // Run wrong × 2
     for (let r = 0; r < 2; r++) {
+      const t0 = Date.now();
       const run = await apiPost("/api/student/run-answer", {
         session_id: sessionId, task_id: task.task_id, answer_text: task.wrong,
       }, jwt);
+      const ms = Date.now() - t0;
       if (run.ok) results.runs++;
-      else results.errors.push(`run-wrong ${code} ${task.task_code}: ${run.status}`);
+      else results.errors.push(`run-wrong ${code} ${taskLabel}: ${run.status}`);
+      console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} run-wrong-${r+1} ${run.ok ? "✓" : "✗"} ${ms}ms`);
       await new Promise(r => setTimeout(r, 50));
     }
 
     // 3rd run: correct for passing, wrong for at_risk
+    const t1 = Date.now();
     const run3 = await apiPost("/api/student/run-answer", {
       session_id: sessionId, task_id: task.task_id,
       answer_text: isAtRisk ? task.wrong : task.correct,
     }, jwt);
+    const ms1 = Date.now() - t1;
     if (run3.ok) results.runs++;
-    else results.errors.push(`run-3rd ${code} ${task.task_code}: ${run3.status}`);
+    else results.errors.push(`run-3rd ${code} ${taskLabel}: ${run3.status}`);
+    console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} run-final ${run3.ok ? "✓" : "✗"} ${ms1}ms`);
     await new Promise(r => setTimeout(r, 50));
 
     // Submit (skip if missing)
     if (isMissing) { results.skipped++; continue; }
+    const t2 = Date.now();
     const sub = await apiPost("/api/student/submit-answer", {
       session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
       answer_text: isAtRisk ? task.wrong : task.correct,
     }, jwt);
+    const ms2 = Date.now() - t2;
     if (sub.ok) results.submits++;
-    else results.errors.push(`submit ${code} ${task.task_code}: ${sub.status}`);
+    else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
+    console.log(`  [${studentIdx}/${totalStudents}] ${code} task ${ti+1}/${taskCount} submit ${sub.ok ? "✓" : "✗"} ${ms2}ms`);
     await new Promise(r => setTimeout(r, 80));
   }
 }
@@ -208,16 +220,19 @@ const studentList = [...studentTokens.entries()];
 const missingSet = new Set(studentList.slice(0, missingCount).map(([c]) => c));
 let processed = 0;
 
+const totalStudents = studentList.length;
 for (let i = 0; i < studentList.length; i += CONCURRENCY) {
   const chunk = studentList.slice(i, i + CONCURRENCY);
-  await Promise.all(chunk.map(([code, { jwt, profileId }]) => {
+  await Promise.all(chunk.map(([code, { jwt, profileId }], ci) => {
+    const globalIdx = i + ci + 1;
     const num = parseInt(code.split("_S").pop() ?? "0", 10);
     const isAtRisk = num >= atRiskFrom;
     const isMissing = missingSet.has(code);
-    return simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing);
+    console.log(`\nStudent ${globalIdx}/${totalStudents} — ${code} (${isAtRisk ? "at-risk" : "passing"}${isMissing ? ", missing" : ""})`);
+    return simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, globalIdx, totalStudents);
   }));
   processed += chunk.length;
-  console.log(`  ${processed}/${studentList.length} students done`);
+  console.log(`── chunk done: ${processed}/${totalStudents} students ──`);
 }
 
 // ── 4. Report ─────────────────────────────────────────────────────────────────

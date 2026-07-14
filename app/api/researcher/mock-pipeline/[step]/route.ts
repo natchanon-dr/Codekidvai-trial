@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { requireAdminOrResearcher } from "@/lib/api-auth";
 import {
@@ -17,58 +17,127 @@ const PROJECT_ROOT = path.resolve(process.cwd());
 const SCRIPTS_DIR  = path.join(PROJECT_ROOT, "scripts");
 const NB_DIR       = path.join(PROJECT_ROOT, "notebooks");
 
-function log(send: (s: string) => void, msg: string) {
+// ── SafeSend ──────────────────────────────────────────────────────────────────
+// Prevents controller.enqueue() after the stream has been closed or cancelled,
+// which would throw ERR_INVALID_STATE and crash the Node process.
+type SafeSend = (s: string) => void;
+
+function makeSafeSend(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  state: { closed: boolean }
+): SafeSend {
+  return (chunk: string) => {
+    if (state.closed) return;
+    try {
+      controller.enqueue(encoder.encode(chunk));
+    } catch {
+      // swallow — controller may have been closed by a race
+    }
+  };
+}
+
+function log(send: SafeSend, msg: string) {
   send(makeSseChunk("log", { msg, ts: new Date().toISOString() }));
 }
 
+// ── runProcess ────────────────────────────────────────────────────────────────
+// Spawns a child process and pipes its output to the SSE stream.
+// Terminates the child (SIGTERM → SIGKILL after 3 s) when the AbortSignal fires.
+// Guards against double-resolve/reject and double-kill.
 function runProcess(
-  send: (s: string) => void,
+  send: SafeSend,
   label: string,
   cmd: string,
   args: string[],
-  cwd: string
+  cwd: string,
+  signal: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    log(send, `[${label}] $ ${cmd} ${args.join(" ")}`);
-    const child = spawn(cmd, args, { cwd, shell: true, env: process.env });
+    if (signal.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
 
-    child.stdout.on("data", (d: Buffer) => {
+    log(send, `[${label}] $ ${cmd} ${args.join(" ")}`);
+    const child: ChildProcess = spawn(cmd, args, { cwd, shell: true, env: process.env });
+
+    let settled = false;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function cleanup() {
+      signal.removeEventListener("abort", onAbort);
+      child.stdout?.removeAllListeners();
+      child.stderr?.removeAllListeners();
+      child.removeAllListeners("close");
+      child.removeAllListeners("error");
+      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+    }
+
+    function settle(fn: () => void) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn();
+    }
+
+    function killChild() {
+      try { child.kill("SIGTERM"); } catch { /* already exited */ }
+      killTimer = setTimeout(() => {
+        try { child.kill("SIGKILL"); } catch { /* already exited */ }
+      }, 3000);
+    }
+
+    function onAbort() {
+      log(send, `[${label}] ⛔ abort — terminating child process (pid ${child.pid})`);
+      killChild();
+      settle(() => reject(new Error("aborted")));
+    }
+
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout?.on("data", (d: Buffer) => {
       for (const line of d.toString().split(/\r?\n/)) {
         if (line.trim()) log(send, line);
       }
     });
-    child.stderr.on("data", (d: Buffer) => {
+    child.stderr?.on("data", (d: Buffer) => {
       for (const line of d.toString().split(/\r?\n/)) {
         if (line.trim()) log(send, `[stderr] ${line}`);
       }
     });
     child.on("close", (code) => {
+      if (settled) return; // already handled by abort
       if (code === 0) {
         log(send, `[${label}] ✅ done (rc=0)`);
-        resolve();
+        settle(() => resolve());
       } else {
-        reject(new Error(`[${label}] failed with rc=${code}`));
+        settle(() => reject(new Error(`[${label}] failed with rc=${code ?? "null"}`)));
       }
     });
-    child.on("error", (e) => reject(e));
+    child.on("error", (e) => settle(() => reject(e)));
   });
 }
 
+// ── runStep ───────────────────────────────────────────────────────────────────
 async function runStep(
   step: MockStep,
   config: MockConfig,
-  send: (s: string) => void
-) {
+  send: SafeSend,
+  signal: AbortSignal
+): Promise<void> {
+  if (signal.aborted) throw new Error("aborted");
+
   const batchArgs = ["--batch", config.batchCode];
   const rateArgs  = ["--at-risk-rate", String(config.atRiskRate), "--missing-rate", String(config.missingRate)];
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const today    = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const batchTag = config.batchCode
     .replace(/^(SIM_E2E_|MOCK_|TEST_BATCH_E2E_)/, "")
     .replace(/_/g, "-") || config.batchCode;
 
   switch (step) {
     case "data": {
-      const dataArgs: string[] = [
+      const dataArgs = [
         path.join(SCRIPTS_DIR, "e2e-sim-create-test-data.mjs"),
         ...batchArgs,
         "--students", String(config.nStudents),
@@ -79,13 +148,13 @@ async function runStep(
       } else {
         dataArgs.push("--tasks", String(config.nTasks));
       }
-      await runProcess(send, "data", "node", dataArgs, PROJECT_ROOT);
+      await runProcess(send, "data", "node", dataArgs, PROJECT_ROOT, signal);
       break;
     }
 
     case "extract": {
       send(makeSseChunk("progress", { step: "extract", pct: 10 }));
-      const extractArgs: string[] = [
+      const extractArgs = [
         path.join(SCRIPTS_DIR, "e2e-sim-student-flow.mjs"),
         ...batchArgs,
         ...rateArgs,
@@ -94,7 +163,7 @@ async function runStep(
       if (config.taskIds?.length) {
         extractArgs.push("--task-ids", config.taskIds.join(","));
       }
-      await runProcess(send, "extract", "node", extractArgs, PROJECT_ROOT);
+      await runProcess(send, "extract", "node", extractArgs, PROJECT_ROOT, signal);
       break;
     }
 
@@ -103,7 +172,7 @@ async function runStep(
       await runProcess(send, "process", "node", [
         path.join(SCRIPTS_DIR, "e2e-sim-export-csv.mjs"),
         ...batchArgs,
-      ], PROJECT_ROOT);
+      ], PROJECT_ROOT, signal);
       break;
 
     case "train":
@@ -117,7 +186,7 @@ async function runStep(
         "--attempt-file", attemptFile,
         "--batch-tag",    batchTag,
         "--snapshot-date", today,
-      ], NB_DIR);
+      ], NB_DIR, signal);
       break;
     }
 
@@ -131,23 +200,22 @@ async function runStep(
           log(send, "No metadata JSON found in notebooks/models/ — run train/evaluate first");
           break;
         }
-        const raw = await fs.readFile(path.join(modelsDir, jsonFiles[0]), "utf-8");
+        const raw  = await fs.readFile(path.join(modelsDir, jsonFiles[0]), "utf-8");
         const meta = JSON.parse(raw);
         const cv   = meta.cv_metrics   ?? {};
         const test = meta.test_metrics ?? {};
-        const lr   = cv.logistic_regression  ?? test.logistic_regression  ?? {};
-        const rf   = cv.random_forest        ?? test.random_forest        ?? {};
-        const maj  = cv.majority_baseline    ?? test.majority_baseline    ?? {};
-        // Read split info from data/processed/split_metadata.json if present
+        const lr   = cv.logistic_regression ?? test.logistic_regression ?? {};
+        const rf   = cv.random_forest       ?? test.random_forest       ?? {};
+        const maj  = cv.majority_baseline   ?? test.majority_baseline   ?? {};
         let splitInfo: string | null = null;
-        let nSamples: number | null = null;
-        let nAtRisk: number | null = null;
+        let nSamples: number | null  = null;
+        let nAtRisk: number | null   = null;
         try {
           const splitRaw = await fs.readFile(path.join(NB_DIR, "data", "processed", "split_metadata.json"), "utf-8");
           const split = JSON.parse(splitRaw);
-          splitInfo  = `${meta.split_method ?? "GroupShuffleSplit"} by ${meta.group_key ?? "academy_member_id"} | train=${split.n_train ?? "?"} test=${split.n_test ?? "?"}`;
-          nSamples   = (split.n_train ?? 0) + (split.n_test ?? 0);
-          nAtRisk    = split.n_at_risk ?? null;
+          splitInfo = `${meta.split_method ?? "GroupShuffleSplit"} by ${meta.group_key ?? "academy_member_id"} | train=${split.n_train ?? "?"} test=${split.n_test ?? "?"}`;
+          nSamples  = (split.n_train ?? 0) + (split.n_test ?? 0);
+          nAtRisk   = split.n_at_risk ?? null;
         } catch { /* split_metadata may not exist */ }
 
         const report = {
@@ -175,15 +243,16 @@ async function runStep(
         path.join(SCRIPTS_DIR, "e2e-reset-sim-data.mjs"),
         ...batchArgs,
         "--execute",
-      ], PROJECT_ROOT);
+      ], PROJECT_ROOT, signal);
       break;
 
     case "run-all":
       log(send, "=== run-all: starting full pipeline ===");
       for (const s of ["data", "extract", "process", "train", "evaluate", "outcome"] as MockStep[]) {
+        if (signal.aborted) throw new Error("aborted");
         log(send, `\n── Step: ${s} ──`);
         send(makeSseChunk("progress", { step: s, pct: 0 }));
-        await runStep(s, config, send);
+        await runStep(s, config, send, signal);
         send(makeSseChunk("progress", { step: s, pct: 100 }));
       }
       break;
@@ -193,11 +262,11 @@ async function runStep(
   }
 }
 
+// ── POST handler ──────────────────────────────────────────────────────────────
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ step: string }> }
 ) {
-  // Auth check
   try {
     await requireAdminOrResearcher(req);
   } catch {
@@ -222,30 +291,46 @@ export async function POST(
     return new Response(validationError, { status: 400 });
   }
 
+  // Per-request abort controller — cancelled by stream.cancel() (client disconnect)
+  const abort   = new AbortController();
   const encoder = new TextEncoder();
+  const state   = { closed: false };
+
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (s: string) => controller.enqueue(encoder.encode(s));
+      const send = makeSafeSend(controller, encoder, state);
 
       send(makeSseChunk("log", { msg: `Starting step: ${step}`, ts: new Date().toISOString() }));
       try {
-        await runStep(step, config, send);
-        send(makeSseChunk("done", { step, success: true }));
+        await runStep(step, config, send, abort.signal);
+        // Only emit success done if not aborted
+        if (!abort.signal.aborted) {
+          send(makeSseChunk("done", { step, success: true }));
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        send(makeSseChunk("error", { msg }));
-        send(makeSseChunk("done",  { step, success: false }));
+        const msg      = err instanceof Error ? err.message : String(err);
+        const isAbort  = msg === "aborted" || msg.includes("terminated") || msg.includes("killed");
+        if (!isAbort) {
+          send(makeSseChunk("error", { msg }));
+        }
+        send(makeSseChunk("done", { step, success: false, aborted: isAbort }));
       } finally {
-        controller.close();
+        state.closed = true;
+        try { controller.close(); } catch { /* already closed by cancel */ }
       }
+    },
+
+    // Fired when the client disconnects: browser refresh, tab close, fetch abort (Stop button)
+    cancel() {
+      abort.abort();
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type":  "text/event-stream",
       "Cache-Control": "no-cache",
-      Connection: "keep-alive",
+      Connection:      "keep-alive",
     },
   });
 }

@@ -31,7 +31,7 @@ interface OutcomeReport {
   atRiskCount?: number | null;
 }
 
-type StepStatus = "waiting" | "running" | "completed" | "failed";
+type StepStatus = "waiting" | "running" | "completed" | "failed" | "aborted";
 type OutcomeTab = "summary" | "metrics" | "charts" | "dataset" | "reports" | "logs";
 
 const PIPELINE_STEPS: MockStep[] = ["data", "extract", "process", "train", "evaluate", "outcome"];
@@ -167,7 +167,7 @@ export default function MockLab() {
   // config
   const [config, setConfig] = useState<MockConfig>({
     batchCode: "MOCK_20260714_001",
-    nStudents: 40,
+    nStudents: 10,
     nTasks: 3,
     atRiskRate: 35,
     missingRate: 7,
@@ -363,26 +363,28 @@ export default function MockLab() {
             if (eventType === "outcome") parseOutcome(payload);
             if (eventType === "done") {
               const s = payload.step as string;
+              const wasAborted: boolean = payload.aborted === true;
               if (s && s !== "run-all") {
-                const st: StepStatus = payload.success ? "completed" : "failed";
+                const st: StepStatus = payload.success ? "completed" : wasAborted ? "aborted" : "failed";
                 setStepStatus(prev => ({ ...prev, [s]: st }));
                 if (payload.success) setCompleted(prev => [...new Set([...prev, s])]);
               }
               if (s === "run-all" && payload.success) {
                 PIPELINE_STEPS.forEach(ps => setStepStatus(prev => ({ ...prev, [ps]: "completed" })));
-                setCompleted(PIPELINE_STEPS);
+                setCompleted(PIPELINE_STEPS as string[]);
               }
             }
           } catch { /* ignore malformed SSE */ }
         }
       }
     } catch (err) {
+      // fetch aborted by Stop button — mark any still-running step as aborted
       if (err instanceof DOMException && err.name === "AbortError") {
         addLog("⛔ Stopped by user.");
         setStepStatus(prev => {
           const next = { ...prev };
           for (const s of PIPELINE_STEPS) {
-            if (next[s] === "running") next[s] = "failed";
+            if (next[s] === "running") next[s] = "aborted";
           }
           return next;
         });
@@ -420,10 +422,10 @@ export default function MockLab() {
   // status card logic
   const statusOf = (step: string): "green" | "yellow" | "red" | "idle" => {
     const s = stepStatus[step];
-    if (!s) return "idle";
+    if (!s || s === "waiting") return "idle";
     if (s === "completed") return "green";
     if (s === "running") return "yellow";
-    if (s === "failed") return "red";
+    if (s === "failed" || s === "aborted") return "red";
     return "idle";
   };
 
@@ -476,6 +478,18 @@ export default function MockLab() {
                   onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
                   disabled={isRunning}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+                <div className="flex gap-1 flex-wrap pt-0.5">
+                  {([["5", "Demo"], ["10", "Quick"], ["40", "Class"], ["100", "Stress"]] as const).map(([n, label]) => (
+                    <button key={n} type="button"
+                      onClick={() => updateConfig("nStudents", Number(n))}
+                      disabled={isRunning}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition-colors disabled:opacity-40
+                        ${config.nStudents === Number(n)
+                          ? "bg-[#F37021] text-white border-[#F37021]"
+                          : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#F37021] hover:text-[#F37021]"}`}
+                    >{label} ({n})</button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
@@ -612,6 +626,7 @@ export default function MockLab() {
               running:   "border-[#FED7AA] bg-[#FFF7ED]",
               completed: "border-emerald-200 bg-emerald-50",
               failed:    "border-red-200 bg-red-50",
+              aborted:   "border-orange-200 bg-orange-50",
             }[status];
 
             const iconStyle = {
@@ -619,6 +634,7 @@ export default function MockLab() {
               running:   "bg-[#FED7AA] text-[#F37021]",
               completed: "bg-emerald-100 text-emerald-600",
               failed:    "bg-red-100 text-red-500",
+              aborted:   "bg-orange-100 text-orange-500",
             }[status];
 
             const labelStyle = {
@@ -626,6 +642,7 @@ export default function MockLab() {
               running:   "text-[#C2410C]",
               completed: "text-emerald-700",
               failed:    "text-red-600",
+              aborted:   "text-orange-600",
             }[status];
 
             return (
@@ -655,6 +672,7 @@ export default function MockLab() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     )}
+                    {status === "aborted" && <span className="text-[10px] font-semibold text-orange-500 uppercase tracking-wide">Aborted</span>}
                   </div>
                 </button>
                 {idx < PIPELINE_STEPS.length - 1 && (
