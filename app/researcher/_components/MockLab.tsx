@@ -478,18 +478,6 @@ export default function MockLab() {
                   onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
                   disabled={isRunning}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-                <div className="flex gap-1 flex-wrap pt-0.5">
-                  {([["5", "Demo"], ["10", "Quick"], ["40", "Class"], ["100", "Stress"]] as const).map(([n, label]) => (
-                    <button key={n} type="button"
-                      onClick={() => updateConfig("nStudents", Number(n))}
-                      disabled={isRunning}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition-colors disabled:opacity-40
-                        ${config.nStudents === Number(n)
-                          ? "bg-[#F37021] text-white border-[#F37021]"
-                          : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#F37021] hover:text-[#F37021]"}`}
-                    >{label} ({n})</button>
-                  ))}
-                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
