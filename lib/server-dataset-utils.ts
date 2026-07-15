@@ -32,9 +32,12 @@ export function evaluateRubricCriteria(params: {
 
   for (const criterion of criteria) {
     const maxCs = Math.round(criterion.weight * params.max_score * 100) / 100;
-    const allKeywordsMatch = criterion.keywords.every((kw) =>
-      normalized.includes(kw.toLowerCase().trim()),
-    );
+    const keywords = criterion.keywords
+      .map((kw) => kw.trim())
+      .filter(Boolean);
+    const allKeywordsMatch =
+      keywords.length > 0 &&
+      keywords.every((kw) => normalized.includes(kw.toLowerCase()));
     const cs = allKeywordsMatch ? maxCs : 0;
     totalScore += cs;
     breakdown.push({
