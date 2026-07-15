@@ -1,0 +1,394 @@
+{
+  "schema_version": "lstm_v1",
+  "label_source": "proxy_behavioral",
+  "label_validity": "pilot_only",
+  "data_warning": "PILOT ONLY -- Not thesis results.",
+  "experiments": {
+    "EXP-A": {
+      "experiment": "EXP-A: LSTM Sequence Only",
+      "seeds": [
+        11,
+        22,
+        33,
+        42,
+        55
+      ],
+      "accuracy_mean": 1.0,
+      "accuracy_std": 0.0,
+      "precision_mean": 1.0,
+      "precision_std": 0.0,
+      "recall_mean": 1.0,
+      "recall_std": 0.0,
+      "f1_mean": 1.0,
+      "f1_std": 0.0,
+      "roc_auc_mean": 1.0,
+      "roc_auc_std": 0.0,
+      "train_time_sec_mean": 2.7782,
+      "train_time_sec_std": 0.34696,
+      "inf_time_per_seq_sec_mean": 3.9e-05,
+      "inf_time_per_seq_sec_std": 1.7e-05,
+      "epochs_trained_mean": 200.0,
+      "epochs_trained_std": 0.0,
+      "per_seed": [
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 2.3315,
+          "inf_time_per_seq_sec": 2.5e-05,
+          "epochs_trained": 200,
+          "seed": 11,
+          "experiment": "seq_only",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 2.4347,
+          "inf_time_per_seq_sec": 2.2e-05,
+          "epochs_trained": 200,
+          "seed": 22,
+          "experiment": "seq_only",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            1.0,
+            1.0
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 2.8533,
+          "inf_time_per_seq_sec": 5.1e-05,
+          "epochs_trained": 200,
+          "seed": 33,
+          "experiment": "seq_only",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.6000000238418579,
+            3.0
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 3.2431,
+          "inf_time_per_seq_sec": 6.7e-05,
+          "epochs_trained": 200,
+          "seed": 42,
+          "experiment": "seq_only",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 3.0284,
+          "inf_time_per_seq_sec": 3.2e-05,
+          "epochs_trained": 200,
+          "seed": 55,
+          "experiment": "seq_only",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        }
+      ]
+    },
+    "EXP-B": {
+      "experiment": "EXP-B: LSTM Sequence + TAG",
+      "seeds": [
+        11,
+        22,
+        33,
+        42,
+        55
+      ],
+      "accuracy_mean": 0.9,
+      "accuracy_std": 0.2,
+      "precision_mean": 0.9,
+      "precision_std": 0.2,
+      "recall_mean": 1.0,
+      "recall_std": 0.0,
+      "f1_mean": 0.933333,
+      "f1_std": 0.133333,
+      "roc_auc_mean": 0.814815,
+      "roc_auc_std": 0.37037,
+      "train_time_sec_mean": 2.91728,
+      "train_time_sec_std": 1.43621,
+      "inf_time_per_seq_sec_mean": 3.3e-05,
+      "inf_time_per_seq_sec_std": 7e-06,
+      "epochs_trained_mean": 163.2,
+      "epochs_trained_std": 73.6,
+      "per_seed": [
+        {
+          "accuracy": 0.5,
+          "precision": 0.5,
+          "recall": 1.0,
+          "f1": 0.6666666666666666,
+          "roc_auc": 0.0740740740740741,
+          "confusion_matrix": [
+            [
+              0,
+              9
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 0.1986,
+          "inf_time_per_seq_sec": 2.6e-05,
+          "epochs_trained": 16,
+          "seed": 11,
+          "experiment": "seq_tag",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 3.3347,
+          "inf_time_per_seq_sec": 3.4e-05,
+          "epochs_trained": 200,
+          "seed": 22,
+          "experiment": "seq_tag",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            1.0,
+            1.0
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 4.4661,
+          "inf_time_per_seq_sec": 4.7e-05,
+          "epochs_trained": 200,
+          "seed": 33,
+          "experiment": "seq_tag",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.6000000238418579,
+            3.0
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 3.1117,
+          "inf_time_per_seq_sec": 3.1e-05,
+          "epochs_trained": 200,
+          "seed": 42,
+          "experiment": "seq_tag",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        },
+        {
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "roc_auc": 1.0,
+          "confusion_matrix": [
+            [
+              9,
+              0
+            ],
+            [
+              0,
+              9
+            ]
+          ],
+          "n_classes_in_test": 2,
+          "train_time_sec": 3.4753,
+          "inf_time_per_seq_sec": 2.8e-05,
+          "epochs_trained": 200,
+          "seed": 55,
+          "experiment": "seq_tag",
+          "n_sub_train_seqs": 54,
+          "n_val_seqs": 18,
+          "n_test_seqs": 18,
+          "class_weight": [
+            0.75,
+            1.5
+          ],
+          "label_validity": "pilot_only",
+          "label_source": "proxy_behavioral",
+          "roc_auc_note": "computed"
+        }
+      ]
+    }
+  }
+}
