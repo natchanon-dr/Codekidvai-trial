@@ -304,7 +304,22 @@ Retrained versions are saved as `lr_canonical_v1.pkl`, `rf_canonical_v1.pkl`.
 
 ---
 
-## 15. Next Milestone
+## 15. Proxy Label Circularity Notice (added 2026-07-16)
+
+When the behavioral proxy fallback is active (`label_source = "proxy_behavioral"`), the
+flat behavioral feature set used in M6 includes `any_correct` and `correctness_ratio`,
+which are **deterministic encodings of the proxy label itself.** This causes all
+non-Dummy models to score 1.0 on the pilot. The LSTM/GRU sequence tensors carry an
+indirect circularity via `sql_success` token encoding.
+
+These results are pipeline validation artifacts only. They must not be interpreted as
+model performance.
+
+Full analysis: [`PHASE4_PROXY_LABEL_LIMITATIONS.md`](PHASE4_PROXY_LABEL_LIMITATIONS.md)
+
+---
+
+## 16. Next Milestone
 
 **M2 — Sequence Dataset (`05_sequence_dataset.ipynb`)**
 
