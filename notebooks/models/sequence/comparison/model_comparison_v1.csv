@@ -1,0 +1,7 @@
+model,feature_set,accuracy,precision,recall,f1,roc_auc,train_time_s,inf_time_s,parameters,n_classes_in_test,roc_auc_note,label_source,label_validity
+Dummy,most_frequent_strategy,0.5,0.0,0.0,0.0,0.5,0.0005,1.239e-05,,2,computed,proxy_behavioral,pilot_only
+Logistic Regression,flat_behavioral,1.0,1.0,1.0,1.0,1.0,0.0034,7.15e-06,18.0,2,computed,proxy_behavioral,pilot_only
+Random Forest,flat_behavioral,1.0,1.0,1.0,1.0,1.0,0.0558,0.00021947,2.0,2,computed,proxy_behavioral,pilot_only
+TAG-based Logistic Regression,tag_graph_features,1.0,1.0,1.0,1.0,1.0,0.004,2.148e-05,22.0,2,computed,proxy_behavioral,pilot_only
+LSTM,sequence_tensors,1.0,1.0,1.0,1.0,1.0,3.2431,6.7e-05,,2,computed,proxy_behavioral,pilot_only
+GRU,sequence_tensors,1.0,1.0,1.0,1.0,1.0,3.6642,3e-05,4257.0,2,computed,proxy_behavioral,pilot_only

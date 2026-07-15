@@ -1,0 +1,104 @@
+{
+  "schema_version": "comparison_v1",
+  "created_at_utc": "2026-07-15T19:19:34.272822+00:00",
+  "label_source": "proxy_behavioral",
+  "label_validity": "pilot_only",
+  "primary_seed": 42,
+  "all_seeds": [
+    11,
+    22,
+    33,
+    42,
+    55
+  ],
+  "models_compared": [
+    "Dummy",
+    "Logistic Regression",
+    "Random Forest",
+    "TAG-based Logistic Regression",
+    "LSTM",
+    "GRU"
+  ],
+  "test_learners": [
+    "MOCK_VALID3_20260715_S002",
+    "MOCK_VALID3_20260715_S009"
+  ],
+  "test_seq_count": 18,
+  "train_seq_count": 72,
+  "n_test_classes": 2,
+  "roc_auc_status": "computed",
+  "flat_feature_names": [
+    "seq_length",
+    "run_count",
+    "attempt_count",
+    "revision_count",
+    "retry_count",
+    "error_count",
+    "hint_count",
+    "unique_event_types",
+    "correctness_ratio",
+    "any_correct",
+    "elapsed_sec",
+    "time_to_first_correct",
+    "mean_delta_sec",
+    "run_to_submit_ratio"
+  ],
+  "tag_feature_names": [
+    "node_count",
+    "edge_count",
+    "unique_event_types",
+    "retry_count",
+    "revision_count",
+    "error_transition_count",
+    "error_recovery_count",
+    "error_recovery_rate",
+    "assessment_count",
+    "session_return_count",
+    "transition_entropy",
+    "event_type_entropy",
+    "mean_delta_time_sec",
+    "std_delta_time_sec",
+    "max_delta_time_sec",
+    "min_delta_time_sec",
+    "run_to_submit_ratio",
+    "graph_density"
+  ],
+  "timing_env": {
+    "platform": "CPU",
+    "device": "cpu",
+    "sklearn_ver": "1.8.0",
+    "numpy_ver": "2.4.6",
+    "batch_size": "N/A (sklearn)",
+    "warmup": "none (sklearn)",
+    "n_inference_samples": 18,
+    "note": "Timing from Python time.perf_counter(). sklearn and PyTorch use different frameworks -- do not imply strict computational superiority."
+  },
+  "validation_checks": 18,
+  "validation_passed": 18,
+  "input_checksums": {
+    "m2_manifest": "d5acd8c97967061d",
+    "tensors": "686d557d819c982d",
+    "split": "435b3418cdd1f410",
+    "seq_index": "58813f211248545c",
+    "canonical_events": "95e9dd5faa54a9c4",
+    "tag_features": "f3cda661e3de47a8",
+    "tag_manifest": "f732c5c21af703e7",
+    "lstm_predictions": "d43bbb2189ab2690",
+    "lstm_manifest": "06a3834fbfc3e26c",
+    "gru_predictions": "206d9c7b9b5b9736",
+    "gru_manifest": "f693cf963a161432"
+  },
+  "artifacts": {
+    "model_comparison_v1.parquet": "models\\sequence\\comparison\\model_comparison_v1.parquet",
+    "model_comparison_v1.csv": "models\\sequence\\comparison\\model_comparison_v1.csv",
+    "model_comparison_v1.md": "models\\sequence\\comparison\\model_comparison_v1.md",
+    "comparison_predictions_v1.parquet": "models\\sequence\\comparison\\comparison_predictions_v1.parquet"
+  },
+  "artifact_checksums": {
+    "model_comparison_v1.parquet": "bb986fe984016e19",
+    "model_comparison_v1.csv": "6b24772d3a7f11e8",
+    "model_comparison_v1.md": "c8eb6cca6c2fc846",
+    "comparison_predictions_v1.parquet": "effb093a8ff54c75"
+  },
+  "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral labels. Not final thesis results. No confirmatory hypothesis testing. BSSA integration deferred to Phase 5."
+}
