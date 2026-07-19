@@ -1,0 +1,204 @@
+{
+  "schema_version": "phase4_ui_v1",
+  "generated_at_utc": "2026-07-19T00:00:00Z",
+  "evaluation_purpose": "technical_pipeline_validation",
+  "label_source": "proxy_behavioral",
+  "label_validity": "pilot_only",
+  "proxy_target_circularity": true,
+  "confirmatory_analysis_allowed": false,
+  "data_warning": "PILOT ONLY — 10 learners, proxy_behavioral labels. Not final thesis results. No confirmatory hypothesis testing. BSSA integration deferred to Phase 5.",
+
+  "dataset_summary": {
+    "total_learners": 10,
+    "train_learners": 8,
+    "test_learners": 2,
+    "train_sequences": 72,
+    "test_sequences": 18,
+    "total_sequences": 90,
+    "total_canonical_events": 702,
+    "max_sequence_length": 6,
+    "sequence_length_percentile": 95,
+    "split_method": "GroupShuffleSplit by learner identity",
+    "split_random_state": 42,
+    "dedup_window_seconds": 5,
+    "vocab_size": 9,
+    "features_per_timestep": 10,
+    "thesis_minimum_learners": 60
+  },
+
+  "model_comparison": {
+    "primary_seed": 42,
+    "all_seeds": [11, 22, 33, 42, 55],
+    "test_sequences": 18,
+    "timing_note": "sklearn and PyTorch use different frameworks — do not imply strict computational superiority.",
+    "models": [
+      {
+        "name": "Dummy",
+        "accuracy": 0.5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.5,
+        "train_time_sec": 0.0005,
+        "inference_time_per_seq_sec": 0.00001239,
+        "parameters": null,
+        "type": "baseline"
+      },
+      {
+        "name": "Logistic Regression",
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "train_time_sec": 0.0034,
+        "inference_time_per_seq_sec": 0.00000715,
+        "parameters": 18,
+        "type": "flat_baseline"
+      },
+      {
+        "name": "Random Forest",
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "train_time_sec": 0.0558,
+        "inference_time_per_seq_sec": 0.00021947,
+        "parameters": 2,
+        "type": "flat_baseline"
+      },
+      {
+        "name": "TAG-based LR",
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "train_time_sec": 0.004,
+        "inference_time_per_seq_sec": 0.00002148,
+        "parameters": 22,
+        "type": "graph_baseline"
+      },
+      {
+        "name": "LSTM",
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "train_time_sec": 3.2431,
+        "inference_time_per_seq_sec": 0.000067,
+        "parameters": 5665,
+        "type": "sequence"
+      },
+      {
+        "name": "GRU",
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "train_time_sec": 3.6642,
+        "inference_time_per_seq_sec": 0.00003,
+        "parameters": 4257,
+        "type": "sequence"
+      }
+    ]
+  },
+
+  "seed_stability": {
+    "lstm": {
+      "exp_a_seq_only": {
+        "accuracy_mean": 1.0,
+        "f1_mean": 1.0,
+        "roc_auc_mean": 1.0,
+        "train_time_sec_mean": 2.7782,
+        "epochs_trained_mean": 200.0,
+        "seeds": [
+          { "seed": 11, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+        ]
+      },
+      "exp_b_seq_plus_tag": {
+        "accuracy_mean": 0.9,
+        "f1_mean": 0.9333,
+        "roc_auc_mean": 0.8148,
+        "train_time_sec_mean": 2.4862,
+        "epochs_trained_mean": 163.2,
+        "seeds": [
+          { "seed": 11, "accuracy": 0.5, "f1": 0.6667, "roc_auc": 0.0741 },
+          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+        ]
+      }
+    },
+    "gru": {
+      "exp_a_seq_only": {
+        "accuracy_mean": 1.0,
+        "f1_mean": 1.0,
+        "roc_auc_mean": 1.0,
+        "train_time_sec_mean": 3.7694,
+        "epochs_trained_mean": 200.0,
+        "seeds": [
+          { "seed": 11, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+        ]
+      },
+      "exp_b_seq_plus_tag": {
+        "accuracy_mean": 0.9,
+        "f1_mean": 0.9333,
+        "roc_auc_mean": 1.0,
+        "train_time_sec_mean": 3.3534,
+        "epochs_trained_mean": 165.4,
+        "seeds": [
+          { "seed": 11, "accuracy": 0.5, "f1": 0.6667, "roc_auc": 1.0 },
+          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
+          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+        ]
+      }
+    }
+  },
+
+  "validation": {
+    "checks_run": 18,
+    "checks_passed": 18,
+    "no_learner_overlap": true,
+    "no_pii_in_exports": true,
+    "leakage_check_passed": true,
+    "split_integrity_passed": true
+  },
+
+  "charts": [
+    {
+      "key": "confusion_matrices",
+      "title": "Confusion Matrices (All Models, Seed 42)",
+      "path": "/reports/phase4/comparison/comparison_confusion_matrices.png"
+    },
+    {
+      "key": "roc_curves",
+      "title": "ROC Curves (All Models, Seed 42)",
+      "path": "/reports/phase4/comparison/comparison_roc_curves.png"
+    },
+    {
+      "key": "timing",
+      "title": "Training & Inference Timing",
+      "path": "/reports/phase4/comparison/comparison_timing.png"
+    },
+    {
+      "key": "seed_stability",
+      "title": "Seed Stability (LSTM / GRU, Seeds 11–55)",
+      "path": "/reports/phase4/comparison/comparison_seed_stability.png"
+    }
+  ]
+}
