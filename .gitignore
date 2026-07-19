@@ -21,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+.claude/
 
 # debug
 npm-debug.log*
@@ -37,10 +38,24 @@ yarn-error.log*
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
+.jupyter/
+
+# Phase 3 research data snapshots and generated artifacts
+notebooks/data/**
+!notebooks/data/
+!notebooks/data/.gitkeep
+!notebooks/data/raw/
+!notebooks/data/raw/.gitkeep
+notebooks/models/*.pkl
+notebooks/models/*.joblib
+
+# nbconvert temp artifacts (created when runner cwd is notebooks/)
+notebooks/notebooks/
+
+# Test script temp outputs
+scripts/_csv_schema_test_tmp/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.jupyter/
 _prototype_import/

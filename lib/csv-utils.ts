@@ -1,7 +1,12 @@
+// Values starting with these characters are interpreted as formulas by Excel/LibreOffice.
+// Prepend a tab so spreadsheet apps treat the cell as plain text.
+const FORMULA_INJECTION_PREFIX = /^[=+\-@|]/;
+
 export function escapeCsvValue(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  let text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  if (FORMULA_INJECTION_PREFIX.test(text)) text = `\t${text}`;
+  if (/[",\n\r\t]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
   return text;
 }
 
@@ -12,5 +17,6 @@ export function convertRowsToCsv(rows: Record<string, unknown>[]): string {
   for (const row of rows) {
     lines.push(headers.map((header) => escapeCsvValue(row[header])).join(","));
   }
-  return lines.join("\n");
+  // BOM (﻿) tells Excel to read this file as UTF-8, preventing Thai character corruption.
+  return "﻿" + lines.join("\n");
 }

@@ -1,0 +1,160 @@
+"""Run notebooks 02-04 for E2E mock validation.
+
+Usage:
+  python run_e2e_notebooks.py                              # uses last CSV in data/raw/
+  python run_e2e_notebooks.py --session-file session_X.csv --attempt-file attempt_X.csv
+  python run_e2e_notebooks.py --batch-tag SIM_E2E --snapshot-date 20260710
+
+Args:
+  --session-file   session CSV filename (in data/raw/)
+  --attempt-file   attempt CSV filename (in data/raw/)
+  --batch-tag      BATCH_CODE_VAL for notebook substitution (default: auto-detect)
+  --snapshot-date  SNAPSHOT_DATE for notebook substitution (default: today)
+"""
+import json, subprocess, os, sys, argparse
+from pathlib import Path
+
+# Force UTF-8 output on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# ── CLI args ──────────────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser(description="Run NB02-04 for E2E validation.")
+parser.add_argument("--session-file",   default=None, help="Session CSV filename in data/raw/")
+parser.add_argument("--attempt-file",   default=None, help="Attempt CSV filename in data/raw/")
+parser.add_argument("--batch-tag",      default=None, help="Batch code tag for notebook substitution")
+parser.add_argument("--snapshot-date",  default=None, help="Snapshot date YYYYMMDD")
+args = parser.parse_args()
+
+# ── Auto-detect latest CSV if not specified ───────────────────────────────────
+RAW_DIR = Path("data/raw")
+
+def latest_csv(prefix: str) -> str | None:
+    files = sorted(RAW_DIR.glob(f"{prefix}_*.csv"), reverse=True)
+    return files[0].name if files else None
+
+SESSION_FILE   = args.session_file   or latest_csv("session")
+ATTEMPT_FILE   = args.attempt_file   or latest_csv("attempt")
+SNAPSHOT_DATE  = args.snapshot_date  or (SESSION_FILE.split("_")[1] if SESSION_FILE else "20260101")
+
+# Derive BATCH_CODE_VAL from filename if not provided:
+# session_20260710_SIM_E2E.csv → batch_tag = SIM_E2E
+if args.batch_tag:
+    BATCH_CODE_VAL = args.batch_tag
+elif SESSION_FILE:
+    parts = SESSION_FILE.replace(".csv", "").split("_", 2)
+    BATCH_CODE_VAL = parts[2] if len(parts) >= 3 else "SIM_E2E"
+else:
+    BATCH_CODE_VAL = "SIM_E2E"
+
+print(f"Session file  : {SESSION_FILE}")
+print(f"Attempt file  : {ATTEMPT_FILE}")
+print(f"Snapshot date : {SNAPSHOT_DATE}")
+print(f"Batch tag     : {BATCH_CODE_VAL}")
+
+if not SESSION_FILE or not ATTEMPT_FILE:
+    print("ERROR: No CSV files found in data/raw/ — run e2e-sim-export-csv.mjs first")
+    sys.exit(1)
+
+def patch_and_run(nb_name):
+    with open(nb_name, encoding="utf-8") as f:
+        nb = json.load(f)
+    for cell in nb["cells"]:
+        if cell["cell_type"] != "code":
+            continue
+        src = "".join(cell["source"])
+        patched = src
+        # Pattern 1: SESSION_CSV = None (NB01)
+        if 'SESSION_CSV = None' in patched:
+            patched = patched.replace(
+                'SESSION_CSV = None  # Example: RAW_DIR / "session_20260710_batch001.csv"',
+                f'SESSION_CSV = RAW_DIR / "{SESSION_FILE}"'
+            ).replace(
+                'ATTEMPT_CSV = None  # Example: RAW_DIR / "attempt_20260710_batch001.csv"',
+                f'ATTEMPT_CSV = RAW_DIR / "{ATTEMPT_FILE}"'
+            )
+        # Pattern 2: SNAPSHOT_DATE / BATCH_CODE placeholders (NB02, NB03)
+        if 'SNAPSHOT_DATE' in patched and 'YYYY-MM-DD' in patched:
+            patched = patched.replace(
+                'SNAPSHOT_DATE = "YYYY-MM-DD"', f'SNAPSHOT_DATE = "{SNAPSHOT_DATE}"'
+            ).replace(
+                'BATCH_CODE    = "BATCH_XXX"', f'BATCH_CODE    = "{BATCH_CODE_VAL}"'
+            ).replace(
+                'BATCH_CODE = "BATCH_XXX"', f'BATCH_CODE = "{BATCH_CODE_VAL}"'
+            ).replace(
+                'f"notebooks/data/raw/session_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"',
+                'f"data/raw/session_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"'
+            ).replace(
+                'f"notebooks/data/raw/attempt_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"',
+                'f"data/raw/attempt_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"'
+            ).replace(
+                'Path("notebooks/data/processed")', 'Path("data/processed")'
+            ).replace(
+                '"notebooks/data/processed"', '"data/processed"'
+            ).replace(
+                'Path("notebooks/data")', 'Path("data")'
+            )
+        # Pattern 3: NB04 notebook/ prefix
+        patched = (patched
+            .replace('Path("notebooks/data/processed")', 'Path("data/processed")')
+            .replace('Path("notebooks/models")',         'Path("models")')
+            .replace('Path("notebooks/reports")',        'Path("reports")')
+            .replace('"notebooks/data/processed"',      '"data/processed"')
+            .replace('"notebooks/models"',              '"models"')
+            .replace('"notebooks/reports"',             '"reports"')
+        )
+        # Pattern 4: Windows joblib crash
+        patched = patched.replace('n_jobs=-1', 'n_jobs=1')
+        if patched != src:
+            cell["source"] = [patched]
+
+    tmp = "_tmp_" + nb_name
+    out = "_out_" + nb_name
+    with open(tmp, "w") as f:
+        json.dump(nb, f)
+
+    result = subprocess.run(
+        ["jupyter", "nbconvert", "--to", "notebook", "--execute",
+         "--ExecutePreprocessor.timeout=300", "--output", out, tmp],
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+
+    output_lines = []
+    if os.path.exists(out):
+        with open(out, encoding="utf-8", errors="replace") as f:
+            out_nb = json.load(f)
+        for cell in out_nb["cells"]:
+            if cell["cell_type"] == "code" and cell.get("outputs"):
+                for o in cell["outputs"]:
+                    if o.get("output_type") == "stream":
+                        output_lines.append("".join(o.get("text", [])))
+                    elif o.get("output_type") == "error":
+                        output_lines.append(f'ERROR: {o.get("ename")}: {o.get("evalue")}')
+
+    for f in [tmp, out]:
+        try: os.remove(f)
+        except: pass
+
+    status = "PASS" if result.returncode == 0 else "FAIL"
+    print(f"\n=== {nb_name} [{status}] rc={result.returncode} ===")
+    KEY = ["PASS","FAIL","ERROR","gate","AUC","F1","missing","Missing","[OK]",
+           "LEAKAGE","SPLIT","logistic","random_forest","majority","WARNING","baseline","imbalance"]
+    for line in "\n".join(output_lines).split("\n"):
+        s = line.strip()
+        if s and any(k in s for k in KEY):
+            print(f"  > {s}")
+    if result.returncode != 0:
+        print("STDERR:", (result.stderr or "")[-2000:])
+    return result.returncode == 0
+
+results = {}
+for nb in ["02_data_quality_check.ipynb", "03_feature_engineering.ipynb", "04_baseline_model_lr_rf.ipynb"]:
+    results[nb] = patch_and_run(nb)
+
+print("\n── Notebook Run Summary ──")
+for nb, ok in results.items():
+    print(f"  {'✅' if ok else '❌'}  {nb}: {'PASS' if ok else 'FAIL'}")
+print("\n── Done ──")
+
+if not all(results.values()):
+    sys.exit(1)

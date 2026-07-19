@@ -27,6 +27,15 @@ export async function createProfileForCurrentUser(input?: {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("User not found.");
 
+  const { data: academyData, error: academyError } = await supabase
+    .from("tb_academy")
+    .select("academy_id")
+    .eq("academy_code", "KMITL")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (academyError) throw new Error(`Academy lookup failed: ${academyError.message}`);
+  if (!academyData?.academy_id) throw new Error("Default academy (KMITL) not found. Please contact the administrator.");
+
   const { data, error } = await supabase
     .from("mst_profiles")
     .insert({
@@ -36,6 +45,7 @@ export async function createProfileForCurrentUser(input?: {
       display_name: input?.display_name ?? null,
       grade_level: input?.grade_level ?? null,
       school_type: input?.school_type ?? null,
+      academy_id: academyData.academy_id,
     })
     .select("*")
     .single();

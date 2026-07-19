@@ -28,6 +28,7 @@ export async function runAnswerOnServer(params: {
 export async function submitAnswerOnServer(params: {
   session_id: string;
   task_id: string;
+  batch_id: string;
   answer_text: string;
   answer_json?: Record<string, unknown> | null;
 }): Promise<ScoreResult & { execution_time_ms: number; session_status: "completed" }> {
