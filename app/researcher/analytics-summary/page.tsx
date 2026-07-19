@@ -44,25 +44,29 @@ type ApiData = {
 
 function PilotDisclaimer({ warning }: { warning: string }) {
   return (
-    <div className="rounded-xl border border-red-300 bg-red-50 p-4 space-y-3">
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
       <div className="flex items-start gap-3">
-        <span className="text-red-500 text-xl mt-0.5">⚠</span>
-        <div>
-          <p className="font-bold text-red-700 text-sm">Technical Pipeline Validation Only</p>
-          <p className="text-red-600 text-xs mt-1 leading-relaxed">
-            These outputs use <code className="bg-red-100 px-1 rounded">proxy_behavioral</code> labels derived from the attempt stream.
-            Proxy-target circularity is present. Results are pilot-only and must not be interpreted as
+        <span className="text-amber-500 text-xl mt-0.5">⚠</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-bold text-amber-800 text-sm">Pilot Data Notice — Technical Validation Only</p>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white tracking-wide">PILOT ONLY</span>
+          </div>
+          <p className="text-amber-700 text-xs mt-2 leading-relaxed">
+            These outputs use <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">proxy_behavioral</code> labels
+            derived from the attempt stream. Proxy-target circularity is present.
+            Results are pilot-only and must <strong>not</strong> be interpreted as:
             research findings, model superiority, H5 confirmation, effect size, or generalizable performance.
           </p>
-          <p className="text-red-500 text-xs mt-2 italic">{warning}</p>
+          <p className="text-amber-600 text-xs mt-1.5 italic">{warning}</p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono bg-red-100 rounded-lg p-3">
-        <span className="text-red-700">evaluation_purpose</span><span className="text-red-900">= technical_pipeline_validation</span>
-        <span className="text-red-700">label_source</span><span className="text-red-900">= proxy_behavioral</span>
-        <span className="text-red-700">label_validity</span><span className="text-red-900">= pilot_only</span>
-        <span className="text-red-700">proxy_target_circularity</span><span className="text-red-900">= true</span>
-        <span className="text-red-700">confirmatory_analysis_allowed</span><span className="text-red-900">= false</span>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono bg-white/70 border border-amber-200 rounded-lg p-3">
+        <span className="text-[#64748B]">evaluation_purpose</span><span className="text-[#0F172A]">= technical_pipeline_validation</span>
+        <span className="text-[#64748B]">label_source</span><span className="text-[#0F172A]">= proxy_behavioral</span>
+        <span className="text-[#64748B]">label_validity</span><span className="text-[#0F172A]">= pilot_only</span>
+        <span className="text-[#64748B]">proxy_target_circularity</span><span className="text-[#0F172A]">= true</span>
+        <span className="text-[#64748B]">confirmatory_analysis_allowed</span><span className="text-[#0F172A]">= false</span>
       </div>
     </div>
   );
