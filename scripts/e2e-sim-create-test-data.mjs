@@ -285,10 +285,36 @@ for (let i = 0; i < enrollRows.length; i += CHUNK) {
 }
 console.log(`  ✅ ${students.length} students enrolled`);
 
-// ── 7. Summary ────────────────────────────────────────────────────────────────
+// ── 7. Task assignments ───────────────────────────────────────────────────────
+console.log(`[7/8] Task assignments (${students.length} students × ${tasks.length} tasks)...`);
+const assignRows = [];
+for (const student of students) {
+  for (let ti = 0; ti < tasks.length; ti++) {
+    assignRows.push({
+      batch_id:       batch.batch_id,
+      profile_id:     student.profId,
+      task_id:        tasks[ti].task_id,
+      assigned_order: ti + 1,
+      assigned_group: "default",
+      is_required:    true,
+      is_unlocked:    true,
+      status:         "assigned",
+    });
+  }
+}
+for (let i = 0; i < assignRows.length; i += CHUNK) {
+  const { error } = await admin.from("trn_task_assignments").upsert(
+    assignRows.slice(i, i + CHUNK),
+    { onConflict: "batch_id,profile_id,task_id", ignoreDuplicates: true }
+  );
+  if (error) console.warn(`  assignment warn: ${error.message}`);
+}
+console.log(`  ✅ ${assignRows.length} task assignments ready`);
+
+// ── 8. Summary ────────────────────────────────────────────────────────────────
 const atRiskCount  = Math.round(N_STUDENTS * AT_RISK_RATE / 100);
 const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
-console.log(`[7/7] ✅ Setup complete.
+console.log(`[8/8] ✅ Setup complete.
   Batch    : ${BATCH_CODE}
   Class    : ${CLASS_CODE}
   Tasks    : ${tasks.map(t => t.task_code ?? t.task_id).join(", ")}

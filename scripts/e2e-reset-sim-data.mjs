@@ -246,6 +246,16 @@ if (allSimIds.length > 0) {
     q => q.in("profile_id", allSimIds));
 }
 
+// ── Step 5b: Task assignments ─────────────────────────────────────────────────
+console.log("\n[Step 5b] Task assignments");
+if (batchId) {
+  await del("task_assignments (batch)", "trn_task_assignments", q => q.eq("batch_id", batchId));
+}
+if (allSimIds.length > 0) {
+  await del("task_assignments (sim/mock profiles)", "trn_task_assignments",
+    q => q.in("profile_id", allSimIds));
+}
+
 // ── Step 6: Class enrollment ──────────────────────────────────────────────────
 console.log("\n[Step 6] Class enrollment");
 if (classId) {
