@@ -179,10 +179,10 @@ export default function ResearcherDatasetPage() {
   }, []);
 
   const loadBatches = useCallback(async () => {
-    setLoadingBatches(true);
-    setErrorMsg(null);
     const token = await getToken();
     if (!token) { router.push("/auth/login"); return; }
+    setLoadingBatches(true);
+    setErrorMsg(null);
 
     const params = new URLSearchParams();
     if (fromDate) params.set("from_date", fromDate);
@@ -207,7 +207,7 @@ export default function ResearcherDatasetPage() {
     setLoadingBatches(false);
   }, [fromDate, toDate, batchTypeFilter, taskTypeFilter, getToken, router]);
 
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  useEffect(() => { queueMicrotask(() => { void loadBatches(); }); }, [loadBatches]);
 
   function toggleAll() {
     if (selected.size === filteredBatches.length && filteredBatches.length > 0) {

@@ -174,6 +174,9 @@ function Spinner({ size = "sm" }: { size?: "sm" | "md" }) {
   );
 }
 
+// ── helpers (module-level — safe to call anywhere) ────────────────────────────
+function getTimestamp(): number { return Date.now(); }
+
 // ── main component ────────────────────────────────────────────────────────────
 export default function MockLab() {
   // config
@@ -189,7 +192,7 @@ export default function MockLab() {
 
   // class + task set selection
   const [classes, setClasses]                   = useState<ClassOption[]>([]);
-  const [classesLoading, setClassesLoading]     = useState(false);
+  const [classesLoading, setClassesLoading]     = useState(true);
   const [selectedClassId, setSelectedClassId]   = useState<string>("");
   const [taskSets, setTaskSets]                 = useState<TaskSetOption[]>([]);
   const [taskSetsLoading, setTaskSetsLoading]   = useState(false);
@@ -207,24 +210,30 @@ export default function MockLab() {
 
   // live extract progress
   const [liveProgress, setLiveProgress]   = useState<LiveProgress | null>(null);
-  const [lastProgressAt, setLastProgressAt] = useState<number | null>(null);
+  const lastProgressAtRef                 = useRef<number | null>(null);
+  const [hangSeconds, setHangSeconds]     = useState<number | null>(null);
   const [finalStats, setFinalStats]       = useState<FinalStats | null>(null);
 
   // UI state
   const [activeTab, setActiveTab]     = useState<OutcomeTab>("summary");
-  const logEndRef  = useRef<HTMLDivElement>(null);
-  const abortRef   = useRef<AbortController | null>(null);
+  const logEndRef          = useRef<HTMLDivElement>(null);
+  const abortRef           = useRef<AbortController | null>(null);
+  const pipelineStepRef    = useRef<MockStep>("data");
 
-  // elapsed timer
+  // elapsed timer + hang detector
   useEffect(() => {
     if (!startTime) return;
-    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    const iv = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      setHangSeconds(lastProgressAtRef.current !== null
+        ? Math.floor((Date.now() - lastProgressAtRef.current) / 1000)
+        : null);
+    }, 1000);
     return () => clearInterval(iv);
   }, [startTime]);
 
   // fetch class list on mount
   useEffect(() => {
-    setClassesLoading(true);
     supabase.auth.getSession().then(({ data: { session } }) => {
       const token = session?.access_token ?? "";
       fetch("/api/researcher/classes", {
@@ -239,16 +248,11 @@ export default function MockLab() {
 
   // fetch task sets when class changes
   useEffect(() => {
-    if (!selectedClassId) {
-      setTaskSets([]);
+    if (!selectedClassId) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setTaskSetsLoading(true);
       setSelectedSetId("");
       setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
-      return;
-    }
-    setTaskSetsLoading(true);
-    setSelectedSetId("");
-    setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
-    supabase.auth.getSession().then(({ data: { session } }) => {
       const token = session?.access_token ?? "";
       fetch(`/api/researcher/classes/${selectedClassId}/sets`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -299,10 +303,11 @@ export default function MockLab() {
     setRunning(step);
     setLogs([]);
     setErrorCount(0);
-    setStartTime(Date.now());
+    setStartTime(getTimestamp());
     setElapsed(0);
     setLiveProgress(null);
-    setLastProgressAt(null);
+    lastProgressAtRef.current = null;
+    setHangSeconds(null);
     setFinalStats(null);
     if (step !== "outcome") setOutcome(null);
     if (step === "run-all") {
@@ -340,7 +345,7 @@ export default function MockLab() {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";
-      let currentPipelineStep = step;
+      pipelineStepRef.current = step;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -363,7 +368,7 @@ export default function MockLab() {
                 try {
                   const p: LiveProgress = JSON.parse(msg.slice(11));
                   setLiveProgress(p);
-                  setLastProgressAt(Date.now());
+                  lastProgressAtRef.current = getTimestamp();
                 } catch { /* ignore */ }
                 continue;
               }
@@ -380,18 +385,18 @@ export default function MockLab() {
               // detect step transitions in run-all
               const match = msg.match(/^── Step: (\w+)/);
               if (match) {
-                if (currentPipelineStep !== step) {
-                  setStepStatus(prev => ({ ...prev, [currentPipelineStep]: "completed" }));
-                  setCompleted(prev => [...prev, currentPipelineStep]);
+                if (pipelineStepRef.current !== step) {
+                  setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "completed" }));
+                  setCompleted(prev => [...prev, pipelineStepRef.current]);
                 }
-                currentPipelineStep = match[1] as MockStep;
-                setStepStatus(prev => ({ ...prev, [currentPipelineStep]: "running" }));
+                pipelineStepRef.current = match[1] as MockStep;
+                setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "running" }));
               }
             }
             if (eventType === "error") {
               addLog(`❌ ${payload.msg}`);
               setErrorCount(c => c + 1);
-              setStepStatus(prev => ({ ...prev, [currentPipelineStep]: "failed" }));
+              setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "failed" }));
             }
             if (eventType === "progress") {
               const s = payload.step as string;
@@ -430,6 +435,8 @@ export default function MockLab() {
       abortRef.current = null;
       setRunning(null);
       setStartTime(null);
+      setHangSeconds(null);
+      lastProgressAtRef.current = null;
       addLog("── Done ──");
     }
   }
@@ -531,7 +538,15 @@ export default function MockLab() {
               <div className="space-y-2">
                 <select
                   value={selectedClassId}
-                  onChange={e => setSelectedClassId(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (!val) {
+                      setTaskSets([]);
+                      setSelectedSetId("");
+                      setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+                    }
+                    setSelectedClassId(val);
+                  }}
                   disabled={isRunning || classesLoading}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
                 >
@@ -780,9 +795,9 @@ export default function MockLab() {
             <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-[#0F172A]">Extract Live Progress</p>
-                {isRunning && lastProgressAt && Date.now() - lastProgressAt > 30000 && (
+                {isRunning && hangSeconds !== null && hangSeconds > 30 && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-[10px] font-bold text-amber-700">
-                    ⚠ No progress for {Math.floor((Date.now() - lastProgressAt) / 1000)}s — possible hang
+                    ⚠ No progress for {hangSeconds}s — possible hang
                   </span>
                 )}
               </div>
