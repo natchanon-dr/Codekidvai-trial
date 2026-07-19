@@ -20,5 +20,6 @@ export async function GET(request: NextRequest) {
     seed_stability: summary.seed_stability,
     validation: summary.validation,
     charts: summary.charts,
+    model_configs: summary.model_configs,
   });
 }
