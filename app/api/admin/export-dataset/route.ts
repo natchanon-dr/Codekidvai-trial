@@ -97,7 +97,7 @@ async function exportOutcome(
     : [];
 
   // 1. Resolve batch_ids
-  let batchIds: string[] = [];
+  const batchIds: string[] = [];
   const batchCodeById = new Map<string, string>();
   if (codes.length > 0) {
     const { data: batches, error: bErr } = await supabaseAdmin
