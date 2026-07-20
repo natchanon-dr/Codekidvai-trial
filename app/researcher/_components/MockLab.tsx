@@ -3,6 +3,20 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
 import type { MockConfig, MockOutcome, MockStep } from "@/lib/mock-pipeline";
+import {
+  TaskTypeIcon,
+  TASK_TYPE_LABEL,
+  TASK_TYPE_ORDER,
+} from "@/lib/task-type-utils";
+import {
+  SET_FAMILY_LABEL,
+  THESIS_TASK_TYPE_ORDER,
+  THESIS_TASK_TYPE_LABEL,
+  isPhase4Supported,
+  getLearningMode,
+  type SetFamily,
+  type TaskType,
+} from "@/lib/research-context";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 interface ClassOption {
@@ -17,8 +31,11 @@ interface TaskSetOption {
   batch_id: string;
   batch_code: string | null;
   batch_name: string | null;
+  family: string;
   task_count: number;
   task_ids: string[];
+  task_type_counts: Record<string, number>;
+  learning_mode: string;
 }
 
 
@@ -198,6 +215,10 @@ export default function MockLab() {
   const [taskSetsLoading, setTaskSetsLoading]   = useState(false);
   const [selectedSetId, setSelectedSetId]       = useState<string>("");
 
+  // dummy-mode context selectors (used when no real task set is selected)
+  const [dummySetFamily, setDummySetFamily]     = useState<SetFamily>("assignment");
+  const [dummyTaskType, setDummyTaskType]       = useState<TaskType>("sql_text");
+
   // pipeline state
   const [running, setRunning]         = useState<MockStep | null>(null);
   const [stepStatus, setStepStatus]   = useState<Record<string, StepStatus>>({});
@@ -264,6 +285,18 @@ export default function MockLab() {
     });
   }, [selectedClassId]);
 
+  // Sync dummy selectors → config when no real task set is active
+  useEffect(() => {
+    if (selectedSetId) return; // real set overrides dummy selectors
+    queueMicrotask(() => {
+      setConfig(prev => ({
+        ...prev,
+        setFamily: dummySetFamily,
+        taskTypeCounts: { [dummyTaskType]: prev.taskIds?.length ?? prev.nTasks },
+      }));
+    });
+  }, [dummySetFamily, dummyTaskType, selectedSetId]);
+
   const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev.slice(-800), msg]);
     setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
@@ -283,9 +316,18 @@ export default function MockLab() {
         taskIds: found.task_ids,
         taskSetId: found.batch_id,
         nTasks: found.task_count,
+        setFamily: found.family,
+        taskTypeCounts: found.task_type_counts,
       }));
     } else {
-      setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+      setConfig(prev => ({
+        ...prev,
+        taskIds: undefined,
+        taskSetId: undefined,
+        nTasks: 3,
+        setFamily: dummySetFamily,
+        taskTypeCounts: { [dummyTaskType]: 3 },
+      }));
     }
   }
 
@@ -534,7 +576,7 @@ export default function MockLab() {
 
             {/* Task Set — Class + Set dropdowns */}
             <div className="space-y-3 pt-1 border-t border-[#F1F5F9]">
-              <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Task Set (from real class)</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Task Set (optional — from real class)</p>
               <div className="space-y-2">
                 <select
                   value={selectedClassId}
@@ -543,7 +585,14 @@ export default function MockLab() {
                     if (!val) {
                       setTaskSets([]);
                       setSelectedSetId("");
-                      setConfig(prev => ({ ...prev, taskIds: undefined, taskSetId: undefined, nTasks: 3 }));
+                      setConfig(prev => ({
+                        ...prev,
+                        taskIds: undefined,
+                        taskSetId: undefined,
+                        nTasks: 3,
+                        setFamily: dummySetFamily,
+                        taskTypeCounts: { [dummyTaskType]: 3 },
+                      }));
                     }
                     setSelectedClassId(val);
                   }}
@@ -568,16 +617,103 @@ export default function MockLab() {
                   </option>
                   {taskSets.map(s => (
                     <option key={s.batch_id} value={s.batch_id}>
-                      {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
                     </option>
                   ))}
                 </select>
               </div>
-              {config.taskIds?.length ? (
-                <p className="text-[11px] text-emerald-600 font-semibold">
-                  ✅ {config.taskIds.length} real task{config.taskIds.length !== 1 ? "s" : ""} selected
-                </p>
-              ) : null}
+
+              {/* Real Task Set summary (read-only) */}
+              {selectedSetId && config.taskIds?.length ? (() => {
+                const found = taskSets.find(s => s.batch_id === selectedSetId);
+                if (!found) return null;
+                const familyLabel = SET_FAMILY_LABEL[found.family as SetFamily] ?? found.family;
+                const ttEntries = TASK_TYPE_ORDER
+                  .filter(tt => (found.task_type_counts[tt] ?? 0) > 0)
+                  .map(tt => ({ tt, count: found.task_type_counts[tt] }));
+                return (
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F37021] text-white tracking-wide uppercase">{familyLabel} Set</span>
+                      <span className="text-xs text-emerald-700 font-semibold">{found.task_count} task{found.task_count !== 1 ? "s" : ""}</span>
+                      <span className="text-[10px] text-emerald-600 capitalize">{found.learning_mode.replace("_", "-")}</span>
+                    </div>
+                    {ttEntries.length > 0 && (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {ttEntries.map(({ tt, count }) => (
+                          <span key={tt} className="flex items-center gap-1 text-[11px] text-emerald-800">
+                            <TaskTypeIcon type={tt} className="w-3.5 h-3.5" />
+                            {TASK_TYPE_LABEL[tt] ?? tt} × {count}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-emerald-600 italic">Set Family and Task Types are preserved from the source class set.</p>
+                  </div>
+                );
+              })() : null}
+
+              {/* Dummy mode context selectors (only shown when no real task set selected) */}
+              {!selectedSetId && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-[11px] text-[#64748B] italic">No real task set selected — using dummy tasks. Configure context below.</p>
+
+                  {/* Set Family */}
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Set Family</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["assignment", "lab", "exam"] as const).map(sf => (
+                        <button
+                          key={sf}
+                          type="button"
+                          disabled={isRunning}
+                          onClick={() => setDummySetFamily(sf)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                            dummySetFamily === sf
+                              ? "bg-[#F37021] text-white border-[#F37021]"
+                              : "bg-white text-[#64748B] border-[#CBD5E1] hover:border-[#F37021]"
+                          }`}
+                        >
+                          {SET_FAMILY_LABEL[sf]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Task Type */}
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Task Type (dummy tasks)</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {(THESIS_TASK_TYPE_ORDER as TaskType[]).map(tt => {
+                        const phase4 = isPhase4Supported(tt);
+                        const lm     = getLearningMode(tt);
+                        const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
+                        return (
+                          <button
+                            key={tt}
+                            type="button"
+                            disabled={isRunning || !phase4}
+                            title={!phase4 ? `${label} — Planned Phase 5` : label}
+                            onClick={() => phase4 && setDummyTaskType(tt)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                              !phase4
+                                ? "opacity-40 cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8] border-[#E2E8F0]"
+                                : dummyTaskType === tt
+                                  ? "bg-[#F37021] text-white border-[#F37021]"
+                                  : "bg-white text-[#64748B] border-[#CBD5E1] hover:border-[#F37021]"
+                            }`}
+                          >
+                            <TaskTypeIcon type={tt} className="w-3.5 h-3.5" />
+                            {label}
+                            {!phase4 && <span className="text-[9px] opacity-70 ml-0.5">Ph5</span>}
+                            {phase4 && lm === "text_based" && null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>
@@ -600,9 +736,13 @@ export default function MockLab() {
                 ["Mock Code",         config.batchCode],
                 ["Students",          String(config.nStudents)],
               ];
+              const sfLabel = config.setFamily
+                ? (SET_FAMILY_LABEL[config.setFamily as SetFamily] ?? config.setFamily)
+                : "Assignment";
+              rows.push(["Set Family", sfLabel]);
               if (config.taskIds?.length) {
                 rows.push(["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? "—"]);
-                rows.push(["Tasks (selected)", String(config.taskIds.length)]);
+                rows.push(["Tasks (real)", String(config.taskIds.length)]);
               }
               rows.push(["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)})`]);
               rows.push(["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)})`]);
