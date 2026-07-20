@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminOrResearcher } from "@/lib/api-auth";
 import { convertRowsToCsv } from "@/lib/csv-utils";
+import { getLearningMode } from "@/lib/research-context";
 
 const viewMap: Record<string, string> = {
   attempt: "vw_dataset_attempt_level",
@@ -35,6 +36,8 @@ function buildOutcomeRow(
   participantCode: string,
   batchCode: string,
   taskCode: string,
+  taskType: string | null,
+  setFamily: string | null,
   submissionId: string,
   submittedAt: string | null,
   rubricRows: RubricScoreRow[],
@@ -71,6 +74,9 @@ function buildOutcomeRow(
     participant_code: participantCode,
     batch_code:       batchCode,
     task_code:        taskCode,
+    task_type:        taskType ?? null,
+    set_family:       setFamily ?? null,
+    learning_mode:    taskType ? getLearningMode(taskType) : null,
     submission_id:    submissionId,
     submitted_at:     submittedAt ?? null,
     ...scores,
@@ -142,19 +148,42 @@ async function exportOutcome(
     ]),
   );
 
-  // 4. Resolve task_id → task_code
+  // 4. Resolve task_id → task_code and task_type
   const taskIds = [...new Set(submissions.map((s) => s.task_id))];
   const { data: tasks, error: tErr } = await supabaseAdmin
     .from("mst_tasks")
-    .select("task_id, task_code")
+    .select("task_id, task_code, task_type")
     .in("task_id", taskIds);
   if (tErr) throw new Error(tErr.message);
   const codeByTaskId = new Map(
     (tasks ?? []).map((t) => [
-      (t as { task_id: string; task_code: string }).task_id,
-      (t as { task_id: string; task_code: string }).task_code,
+      (t as { task_id: string; task_code: string; task_type: string }).task_id,
+      (t as { task_id: string; task_code: string; task_type: string }).task_code,
     ]),
   );
+  const typeByTaskId = new Map(
+    (tasks ?? []).map((t) => [
+      (t as { task_id: string; task_code: string; task_type: string }).task_id,
+      (t as { task_id: string; task_code: string; task_type: string }).task_type,
+    ]),
+  );
+
+  // 4b. Resolve set_family per batch_id (NULL if ambiguous across class_ids)
+  const setFamilyByBatchId = new Map<string, string | null>();
+  if (batchIds.length > 0) {
+    const { data: csRows } = await supabaseAdmin
+      .from("tb_class_sets")
+      .select("batch_id, family")
+      .in("batch_id", batchIds);
+    const familiesByBatch = new Map<string, Set<string>>();
+    for (const r of (csRows ?? []) as { batch_id: string; family: string }[]) {
+      if (!familiesByBatch.has(r.batch_id)) familiesByBatch.set(r.batch_id, new Set());
+      familiesByBatch.get(r.batch_id)!.add(r.family);
+    }
+    for (const [bid, fams] of familiesByBatch) {
+      setFamilyByBatchId.set(bid, fams.size === 1 ? [...fams][0] : null);
+    }
+  }
 
   // 5. Fetch rubric scores for all submissions in one query
   const submissionIds = submissions.map((s) => s.submission_id);
@@ -181,9 +210,11 @@ async function exportOutcome(
 
   return submissions.map((s) =>
     buildOutcomeRow(
-      codeByProfileId.get(s.profile_id) ?? s.profile_id,
-      batchCodeById.get(s.batch_id)     ?? s.batch_id,
-      codeByTaskId.get(s.task_id)       ?? s.task_id,
+      codeByProfileId.get(s.profile_id)      ?? s.profile_id,
+      batchCodeById.get(s.batch_id)          ?? s.batch_id,
+      codeByTaskId.get(s.task_id)            ?? s.task_id,
+      typeByTaskId.get(s.task_id)            ?? null,
+      setFamilyByBatchId.get(s.batch_id)     ?? null,
       s.submission_id,
       s.submitted_at,
       rubricBySubmission.get(s.submission_id) ?? [],

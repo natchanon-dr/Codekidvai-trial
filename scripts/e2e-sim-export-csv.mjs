@@ -119,7 +119,7 @@ const codeToProfileId = new Map((profiles ?? []).map(p => [p.participant_code, p
 const taskCodes = [...new Set(sessionRaw.map(r => r.task_code))];
 const { data: tasks } = await admin
   .from("mst_tasks")
-  .select("task_id, task_code, max_score, difficulty_level")
+  .select("task_id, task_code, task_type, max_score, difficulty_level")
   .in("task_code", taskCodes);
 const taskCodeToId = new Map((tasks ?? []).map(t => [t.task_code, t.task_id]));
 const taskCodeToMaxScore = new Map((tasks ?? []).map(t => [t.task_code, t.max_score]));
@@ -160,6 +160,8 @@ const sessionRows = sessionRaw.map(r => {
     l1_logical_reasoning: "",
     l2_learning_process: "",
     l3_difficulty_complexity: "",
+    set_family: r.set_family ?? "",
+    learning_mode: r.learning_mode ?? "",
   };
 });
 
@@ -182,6 +184,8 @@ const attemptRows = attemptRaw.map(r => ({
   error_type: r.error_type ?? "",
   execution_time_ms: r.execution_time_ms ?? "",
   created_at: r.attempt_created_at ?? "",
+  set_family: r.set_family ?? "",
+  learning_mode: r.learning_mode ?? "",
 }));
 
 // ── 5. Write session + attempt CSVs ──────────────────────────────────────────
@@ -203,6 +207,7 @@ const sequenceRows = seqRaw.map(r => ({
   academy_member_id:    r.participant_code,
   batch_code:           r.batch_code ?? BATCH_CODE,
   task_code:            r.task_code,
+  task_type:            r.task_type ?? "",
   session_id:           r.session_id,
   session_status:       r.session_status,
   session_started_at:   r.session_started_at,
@@ -213,6 +218,8 @@ const sequenceRows = seqRaw.map(r => ({
   duration_from_start:  r.duration_from_start ?? "",
   event_time:           r.event_time,
   metadata_json:        r.metadata_json ? JSON.stringify(r.metadata_json) : "",
+  set_family:           r.set_family ?? "",
+  learning_mode:        r.learning_mode ?? "",
 }));
 
 const sequenceFile = path.join(OUT_DIR, `sequence_${TODAY}_${BATCH_TAG}.csv`);
@@ -257,8 +264,16 @@ for (const r of rubricRowsForBatch) {
   rubricBySubmission.get(r.submission_id).push(r);
 }
 
-// Build a task_id → task_code map from what we already fetched
+// Build task_id → task_code / task_type maps from what we already fetched
 const taskIdToCode = new Map([...(tasks ?? [])].map(t => [t.task_id, t.task_code]));
+const taskIdToType = new Map([...(tasks ?? [])].map(t => [t.task_id, t.task_type ?? ""]));
+
+// Resolve set_family for this batch (NULL if ambiguous across multiple class_ids)
+const { data: classSetRows } = batchId
+  ? await admin.from("tb_class_sets").select("family").eq("batch_id", batchId)
+  : { data: [] };
+const batchFamilies = [...new Set((classSetRows ?? []).map(r => r.family).filter(Boolean))];
+const batchSetFamily = batchFamilies.length === 1 ? batchFamilies[0] : null;
 
 function deriveGrade(score) {
   if (score >= 85) return "A";
@@ -299,10 +314,20 @@ const outcomeRows = (submissionsForOutcome ?? []).map(sub => {
   const labelSource   = criteriaCount === 0 ? "no_rubric"   : "auto_generated";
   const labelValidity = criteriaCount === 0 ? "invalid"     : "pilot_only";
 
+  const taskType = taskIdToType.get(sub.task_id) ?? "";
+  const learningMode = taskType === "sql_text" || taskType === "stored_procedure" || taskType === "coding_text"
+    ? "text_based"
+    : taskType === "sql_block" || taskType === "er_diagram" || taskType === "coding_block"
+    ? "block_based"
+    : "";
+
   return {
     participant_code:    profileCode,
     batch_code:          BATCH_CODE,
     task_code:           taskCode,
+    task_type:           taskType,
+    set_family:          batchSetFamily ?? "",
+    learning_mode:       learningMode,
     submission_id:       sub.submission_id,
     submitted_at:        sub.submitted_at ?? "",
     ...scores,

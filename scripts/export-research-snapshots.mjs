@@ -119,6 +119,7 @@ if (!skip(seqFile)) {
     academy_member_id:   r.participant_code,
     batch_code:          r.batch_code ?? BATCH_CODE,
     task_code:           r.task_code,
+    task_type:           r.task_type ?? '',
     session_id:          r.session_id,
     session_status:      r.session_status,
     session_started_at:  r.session_started_at,
@@ -129,6 +130,8 @@ if (!skip(seqFile)) {
     duration_from_start: r.duration_from_start ?? '',
     event_time:          r.event_time,
     metadata_json:       r.metadata_json ? JSON.stringify(r.metadata_json) : '',
+    set_family:          r.set_family ?? '',
+    learning_mode:       r.learning_mode ?? '',
   }));
   fs.writeFileSync(seqFile, toCsv(seqRows), 'utf8');
   console.log(`  Written: ${seqFile}`);
@@ -155,6 +158,8 @@ if (!skip(attFile)) {
     error_type:        r.error_type ?? '',
     execution_time_ms: r.execution_time_ms ?? '',
     created_at:        r.attempt_created_at ?? '',
+    set_family:        r.set_family ?? '',
+    learning_mode:     r.learning_mode ?? '',
   }));
   fs.writeFileSync(attFile, toCsv(attRows), 'utf8');
   console.log(`  Written: ${attFile}`);
@@ -189,6 +194,8 @@ if (!skip(sessFile)) {
     final_score:         r.final_score ?? '',
     is_passed:           r.is_passed ?? '',
     submitted_at:        r.submitted_at ?? '',
+    set_family:          r.set_family ?? '',
+    learning_mode:       r.learning_mode ?? '',
   }));
   fs.writeFileSync(sessFile, toCsv(sessRows), 'utf8');
   console.log(`  Written: ${sessFile}`);
@@ -228,12 +235,19 @@ if (!skip(outcomeFile)) {
       : { data: [] };
     const codeByPid = new Map((profiles ?? []).map(p => [p.profile_id, p.participant_code]));
 
-    // Task codes
+    // Task codes and types
     const taskIds = [...new Set((subs ?? []).map(s => s.task_id))];
     const { data: tasks } = taskIds.length
-      ? await admin.from('mst_tasks').select('task_id, task_code').in('task_id', taskIds)
+      ? await admin.from('mst_tasks').select('task_id, task_code, task_type').in('task_id', taskIds)
       : { data: [] };
     const codeByTid = new Map((tasks ?? []).map(t => [t.task_id, t.task_code]));
+    const typeByTid = new Map((tasks ?? []).map(t => [t.task_id, t.task_type ?? '']));
+
+    // Resolve set_family for this batch (NULL if ambiguous)
+    const { data: csRows } = await admin
+      .from('tb_class_sets').select('family').eq('batch_id', batchId);
+    const batchFamilies = [...new Set((csRows ?? []).map(r => r.family).filter(Boolean))];
+    const batchSetFamily = batchFamilies.length === 1 ? batchFamilies[0] : null;
 
     // Rubric scores
     let rubricRows = [];
@@ -272,10 +286,20 @@ if (!skip(outcomeFile)) {
       const labelSrc   = criteriaCount === 0 ? 'no_rubric' : 'auto_generated';
       const labelVal   = criteriaCount === 0 ? 'invalid'   : 'pilot_only';
 
+      const taskType    = typeByTid.get(sub.task_id) ?? '';
+      const learningMode = taskType === 'sql_text' || taskType === 'stored_procedure' || taskType === 'coding_text'
+        ? 'text_based'
+        : taskType === 'sql_block' || taskType === 'er_diagram' || taskType === 'coding_block'
+        ? 'block_based'
+        : '';
+
       return {
         participant_code:    codeByPid.get(sub.profile_id) ?? sub.profile_id,
         batch_code:          BATCH_CODE,
         task_code:           codeByTid.get(sub.task_id) ?? sub.task_id,
+        task_type:           taskType,
+        set_family:          batchSetFamily ?? '',
+        learning_mode:       learningMode,
         submission_id:       sub.submission_id,
         submitted_at:        sub.submitted_at ?? '',
         ...scores,
