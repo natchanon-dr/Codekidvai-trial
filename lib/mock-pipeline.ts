@@ -28,6 +28,8 @@ export interface MockConfig {
   setFamily?: string;
   // task_type → count map; derived from the selected task set or dummy config
   taskTypeCounts?: Record<string, number>;
+  // deterministic simulation seed — same seed+family+learner+task → same event signature
+  seed?: number;
 }
 
 export type ModelMetrics = {

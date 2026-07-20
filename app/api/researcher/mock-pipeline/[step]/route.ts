@@ -177,6 +177,8 @@ async function runStep(
         ...batchArgs,
         ...rateArgs,
         "--api-base", config.apiBase,
+        "--set-family", config.setFamily ?? "assignment",
+        "--seed", String(config.seed ?? 42),
       ];
       if (config.taskIds?.length) {
         extractArgs.push("--task-ids", config.taskIds.join(","));

@@ -13,8 +13,9 @@
  *   --at-risk-rate 35                (% of students who are at-risk, default 35)
  *   --missing-rate  7                (% of students with no submission, default 7)
  *   --set-family  assignment         (assignment|lab|exam, default: assignment)
- *   --task-type   sql_text           (sql_text|stored_procedure, default: sql_text)
- *                                    Only Phase 4 text-based types accepted.
+ *   --task-type   sql_text           (sql_text only; default: sql_text)
+ *                                    stored_procedure dummy templates are not yet implemented.
+ *                                    Real stored_procedure tasks via --task-ids are supported.
  *                                    Ignored when --task-ids is provided.
  */
 import fs from "node:fs";
@@ -46,7 +47,7 @@ const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Bool
 
 // research context
 const ALLOWED_SET_FAMILIES = ["assignment", "lab", "exam"];
-const ALLOWED_TASK_TYPES   = ["sql_text", "stored_procedure"];
+const ALLOWED_TASK_TYPES   = ["sql_text"]; // stored_procedure dummy templates not yet implemented
 const BLOCK_TASK_TYPES     = ["sql_block", "er_diagram", "coding_text", "coding_block"];
 
 const SET_FAMILY = opts["set-family"] ?? "assignment";
@@ -61,7 +62,13 @@ if (!ALLOWED_SET_FAMILIES.includes(SET_FAMILY)) {
   process.exit(1);
 }
 if (!REAL_TASK_IDS.length && !ALLOWED_TASK_TYPES.includes(DUMMY_TASK_TYPE)) {
-  if (BLOCK_TASK_TYPES.includes(DUMMY_TASK_TYPE)) {
+  if (DUMMY_TASK_TYPE === "stored_procedure") {
+    console.error(
+      `ERROR: stored_procedure dummy task generation is not yet implemented — ` +
+      `SQL Query templates cannot represent Stored Procedure structure or syntax. ` +
+      `To use stored_procedure tasks, provide real task UUIDs via --task-ids from an existing class set.`
+    );
+  } else if (BLOCK_TASK_TYPES.includes(DUMMY_TASK_TYPE)) {
     console.error(`ERROR: --task-type '${DUMMY_TASK_TYPE}' is a block-based type not supported in Phase 4 simulation. Planned for Phase 5.`);
   } else {
     console.error(`ERROR: --task-type must be one of: ${ALLOWED_TASK_TYPES.join(", ")}. Got: ${DUMMY_TASK_TYPE}`);

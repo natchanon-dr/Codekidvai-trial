@@ -203,6 +203,7 @@ export default function MockLab() {
     nTasks: 3,
     atRiskRate: 35,
     missingRate: 7,
+    seed: 42,
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
   });
   const [configError, setConfigError] = useState<string | null>(null);
@@ -572,6 +573,13 @@ export default function MockLab() {
                   disabled={isRunning}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Sim Seed</label>
+                <input type="number" min={0} max={2147483647} value={config.seed ?? 42}
+                  onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
+                  disabled={isRunning}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+              </div>
             </div>
 
             {/* Task Set — Class + Set dropdowns */}
@@ -744,6 +752,7 @@ export default function MockLab() {
                 rows.push(["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? "—"]);
                 rows.push(["Tasks (real)", String(config.taskIds.length)]);
               }
+              rows.push(["Sim Seed",           String(config.seed ?? 42)]);
               rows.push(["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)})`]);
               rows.push(["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)})`]);
               return rows;

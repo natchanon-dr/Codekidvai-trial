@@ -46,6 +46,8 @@ const AT_RISK_RATE  = Math.max(0, Math.min(100, parseInt(opts["at-risk-rate"] ??
 const MISSING_RATE  = Math.max(0, Math.min(100, parseInt(opts["missing-rate"] ?? "7",  10)));
 const API_BASE      = opts["api-base"]      ?? "http://localhost:3000";
 const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
+const SET_FAMILY    = opts["set-family"]    ?? "assignment";
+const SIMULATION_SEED = parseInt(opts["seed"] ?? "42", 10);
 
 // Bounded student concurrency — env overrides CLI, CLI overrides default 2; max 4
 const RAW_CONCURRENCY    = parseInt(process.env.MOCK_STUDENT_CONCURRENCY ?? opts["concurrency"] ?? "2", 10);
@@ -53,6 +55,15 @@ const STUDENT_CONCURRENCY = Math.max(1, Math.min(4, isNaN(RAW_CONCURRENCY) ? 2 :
 
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
+  process.exit(1);
+}
+const ALLOWED_SET_FAMILIES = ["assignment", "lab", "exam"];
+if (!ALLOWED_SET_FAMILIES.includes(SET_FAMILY)) {
+  console.error(`ERROR: --set-family must be one of: ${ALLOWED_SET_FAMILIES.join(", ")}. Got: ${SET_FAMILY}`);
+  process.exit(1);
+}
+if (isNaN(SIMULATION_SEED) || SIMULATION_SEED < 0 || SIMULATION_SEED > 2147483647) {
+  console.error(`ERROR: --seed must be a non-negative integer (0–2147483647). Got: ${opts["seed"]}`);
   process.exit(1);
 }
 
@@ -83,6 +94,78 @@ const anonClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
+
+// ── Seeded PRNG (Mulberry32 — no npm dependency) ──────────────────────────────
+// Returns a PRNG function from a 32-bit seed. Same seed always produces the same sequence.
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let z = seed;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Mix base seed with index values to produce a stable per-student+task seed.
+function deriveSeed(base, ...parts) {
+  let s = base >>> 0;
+  for (const p of parts) {
+    s = Math.imul(s ^ (p >>> 0), 0x9E3779B9) >>> 0;
+    s = (s ^ (s >>> 16)) >>> 0;
+  }
+  return s;
+}
+
+// ── Behavior profiles ─────────────────────────────────────────────────────────
+// Each set family drives distinct simulation behavior — measurable in run count,
+// session count, and session start time spread in the exported dataset.
+//
+// EXAM LIMITATION: The run-answer API (/api/student/run-answer) always returns
+// is_correct, score, and error_type in its response body. A real exam would not
+// reveal correctness during the attempt. This Exam profile simulation cannot
+// suppress that API feedback — it approximates exam conditions via run-count caps
+// and single-session enforcement only, not via feedback suppression.
+//
+// HINT LIMITATION: No /api/student/hint route exists. hint_viewed/hint_open events
+// are not generated. The hint probability fields below are documented for future use.
+const BEHAVIOR_PROFILES = {
+  assignment: {
+    name: "assignment",
+    runsMin: 3,          // total run-answer calls per student per task
+    runsMax: 5,
+    sessionsMin: 1,
+    sessionsMax: 2,      // 40% chance of a second session (see simulateOneStudent)
+    sessionGapHours: 4,  // synthetic session-start offset for multi-session (hours)
+    runDelayMs: 50,      // API rate-limiting pause between run calls
+    submitDelayMs: 80,
+    hintProbability: 0.30, // documented only — hint API not yet implemented
+  },
+  lab: {
+    name: "lab",
+    runsMin: 4,
+    runsMax: 6,
+    sessionsMin: 1,
+    sessionsMax: 1,      // always single session
+    sessionGapHours: 0,
+    runDelayMs: 30,
+    submitDelayMs: 50,
+    hintProbability: 0.20,
+  },
+  exam: {
+    name: "exam",
+    runsMin: 1,
+    runsMax: 2,          // capped — exam limits attempts
+    sessionsMin: 1,
+    sessionsMax: 1,      // enforced single session
+    sessionGapHours: 0,
+    runDelayMs: 40,
+    submitDelayMs: 60,
+    hintProbability: 0.0, // enforced zero — no hints in exam conditions
+  },
+};
+
+const CURRENT_PROFILE = BEHAVIOR_PROFILES[SET_FAMILY] ?? BEHAVIOR_PROFILES.assignment;
 
 // ── 1. Load batch + tasks + student profiles ──────────────────────────────────
 console.log(`[0] Loading test data for batch ${BATCH_CODE}...`);
@@ -118,8 +201,9 @@ const N_STUDENTS   = profileRows.length;
 const atRiskFrom   = N_STUDENTS - Math.round(N_STUDENTS * AT_RISK_RATE / 100) + 1;
 const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
 
-// Workload estimation
-const runAnswerTotal    = N_STUDENTS * taskAnswers.length * 3;
+// Workload estimation — uses profile average run count
+const avgRunsPerTask    = Math.round((CURRENT_PROFILE.runsMin + CURRENT_PROFILE.runsMax) / 2);
+const runAnswerTotal    = N_STUDENTS * taskAnswers.length * avgRunsPerTask;
 const submitAnswerTotal = (N_STUDENTS - missingCount) * taskAnswers.length;
 const estimatedSeconds  = Math.round((runAnswerTotal + submitAnswerTotal) * 0.4);
 const totalCallsEst     = runAnswerTotal + submitAnswerTotal;
@@ -137,6 +221,15 @@ console.log(`  at-risk     : student ${atRiskFrom}+ (${Math.round(N_STUDENTS * A
 console.log(`  missing     : ${missingCount} students`);
 console.log(`  est. calls  : ${totalCallsEst} (run=${runAnswerTotal} submit=${submitAnswerTotal})`);
 console.log(`  est. time   : ~${Math.ceil(estimatedSeconds / 60)}m ${estimatedSeconds % 60}s`);
+console.log(`  set_family  : ${SET_FAMILY}`);
+console.log(`  sim_seed    : ${SIMULATION_SEED}`);
+console.log(`  profile     : ${CURRENT_PROFILE.name}  runs=${CURRENT_PROFILE.runsMin}-${CURRENT_PROFILE.runsMax}  sessions=${CURRENT_PROFILE.sessionsMin}-${CURRENT_PROFILE.sessionsMax}`);
+console.log(`[MANIFEST] ${JSON.stringify({
+  simulation_seed: SIMULATION_SEED,
+  behavior_profile: CURRENT_PROFILE.name,
+  behavior_profile_version: "1.0",
+  set_family: SET_FAMILY,
+})}`);
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const SLOW_THRESHOLD_MS  = 5000;
@@ -269,12 +362,13 @@ async function apiPost(path, body, jwt, label, ctx) {
   return timedFetch(path, body, jwt, label ?? path, ctx);
 }
 
-async function createSession(profileId, taskId, batchId) {
+async function createSession(profileId, taskId, batchId, startedAt) {
+  const ts = startedAt ?? new Date().toISOString();
   const { data, error } = await admin.from("trn_learning_sessions").insert({
     profile_id: profileId, task_id: taskId, batch_id: batchId,
-    started_at: new Date().toISOString(), status: "in_progress",
+    started_at: ts, status: "in_progress",
     device_type: "desktop", browser_name: "SimulatedE2E",
-    user_agent: `${BATCH_CODE}/1.0`, last_event_at: new Date().toISOString(),
+    user_agent: `${BATCH_CODE}/1.0`, last_event_at: ts,
   }).select("session_id").single();
   if (error) throw new Error(`Session insert: ${error.message}`);
   return data.session_id;
@@ -319,8 +413,10 @@ console.log(`    concurrency=${STUDENT_CONCURRENCY}  est. calls=${totalApiCalls}
 const results = { sessions: 0, runs: 0, submits: 0, skipped: 0, errors: [] };
 
 /**
- * Simulate one student: tasks are strictly sequential,
- * operations within each task are sequential.
+ * Simulate one student: tasks are strictly sequential.
+ * Behavior is driven by CURRENT_PROFILE (assignment/lab/exam) and a per-student+task
+ * seeded PRNG so that the same seed+family+studentIdx+taskIdx always produces the
+ * same run count, session count, and answer sequence.
  */
 async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, studentIdx) {
   const taskCount = taskAnswers.length;
@@ -330,47 +426,68 @@ async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, stu
     const ctx       = { student: `S${studentIdx}/${totalStudents}`, task: `T${ti + 1}/${taskCount}` };
     const prefix    = `  [S${studentIdx}/${totalStudents}][T${ti + 1}/${taskCount}] ${code}/${taskLabel}`;
 
-    let sessionId;
-    try {
-      sessionId = await createSession(profileId, task.task_id, batch.batch_id);
-      results.sessions++;
-    } catch (e) {
-      results.errors.push(`session ${code} ${taskLabel}: ${e.message}`);
-      continue;
+    // Per-student+task seeded PRNG — deterministic given seed+studentIdx+ti
+    const rng = mulberry32(deriveSeed(SIMULATION_SEED, studentIdx, ti));
+
+    // Total runs and session count from profile + seeded RNG
+    const runRange    = CURRENT_PROFILE.runsMax - CURRENT_PROFILE.runsMin + 1;
+    const totalRuns   = CURRENT_PROFILE.runsMin + Math.floor(rng() * runRange);
+    const numSessions = CURRENT_PROFILE.sessionsMax > CURRENT_PROFILE.sessionsMin && rng() < 0.4
+      ? CURRENT_PROFILE.sessionsMax : CURRENT_PROFILE.sessionsMin;
+
+    // Multi-session (assignment only): session 1 gets ceil(total/2) runs without submit;
+    // final session gets the remainder + submit.
+    const runsPerSession = numSessions > 1
+      ? [Math.ceil(totalRuns / 2), totalRuns - Math.ceil(totalRuns / 2)]
+      : [totalRuns];
+
+    // Synthetic session start times spread by sessionGapHours — written to started_at
+    // so the exported dataset reflects distinct session windows for assignment vs lab/exam.
+    const sessionBaseMs = Date.now() - (numSessions > 1 ? CURRENT_PROFILE.sessionGapHours * 3_600_000 : 0);
+
+    for (let si = 0; si < numSessions; si++) {
+      const isLastSession = si === numSessions - 1;
+      const sessionRuns   = runsPerSession[si] ?? 1;
+      const startedAt     = new Date(sessionBaseMs + si * CURRENT_PROFILE.sessionGapHours * 3_600_000).toISOString();
+
+      let sessionId;
+      try {
+        sessionId = await createSession(profileId, task.task_id, batch.batch_id, startedAt);
+        results.sessions++;
+      } catch (e) {
+        results.errors.push(`session ${code} ${taskLabel}: ${e.message}`);
+        continue;
+      }
+      console.log(`${prefix} — session ${si + 1}/${numSessions} (profile=${CURRENT_PROFILE.name} runs=${sessionRuns})`);
+
+      for (let r = 0; r < sessionRuns; r++) {
+        const isFinalRun = isLastSession && r === sessionRuns - 1;
+        const answer     = (isFinalRun && !isAtRisk) ? task.correct : task.wrong;
+        const run = await apiPost("/api/student/run-answer", {
+          session_id: sessionId, task_id: task.task_id, answer_text: answer,
+        }, jwt, `run-s${si + 1}-r${r + 1}`, ctx);
+        if (run.ok) results.runs++;
+        else results.errors.push(`run ${code} ${taskLabel}: ${run.status}`);
+        console.log(`${prefix} Run (s${si + 1} r${r + 1}/${sessionRuns}) ${run.ok ? "✓" : "✗"}${isFinalRun ? (isAtRisk ? " [wrong-final]" : " [correct]") : ""}`);
+        await new Promise(res => setTimeout(res, CURRENT_PROFILE.runDelayMs));
+      }
+
+      if (isLastSession && !isMissing) {
+        const sub = await apiPost("/api/student/submit-answer", {
+          session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
+          answer_text: isAtRisk ? task.wrong : task.correct,
+        }, jwt, "submit", ctx);
+        if (sub.ok) results.submits++;
+        else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
+        console.log(`${prefix} Submit ${sub.ok ? "✓" : "✗"}`);
+        await new Promise(res => setTimeout(res, CURRENT_PROFILE.submitDelayMs));
+      } else if (isLastSession && isMissing) {
+        results.skipped++;
+      } else {
+        // Minimal gap before next session
+        await new Promise(res => setTimeout(res, 50));
+      }
     }
-    console.log(`${prefix} — starting`);
-
-    // run-wrong × 2
-    for (let r = 0; r < 2; r++) {
-      const run = await apiPost("/api/student/run-answer", {
-        session_id: sessionId, task_id: task.task_id, answer_text: task.wrong,
-      }, jwt, `run-wrong-${r + 1}`, ctx);
-      if (run.ok) results.runs++;
-      else results.errors.push(`run-wrong ${code} ${taskLabel}: ${run.status}`);
-      console.log(`${prefix} Run SQL (wrong ${r + 1}/2) ${run.ok ? "✓" : "✗"}`);
-      await new Promise(r => setTimeout(r, 50));
-    }
-
-    // final run: correct for passing, wrong for at-risk
-    const run3 = await apiPost("/api/student/run-answer", {
-      session_id: sessionId, task_id: task.task_id,
-      answer_text: isAtRisk ? task.wrong : task.correct,
-    }, jwt, "run-final", ctx);
-    if (run3.ok) results.runs++;
-    else results.errors.push(`run-3rd ${code} ${taskLabel}: ${run3.status}`);
-    console.log(`${prefix} Run SQL (final) ${run3.ok ? "✓" : "✗"}`);
-    await new Promise(r => setTimeout(r, 50));
-
-    // submit (skip if missing-rate student)
-    if (isMissing) { results.skipped++; continue; }
-    const sub = await apiPost("/api/student/submit-answer", {
-      session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
-      answer_text: isAtRisk ? task.wrong : task.correct,
-    }, jwt, "submit", ctx);
-    if (sub.ok) results.submits++;
-    else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
-    console.log(`${prefix} Submit ${sub.ok ? "✓" : "✗"}`);
-    await new Promise(r => setTimeout(r, 80));
   }
 }
 
