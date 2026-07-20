@@ -118,17 +118,28 @@ function deriveSeed(base, ...parts) {
 }
 
 // ── Behavior profiles ─────────────────────────────────────────────────────────
-// Each set family drives distinct simulation behavior — measurable in run count,
-// session count, and session start time spread in the exported dataset.
+// Each set family drives distinct, measurable simulation behavior.
 //
-// EXAM LIMITATION: The run-answer API (/api/student/run-answer) always returns
-// is_correct, score, and error_type in its response body. A real exam would not
-// reveal correctness during the attempt. This Exam profile simulation cannot
-// suppress that API feedback — it approximates exam conditions via run-count caps
-// and single-session enforcement only, not via feedback suppression.
+// What IS accurately represented in persisted data:
+//   - run count per task  (trn_submissions.total_run_count, trn_attempts rows)
+//   - session count per learner × task  (trn_learning_sessions rows)
+//   - run count per session  (trn_attempts grouped by session_id)
 //
-// HINT LIMITATION: No /api/student/hint route exists. hint_viewed/hint_open events
-// are not generated. The hint probability fields below are documented for future use.
+// What is NOT represented (documented limitations):
+//   - Session timing gap: The run-answer/submit-answer APIs write attempt and event
+//     timestamps using server-side now(). Passing a synthetic started_at to
+//     trn_learning_sessions while attempt/event rows carry real clock times would
+//     produce invalid duration_from_start calculations (up to sessionGapHours × 3600s
+//     per event) and negative/wrong time_to_first_correct_sec in trn_submissions.
+//     Session timing gaps are therefore not simulated. All sessions start at real
+//     clock time. The behavioral signal is session COUNT, not timing.
+//
+//   - Hint events: No /api/student/hint route exists. hint_viewed/hint_open events
+//     are not generated. hintProbability fields are present for future use only.
+//
+//   - Exam feedback suppression: run-answer always returns is_correct, score, and
+//     error_type. Exam profile approximates exam conditions via run-count cap (≤2)
+//     and single-session enforcement, not via feedback suppression.
 const BEHAVIOR_PROFILES = {
   assignment: {
     name: "assignment",
@@ -136,7 +147,6 @@ const BEHAVIOR_PROFILES = {
     runsMax: 5,
     sessionsMin: 1,
     sessionsMax: 2,      // 40% chance of a second session (see simulateOneStudent)
-    sessionGapHours: 4,  // synthetic session-start offset for multi-session (hours)
     runDelayMs: 50,      // API rate-limiting pause between run calls
     submitDelayMs: 80,
     hintProbability: 0.30, // documented only — hint API not yet implemented
@@ -147,7 +157,6 @@ const BEHAVIOR_PROFILES = {
     runsMax: 6,
     sessionsMin: 1,
     sessionsMax: 1,      // always single session
-    sessionGapHours: 0,
     runDelayMs: 30,
     submitDelayMs: 50,
     hintProbability: 0.20,
@@ -158,7 +167,6 @@ const BEHAVIOR_PROFILES = {
     runsMax: 2,          // capped — exam limits attempts
     sessionsMin: 1,
     sessionsMax: 1,      // enforced single session
-    sessionGapHours: 0,
     runDelayMs: 40,
     submitDelayMs: 60,
     hintProbability: 0.0, // enforced zero — no hints in exam conditions
@@ -437,22 +445,19 @@ async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, stu
 
     // Multi-session (assignment only): session 1 gets ceil(total/2) runs without submit;
     // final session gets the remainder + submit.
+    // Note: all sessions use real clock time for started_at — see BEHAVIOR_PROFILES comment
+    // on why synthetic session timing gaps cannot be accurately represented.
     const runsPerSession = numSessions > 1
       ? [Math.ceil(totalRuns / 2), totalRuns - Math.ceil(totalRuns / 2)]
       : [totalRuns];
 
-    // Synthetic session start times spread by sessionGapHours — written to started_at
-    // so the exported dataset reflects distinct session windows for assignment vs lab/exam.
-    const sessionBaseMs = Date.now() - (numSessions > 1 ? CURRENT_PROFILE.sessionGapHours * 3_600_000 : 0);
-
     for (let si = 0; si < numSessions; si++) {
       const isLastSession = si === numSessions - 1;
       const sessionRuns   = runsPerSession[si] ?? 1;
-      const startedAt     = new Date(sessionBaseMs + si * CURRENT_PROFILE.sessionGapHours * 3_600_000).toISOString();
 
       let sessionId;
       try {
-        sessionId = await createSession(profileId, task.task_id, batch.batch_id, startedAt);
+        sessionId = await createSession(profileId, task.task_id, batch.batch_id);
         results.sessions++;
       } catch (e) {
         results.errors.push(`session ${code} ${taskLabel}: ${e.message}`);
