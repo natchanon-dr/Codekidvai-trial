@@ -1,6 +1,6 @@
 {
   "schema_version": "lstm_v1",
-  "created_at_utc": "2026-07-15T17:30:39.801009+00:00",
+  "created_at_utc": "2026-07-21T13:22:49.555681+00:00",
   "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
   "m2_manifest_sha": "d5acd8c97967061d",
   "backend": "pytorch",
@@ -62,10 +62,10 @@
     "f1_std": 0.0,
     "roc_auc_mean": 1.0,
     "roc_auc_std": 0.0,
-    "train_time_sec_mean": 2.7782,
-    "train_time_sec_std": 0.34696,
-    "inf_time_per_seq_sec_mean": 3.9e-05,
-    "inf_time_per_seq_sec_std": 1.7e-05,
+    "train_time_sec_mean": 3.2645,
+    "train_time_sec_std": 0.875916,
+    "inf_time_per_seq_sec_mean": 6e-05,
+    "inf_time_per_seq_sec_std": 4.8e-05,
     "epochs_trained_mean": 200.0,
     "epochs_trained_std": 0.0
   },
@@ -88,10 +88,10 @@
     "f1_std": 0.133333,
     "roc_auc_mean": 0.814815,
     "roc_auc_std": 0.37037,
-    "train_time_sec_mean": 2.91728,
-    "train_time_sec_std": 1.43621,
-    "inf_time_per_seq_sec_mean": 3.3e-05,
-    "inf_time_per_seq_sec_std": 7e-06,
+    "train_time_sec_mean": 2.81202,
+    "train_time_sec_std": 1.323789,
+    "inf_time_per_seq_sec_mean": 3.9e-05,
+    "inf_time_per_seq_sec_std": 1.2e-05,
     "epochs_trained_mean": 163.2,
     "epochs_trained_std": 73.6
   },
@@ -105,13 +105,15 @@
     "lstm_config_v1.json": "models\\sequence\\lstm\\lstm_config_v1.json",
     "lstm_history_v1.json": "models\\sequence\\lstm\\lstm_history_v1.json",
     "lstm_predictions_v1.parquet": "models\\sequence\\lstm\\lstm_predictions_v1.parquet",
-    "lstm_metrics_v1.json": "models\\sequence\\lstm\\lstm_metrics_v1.json"
+    "lstm_metrics_v1.json": "models\\sequence\\lstm\\lstm_metrics_v1.json",
+    "lstm_model_v1.pt": "models\\sequence\\lstm\\lstm_model_v1.pt"
   },
   "artifact_checksums": {
-    "lstm_config_v1.json": "30b76cd29226ac1c",
+    "lstm_config_v1.json": "5798d6e2d582e08d",
     "lstm_history_v1.json": "5baf64606d7b54df",
     "lstm_predictions_v1.parquet": "d43bbb2189ab2690",
-    "lstm_metrics_v1.json": "eb167a746b1f9e97"
+    "lstm_metrics_v1.json": "57856bc053b41a91",
+    "lstm_model_v1.pt": "bd4af9f8061bdb28"
   },
   "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral. Thesis requires teacher-reviewed labels and >=60 participants."
 }
