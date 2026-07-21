@@ -7,7 +7,6 @@
   "proxy_target_circularity": true,
   "confirmatory_analysis_allowed": false,
   "data_warning": "PILOT ONLY — 10 learners, proxy_behavioral labels. Not final thesis results. No confirmatory hypothesis testing. BSSA integration deferred to Phase 5.",
-
   "dataset_summary": {
     "total_learners": 10,
     "train_learners": 8,
@@ -25,10 +24,15 @@
     "features_per_timestep": 10,
     "thesis_minimum_learners": 60
   },
-
   "model_comparison": {
     "primary_seed": 42,
-    "all_seeds": [11, 22, 33, 42, 55],
+    "all_seeds": [
+      11,
+      22,
+      33,
+      42,
+      55
+    ],
     "test_sequences": 18,
     "timing_note": "sklearn and PyTorch use different frameworks — do not imply strict computational superiority.",
     "models": [
@@ -40,9 +44,10 @@
         "f1": 0.0,
         "roc_auc": 0.5,
         "train_time_sec": 0.0005,
-        "inference_time_per_seq_sec": 0.00001239,
+        "inference_time_per_seq_sec": 1.239e-05,
         "parameters": null,
-        "type": "baseline"
+        "type": "baseline",
+        "pr_auc": 0.5
       },
       {
         "name": "Logistic Regression",
@@ -52,9 +57,10 @@
         "f1": 1.0,
         "roc_auc": 1.0,
         "train_time_sec": 0.0034,
-        "inference_time_per_seq_sec": 0.00000715,
+        "inference_time_per_seq_sec": 7.15e-06,
         "parameters": 18,
-        "type": "flat_baseline"
+        "type": "flat_baseline",
+        "pr_auc": 1.0
       },
       {
         "name": "Random Forest",
@@ -66,7 +72,8 @@
         "train_time_sec": 0.0558,
         "inference_time_per_seq_sec": 0.00021947,
         "parameters": 2,
-        "type": "flat_baseline"
+        "type": "flat_baseline",
+        "pr_auc": 1.0
       },
       {
         "name": "TAG-based LR",
@@ -76,9 +83,10 @@
         "f1": 1.0,
         "roc_auc": 1.0,
         "train_time_sec": 0.004,
-        "inference_time_per_seq_sec": 0.00002148,
+        "inference_time_per_seq_sec": 2.148e-05,
         "parameters": 22,
-        "type": "graph_baseline"
+        "type": "graph_baseline",
+        "pr_auc": 1.0
       },
       {
         "name": "LSTM",
@@ -88,9 +96,10 @@
         "f1": 1.0,
         "roc_auc": 1.0,
         "train_time_sec": 3.2431,
-        "inference_time_per_seq_sec": 0.000067,
+        "inference_time_per_seq_sec": 6.7e-05,
         "parameters": 5665,
-        "type": "sequence"
+        "type": "sequence",
+        "pr_auc": 1.0
       },
       {
         "name": "GRU",
@@ -100,13 +109,13 @@
         "f1": 1.0,
         "roc_auc": 1.0,
         "train_time_sec": 3.6642,
-        "inference_time_per_seq_sec": 0.00003,
+        "inference_time_per_seq_sec": 3e-05,
         "parameters": 4257,
-        "type": "sequence"
+        "type": "sequence",
+        "pr_auc": 1.0
       }
     ]
   },
-
   "seed_stability": {
     "lstm": {
       "exp_a_seq_only": {
@@ -116,11 +125,36 @@
         "train_time_sec_mean": 2.7782,
         "epochs_trained_mean": 200.0,
         "seeds": [
-          { "seed": 11, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+          {
+            "seed": 11,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 22,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 33,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 42,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 55,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          }
         ]
       },
       "exp_b_seq_plus_tag": {
@@ -130,11 +164,36 @@
         "train_time_sec_mean": 2.4862,
         "epochs_trained_mean": 163.2,
         "seeds": [
-          { "seed": 11, "accuracy": 0.5, "f1": 0.6667, "roc_auc": 0.0741 },
-          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+          {
+            "seed": 11,
+            "accuracy": 0.5,
+            "f1": 0.6667,
+            "roc_auc": 0.0741
+          },
+          {
+            "seed": 22,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 33,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 42,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 55,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          }
         ]
       }
     },
@@ -146,11 +205,36 @@
         "train_time_sec_mean": 3.7694,
         "epochs_trained_mean": 200.0,
         "seeds": [
-          { "seed": 11, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+          {
+            "seed": 11,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 22,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 33,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 42,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 55,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          }
         ]
       },
       "exp_b_seq_plus_tag": {
@@ -160,16 +244,40 @@
         "train_time_sec_mean": 3.3534,
         "epochs_trained_mean": 165.4,
         "seeds": [
-          { "seed": 11, "accuracy": 0.5, "f1": 0.6667, "roc_auc": 1.0 },
-          { "seed": 22, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 33, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 42, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 },
-          { "seed": 55, "accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0 }
+          {
+            "seed": 11,
+            "accuracy": 0.5,
+            "f1": 0.6667,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 22,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 33,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 42,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          },
+          {
+            "seed": 55,
+            "accuracy": 1.0,
+            "f1": 1.0,
+            "roc_auc": 1.0
+          }
         ]
       }
     }
   },
-
   "validation": {
     "checks_run": 18,
     "checks_passed": 18,
@@ -178,7 +286,6 @@
     "leakage_check_passed": true,
     "split_integrity_passed": true
   },
-
   "model_configs": {
     "lstm": {
       "cell_type": "LSTM",
@@ -215,7 +322,6 @@
       "architecture": "PackedSequence → GRU(32) → Dropout(0.2) → Linear(1) → Sigmoid"
     }
   },
-
   "charts": [
     {
       "key": "confusion_matrices",
@@ -237,5 +343,103 @@
       "title": "Seed Stability (LSTM / GRU, Seeds 11–55)",
       "path": "/reports/phase4/comparison/comparison_seed_stability.png"
     }
-  ]
+  ],
+  "bssa_features": {
+    "framework": "BSSA",
+    "note": "BSSA is a feature framework, not an analysis dimension.",
+    "groups": {
+      "behavioral": {
+        "label": "Behavioral",
+        "status": "implemented",
+        "source": "flat_feature_names from comparison_manifest_v1",
+        "feature_count": 14,
+        "features": [
+          "seq_length",
+          "run_count",
+          "attempt_count",
+          "revision_count",
+          "retry_count",
+          "error_count",
+          "hint_count",
+          "unique_event_types",
+          "correctness_ratio",
+          "any_correct",
+          "elapsed_sec",
+          "time_to_first_correct",
+          "mean_delta_sec",
+          "run_to_submit_ratio"
+        ],
+        "model_usage": [
+          "Dummy",
+          "Logistic Regression",
+          "Random Forest",
+          "TAG-based LR"
+        ],
+        "description": "Flat summary statistics computed per session sequence. Used in EXP-A."
+      },
+      "sequential": {
+        "label": "Sequential",
+        "status": "implemented",
+        "source": "sequence_tensor_metadata from NB05/NB07/NB08",
+        "feature_count": 10,
+        "features_per_timestep": 10,
+        "max_seq_len": 6,
+        "feature_note": "Same 10 behavioral features arranged as temporal sequences. See flat_feature_names for the feature set.",
+        "model_usage": [
+          "LSTM",
+          "GRU"
+        ],
+        "description": "Ordered temporal sequences of behavioral features (shape: [n_sessions, max_seq_len, n_features]). Used in EXP-A and EXP-B."
+      },
+      "tag_based": {
+        "label": "TAG-based (Temporal Assessment Graph)",
+        "status": "implemented",
+        "source": "tag_feature_names from comparison_manifest_v1",
+        "feature_count": 18,
+        "features": [
+          "node_count",
+          "edge_count",
+          "unique_event_types",
+          "retry_count",
+          "revision_count",
+          "error_transition_count",
+          "error_recovery_count",
+          "error_recovery_rate",
+          "assessment_count",
+          "session_return_count",
+          "transition_entropy",
+          "event_type_entropy",
+          "mean_delta_time_sec",
+          "std_delta_time_sec",
+          "max_delta_time_sec",
+          "min_delta_time_sec",
+          "run_to_submit_ratio",
+          "graph_density"
+        ],
+        "model_usage": [
+          "TAG-based LR",
+          "LSTM (EXP-B)",
+          "GRU (EXP-B)"
+        ],
+        "description": "Graph-structural features extracted from the Temporal Assessment Graph. Used in TAG-LR and EXP-B (Sequence + TAG)."
+      },
+      "semantic": {
+        "label": "Semantic",
+        "status": "deferred",
+        "phase": "Phase 5",
+        "feature_count": 0,
+        "features": [],
+        "model_usage": [],
+        "description": "Semantic analysis of code content (e.g., SQL query structure, ER diagram semantics). Deferred to Phase 5 — not implemented in Phase 4 pipeline."
+      },
+      "combined": {
+        "label": "Combined / Full BSSA",
+        "status": "not_implemented",
+        "note": "No full BSSA combined pipeline artifact exists in Phase 4. EXP-B combines Sequential + TAG features only.",
+        "feature_count": 0,
+        "features": [],
+        "model_usage": []
+      }
+    }
+  }
 }
