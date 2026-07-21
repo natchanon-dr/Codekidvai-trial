@@ -61,8 +61,10 @@ const OUT_DIR = path.join("notebooks", "data", "raw");
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // ── Notebook-expected session columns (from NB01 schema check) ────────────────
+// batch_id and task_id are Phase 3 legacy names — NB01 validates them explicitly.
+// batch_code and task_code are the Phase 4 canonical names. Both sets are kept.
 const NB01_SESSION_COLS = [
-  "academy_member_id", "batch_code", "task_code", "task_type", "learner_group",
+  "academy_member_id", "batch_id", "task_id", "batch_code", "task_code", "task_type", "learner_group",
   "task_difficulty_level", "max_score", "auto_score", "review_score",
   "total_run_count", "total_attempt_count", "time_to_first_correct_sec",
   "hint_viewed", "session_duration_sec", "submitted_at",
@@ -139,6 +141,10 @@ const sessionRows = sessionRaw.map(r => {
 
   return {
     academy_member_id: r.participant_code,
+    // Phase 3 legacy names (NB01 validates these explicitly — do not remove)
+    batch_id: BATCH_CODE,
+    task_id: r.task_code,
+    // Phase 4 canonical names
     batch_code: BATCH_CODE,
     task_code: r.task_code,
     task_type: r.task_type ?? "sql_text",
@@ -176,6 +182,9 @@ console.log(`  ${attemptRaw.length} attempt rows from view`);
 
 const attemptRows = attemptRaw.map(r => ({
   academy_member_id: r.participant_code,
+  // Phase 3 legacy names (NB01 validates task_id — do not remove)
+  task_id: r.task_code,
+  // Phase 4 canonical names
   batch_code: BATCH_CODE,
   task_code: r.task_code,
   task_type: r.task_type ?? "",
