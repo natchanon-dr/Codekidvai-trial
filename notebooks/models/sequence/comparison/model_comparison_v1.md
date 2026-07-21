@@ -4,7 +4,7 @@
 > 10 learners (8 train, 2 test). These are NOT final Chapter 4 conclusions.  
 > Do NOT confirm H5 or claim model superiority based on this pilot.
 
-Generated: 2026-07-15T19:19:34.220740+00:00  
+Generated: 2026-07-21T14:00:58.154900+00:00  
 Primary seed: 42  
 Test learners: ['MOCK_VALID3_20260715_S002', 'MOCK_VALID3_20260715_S009']  
 Test sequences: 18  
@@ -13,14 +13,14 @@ ROC-AUC status: computed
 
 ## Primary Comparison Table
 
-| Model | Accuracy | Precision | Recall | F1 | ROC-AUC | Training Time (s) | Inference Time (s/seq) | Parameters |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Dummy | 0.5000 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.0005 | 1.239e-05 | NA |
-| Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0034 | 7.15e-06 | 18 |
-| Random Forest | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0558 | 0.00021947 | 2 |
-| TAG-based Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0040 | 2.148e-05 | 22 |
-| LSTM | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 3.2431 | 6.7e-05 | NA |
-| GRU | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 3.6642 | 3e-05 | 4257 |
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC | PR-AUC | Training Time (s) | Inference Time (s/seq) | Parameters |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Dummy | 0.5000 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.5000 | 0.0002 | 1.391e-05 | NA |
+| Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0022 | 5.6e-06 | 18 |
+| Random Forest | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0573 | 0.00020518 | 2 |
+| TAG-based Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0024 | 5.45e-06 | 22 |
+| LSTM | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2.8237 | 2.8e-05 | 5665 |
+| GRU | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2.7551 | 2.6e-05 | 4257 |
 
 ## Seed Stability (LSTM / GRU)
 
