@@ -179,6 +179,43 @@
     "split_integrity_passed": true
   },
 
+  "model_configs": {
+    "lstm": {
+      "cell_type": "LSTM",
+      "hidden_size": 32,
+      "dropout": 0.2,
+      "learning_rate": 0.001,
+      "batch_size": 16,
+      "max_epochs": 200,
+      "early_stop_patience": 15,
+      "optimizer": "Adam",
+      "input_features_exp_a": 10,
+      "input_features_exp_b": 28,
+      "max_sequence_length": 6,
+      "tag_features_exp_b": 18,
+      "trainable_params_exp_a": 5665,
+      "trainable_params_exp_b": 5665,
+      "architecture": "PackedSequence → LSTM(32) → Dropout(0.2) → Linear(1) → Sigmoid"
+    },
+    "gru": {
+      "cell_type": "GRU",
+      "hidden_size": 32,
+      "dropout": 0.2,
+      "learning_rate": 0.001,
+      "batch_size": 16,
+      "max_epochs": 200,
+      "early_stop_patience": 15,
+      "optimizer": "Adam",
+      "input_features_exp_a": 10,
+      "input_features_exp_b": 28,
+      "max_sequence_length": 6,
+      "tag_features_exp_b": 18,
+      "trainable_params_exp_a": 4257,
+      "trainable_params_exp_b": 4275,
+      "architecture": "PackedSequence → GRU(32) → Dropout(0.2) → Linear(1) → Sigmoid"
+    }
+  },
+
   "charts": [
     {
       "key": "confusion_matrices",

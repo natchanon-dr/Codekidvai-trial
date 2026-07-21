@@ -62,7 +62,7 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // ── Notebook-expected session columns (from NB01 schema check) ────────────────
 const NB01_SESSION_COLS = [
-  "academy_member_id", "batch_id", "task_id", "task_type", "learner_group",
+  "academy_member_id", "batch_code", "task_code", "task_type", "learner_group",
   "task_difficulty_level", "max_score", "auto_score", "review_score",
   "total_run_count", "total_attempt_count", "time_to_first_correct_sec",
   "hint_viewed", "session_duration_sec", "submitted_at",
@@ -139,8 +139,8 @@ const sessionRows = sessionRaw.map(r => {
 
   return {
     academy_member_id: r.participant_code,
-    batch_id: BATCH_CODE,
-    task_id: r.task_code,
+    batch_code: BATCH_CODE,
+    task_code: r.task_code,
     task_type: r.task_type ?? "sql_text",
     learner_group: r.participant_group ?? "sim",
     task_difficulty_level: DIFF_MAP[diff] ?? 1,
@@ -176,8 +176,9 @@ console.log(`  ${attemptRaw.length} attempt rows from view`);
 
 const attemptRows = attemptRaw.map(r => ({
   academy_member_id: r.participant_code,
-  batch_id: BATCH_CODE,
-  task_id: r.task_code,
+  batch_code: BATCH_CODE,
+  task_code: r.task_code,
+  task_type: r.task_type ?? "",
   attempt_no: r.attempt_no,
   attempt_type: r.attempt_type,
   is_correct: r.is_correct,
