@@ -40,6 +40,10 @@ yarn-error.log*
 .ipynb_checkpoints/
 .jupyter/
 
+# Local E2E simulation run logs (not for version control)
+testa-c2-full.txt
+testb-c2.txt
+
 # Phase 3 research data snapshots and generated artifacts
 notebooks/data/**
 !notebooks/data/

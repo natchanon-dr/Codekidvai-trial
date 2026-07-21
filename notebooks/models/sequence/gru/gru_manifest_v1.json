@@ -1,0 +1,136 @@
+{
+  "schema_version": "gru_v1",
+  "created_at_utc": "2026-07-21T13:34:40.167242+00:00",
+  "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
+  "m2_manifest_sha": "d5acd8c97967061d",
+  "m4_manifest_sha": "2de9e55c17198dd9",
+  "backend": "pytorch",
+  "experiments_run": [
+    "EXP-A",
+    "EXP-B"
+  ],
+  "seeds": [
+    11,
+    22,
+    33,
+    42,
+    55
+  ],
+  "dataset_stats": {
+    "train_learners": 8,
+    "test_learners": 2,
+    "train_sequences": 72,
+    "test_sequences": 18,
+    "tensor_shape_train": [
+      72,
+      6,
+      10
+    ],
+    "tensor_shape_test": [
+      18,
+      6,
+      10
+    ],
+    "n_features": 10,
+    "max_seq_len": 6,
+    "train_class_dist": {
+      "0": 45,
+      "1": 27
+    },
+    "test_class_dist": {
+      "0": 9,
+      "1": 9
+    },
+    "label_source": "proxy_behavioral",
+    "label_validity": "pilot_only"
+  },
+  "gru_params": 4257,
+  "lstm_params": 5665,
+  "contract_diffs_from_m4": {
+    "trainable_params": {
+      "GRU": "4257",
+      "LSTM": "5665"
+    },
+    "recurrent_cell": {
+      "GRU": "GRU",
+      "LSTM": "LSTM"
+    }
+  },
+  "exp_a_summary": {
+    "experiment": "EXP-A: GRU Sequence Only",
+    "seeds": [
+      11,
+      22,
+      33,
+      42,
+      55
+    ],
+    "accuracy_mean": 1.0,
+    "accuracy_std": 0.0,
+    "precision_mean": 1.0,
+    "precision_std": 0.0,
+    "recall_mean": 1.0,
+    "recall_std": 0.0,
+    "f1_mean": 1.0,
+    "f1_std": 0.0,
+    "roc_auc_mean": 1.0,
+    "roc_auc_std": 0.0,
+    "train_time_sec_mean": 2.71544,
+    "train_time_sec_std": 0.223016,
+    "inf_time_per_seq_sec_mean": 3e-05,
+    "inf_time_per_seq_sec_std": 2e-06,
+    "epochs_trained_mean": 200.0,
+    "epochs_trained_std": 0.0,
+    "trainable_params_mean": 4257.0,
+    "trainable_params_std": 0.0
+  },
+  "exp_b_summary": {
+    "experiment": "EXP-B: GRU Sequence + TAG",
+    "seeds": [
+      11,
+      22,
+      33,
+      42,
+      55
+    ],
+    "accuracy_mean": 0.9,
+    "accuracy_std": 0.2,
+    "precision_mean": 0.9,
+    "precision_std": 0.2,
+    "recall_mean": 1.0,
+    "recall_std": 0.0,
+    "f1_mean": 0.933333,
+    "f1_std": 0.133333,
+    "roc_auc_mean": 1.0,
+    "roc_auc_std": 0.0,
+    "train_time_sec_mean": 2.30452,
+    "train_time_sec_std": 1.02526,
+    "inf_time_per_seq_sec_mean": 3e-05,
+    "inf_time_per_seq_sec_std": 3e-06,
+    "epochs_trained_mean": 163.2,
+    "epochs_trained_std": 73.6,
+    "trainable_params_mean": 4275.0,
+    "trainable_params_std": 0.0
+  },
+  "validation_checks": 16,
+  "validation_passed": 16,
+  "reproducibility": {
+    "max_pred_diff": 0.0,
+    "pass": true
+  },
+  "artifacts": {
+    "gru_config_v1.json": "models\\sequence\\gru\\gru_config_v1.json",
+    "gru_history_v1.json": "models\\sequence\\gru\\gru_history_v1.json",
+    "gru_predictions_v1.parquet": "models\\sequence\\gru\\gru_predictions_v1.parquet",
+    "gru_metrics_v1.json": "models\\sequence\\gru\\gru_metrics_v1.json",
+    "gru_model_v1.pt": "models\\sequence\\gru\\gru_model_v1.pt"
+  },
+  "artifact_checksums": {
+    "gru_config_v1.json": "a6ad6d74bbeee736",
+    "gru_history_v1.json": "bad9e9a9bfa40a72",
+    "gru_predictions_v1.parquet": "206d9c7b9b5b9736",
+    "gru_metrics_v1.json": "b8ec7b7e66dece61",
+    "gru_model_v1.pt": "f23d6745981d3d3a"
+  },
+  "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral labels. Thesis requires teacher-reviewed labels and >=60 participants. Do NOT claim GRU superiority over LSTM based on this pilot."
+}

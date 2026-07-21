@@ -1,0 +1,119 @@
+{
+  "schema_version": "lstm_v1",
+  "created_at_utc": "2026-07-21T13:22:49.555681+00:00",
+  "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
+  "m2_manifest_sha": "d5acd8c97967061d",
+  "backend": "pytorch",
+  "experiments_run": [
+    "EXP-A",
+    "EXP-B"
+  ],
+  "seeds": [
+    11,
+    22,
+    33,
+    42,
+    55
+  ],
+  "dataset_stats": {
+    "train_learners": 8,
+    "test_learners": 2,
+    "train_sequences": 72,
+    "test_sequences": 18,
+    "tensor_shape_train": [
+      72,
+      6,
+      10
+    ],
+    "tensor_shape_test": [
+      18,
+      6,
+      10
+    ],
+    "n_features": 10,
+    "max_seq_len": 6,
+    "train_class_dist": {
+      "0": 45,
+      "1": 27
+    },
+    "test_class_dist": {
+      "0": 9,
+      "1": 9
+    },
+    "label_source": "proxy_behavioral",
+    "label_validity": "pilot_only"
+  },
+  "exp_a_summary": {
+    "experiment": "EXP-A: LSTM Sequence Only",
+    "seeds": [
+      11,
+      22,
+      33,
+      42,
+      55
+    ],
+    "accuracy_mean": 1.0,
+    "accuracy_std": 0.0,
+    "precision_mean": 1.0,
+    "precision_std": 0.0,
+    "recall_mean": 1.0,
+    "recall_std": 0.0,
+    "f1_mean": 1.0,
+    "f1_std": 0.0,
+    "roc_auc_mean": 1.0,
+    "roc_auc_std": 0.0,
+    "train_time_sec_mean": 3.2645,
+    "train_time_sec_std": 0.875916,
+    "inf_time_per_seq_sec_mean": 6e-05,
+    "inf_time_per_seq_sec_std": 4.8e-05,
+    "epochs_trained_mean": 200.0,
+    "epochs_trained_std": 0.0
+  },
+  "exp_b_summary": {
+    "experiment": "EXP-B: LSTM Sequence + TAG",
+    "seeds": [
+      11,
+      22,
+      33,
+      42,
+      55
+    ],
+    "accuracy_mean": 0.9,
+    "accuracy_std": 0.2,
+    "precision_mean": 0.9,
+    "precision_std": 0.2,
+    "recall_mean": 1.0,
+    "recall_std": 0.0,
+    "f1_mean": 0.933333,
+    "f1_std": 0.133333,
+    "roc_auc_mean": 0.814815,
+    "roc_auc_std": 0.37037,
+    "train_time_sec_mean": 2.81202,
+    "train_time_sec_std": 1.323789,
+    "inf_time_per_seq_sec_mean": 3.9e-05,
+    "inf_time_per_seq_sec_std": 1.2e-05,
+    "epochs_trained_mean": 163.2,
+    "epochs_trained_std": 73.6
+  },
+  "validation_checks": 14,
+  "validation_passed": 14,
+  "reproducibility": {
+    "max_pred_diff": 0.0,
+    "pass": true
+  },
+  "artifacts": {
+    "lstm_config_v1.json": "models\\sequence\\lstm\\lstm_config_v1.json",
+    "lstm_history_v1.json": "models\\sequence\\lstm\\lstm_history_v1.json",
+    "lstm_predictions_v1.parquet": "models\\sequence\\lstm\\lstm_predictions_v1.parquet",
+    "lstm_metrics_v1.json": "models\\sequence\\lstm\\lstm_metrics_v1.json",
+    "lstm_model_v1.pt": "models\\sequence\\lstm\\lstm_model_v1.pt"
+  },
+  "artifact_checksums": {
+    "lstm_config_v1.json": "5798d6e2d582e08d",
+    "lstm_history_v1.json": "5baf64606d7b54df",
+    "lstm_predictions_v1.parquet": "d43bbb2189ab2690",
+    "lstm_metrics_v1.json": "57856bc053b41a91",
+    "lstm_model_v1.pt": "bd4af9f8061bdb28"
+  },
+  "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral. Thesis requires teacher-reviewed labels and >=60 participants."
+}

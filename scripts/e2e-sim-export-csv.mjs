@@ -61,8 +61,10 @@ const OUT_DIR = path.join("notebooks", "data", "raw");
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // ── Notebook-expected session columns (from NB01 schema check) ────────────────
+// batch_id and task_id are Phase 3 legacy names — NB01 validates them explicitly.
+// batch_code and task_code are the Phase 4 canonical names. Both sets are kept.
 const NB01_SESSION_COLS = [
-  "academy_member_id", "batch_id", "task_id", "task_type", "learner_group",
+  "academy_member_id", "batch_id", "task_id", "batch_code", "task_code", "task_type", "learner_group",
   "task_difficulty_level", "max_score", "auto_score", "review_score",
   "total_run_count", "total_attempt_count", "time_to_first_correct_sec",
   "hint_viewed", "session_duration_sec", "submitted_at",
@@ -119,7 +121,7 @@ const codeToProfileId = new Map((profiles ?? []).map(p => [p.participant_code, p
 const taskCodes = [...new Set(sessionRaw.map(r => r.task_code))];
 const { data: tasks } = await admin
   .from("mst_tasks")
-  .select("task_id, task_code, max_score, difficulty_level")
+  .select("task_id, task_code, task_type, max_score, difficulty_level")
   .in("task_code", taskCodes);
 const taskCodeToId = new Map((tasks ?? []).map(t => [t.task_code, t.task_id]));
 const taskCodeToMaxScore = new Map((tasks ?? []).map(t => [t.task_code, t.max_score]));
@@ -139,8 +141,12 @@ const sessionRows = sessionRaw.map(r => {
 
   return {
     academy_member_id: r.participant_code,
+    // Phase 3 legacy names (NB01 validates these explicitly — do not remove)
     batch_id: BATCH_CODE,
     task_id: r.task_code,
+    // Phase 4 canonical names
+    batch_code: BATCH_CODE,
+    task_code: r.task_code,
     task_type: r.task_type ?? "sql_text",
     learner_group: r.participant_group ?? "sim",
     task_difficulty_level: DIFF_MAP[diff] ?? 1,
@@ -160,6 +166,8 @@ const sessionRows = sessionRaw.map(r => {
     l1_logical_reasoning: "",
     l2_learning_process: "",
     l3_difficulty_complexity: "",
+    set_family: r.set_family ?? "",
+    learning_mode: r.learning_mode ?? "",
   };
 });
 
@@ -174,23 +182,181 @@ console.log(`  ${attemptRaw.length} attempt rows from view`);
 
 const attemptRows = attemptRaw.map(r => ({
   academy_member_id: r.participant_code,
-  batch_id: BATCH_CODE,
+  // Phase 3 legacy names (NB01 validates task_id — do not remove)
   task_id: r.task_code,
+  // Phase 4 canonical names
+  batch_code: BATCH_CODE,
+  task_code: r.task_code,
+  task_type: r.task_type ?? "",
   attempt_no: r.attempt_no,
   attempt_type: r.attempt_type,
   is_correct: r.is_correct,
   error_type: r.error_type ?? "",
   execution_time_ms: r.execution_time_ms ?? "",
   created_at: r.attempt_created_at ?? "",
+  set_family: r.set_family ?? "",
+  learning_mode: r.learning_mode ?? "",
 }));
 
-// ── 5. Write CSVs ─────────────────────────────────────────────────────────────
+// ── 5. Write session + attempt CSVs ──────────────────────────────────────────
 const sessionFile = path.join(OUT_DIR, `session_${TODAY}_${BATCH_TAG}.csv`);
 const attemptFile = path.join(OUT_DIR, `attempt_${TODAY}_${BATCH_TAG}.csv`);
 fs.writeFileSync(sessionFile, "﻿" + toCsv(sessionRows), "utf8");
 fs.writeFileSync(attemptFile, "﻿" + toCsv(attemptRows), "utf8");
 
-// ── 6. Schema validation ──────────────────────────────────────────────────────
+// ── 6. Fetch and write sequence CSV ──────────────────────────────────────────
+console.log(`Fetching vw_dataset_sequence_level for ${BATCH_CODE}...`);
+const { data: seqRaw, error: seqErr } = await admin
+  .from("vw_dataset_sequence_level")
+  .select("*")
+  .eq("batch_code", BATCH_CODE);
+if (seqErr) throw seqErr;
+console.log(`  ${seqRaw.length} sequence/event rows from view`);
+
+const sequenceRows = seqRaw.map(r => ({
+  academy_member_id:    r.participant_code,
+  batch_code:           r.batch_code ?? BATCH_CODE,
+  task_code:            r.task_code,
+  task_type:            r.task_type ?? "",
+  session_id:           r.session_id,
+  session_status:       r.session_status,
+  session_started_at:   r.session_started_at,
+  event_id:             r.event_id,
+  event_order:          r.event_order,
+  event_type:           r.event_type,
+  event_value:          r.event_value ?? "",
+  duration_from_start:  r.duration_from_start ?? "",
+  event_time:           r.event_time,
+  metadata_json:        r.metadata_json ? JSON.stringify(r.metadata_json) : "",
+  set_family:           r.set_family ?? "",
+  learning_mode:        r.learning_mode ?? "",
+}));
+
+const sequenceFile = path.join(OUT_DIR, `sequence_${TODAY}_${BATCH_TAG}.csv`);
+fs.writeFileSync(sequenceFile, "﻿" + toCsv(sequenceRows), "utf8");
+
+// ── 7. Fetch rubric scores and build outcome CSV ──────────────────────────────
+console.log(`Fetching rubric scores for ${BATCH_CODE}...`);
+
+// Canonical 2C3L keys and weights (must match PHASE4_RESEARCH_CONTRACT_v1.md §4)
+const CANONICAL_KEYS = [
+  "c1_correctness_result",
+  "c2_semantic_consistency",
+  "l1_logical_reasoning",
+  "l2_learning_process",
+  "l3_difficulty_complexity",
+];
+
+const { data: submissionsForOutcome } = batchId
+  ? await admin
+      .from("trn_submissions")
+      .select("submission_id, profile_id, task_id, submitted_at")
+      .eq("batch_id", batchId)
+  : { data: [] };
+
+const submissionIds = (submissionsForOutcome ?? []).map(s => s.submission_id);
+
+let rubricRowsForBatch = [];
+if (submissionIds.length > 0) {
+  const { data: rRows, error: rErr } = await admin
+    .from("trn_submission_rubric_scores")
+    .select("submission_id, criterion_key, criterion_score, max_criterion_score")
+    .in("submission_id", submissionIds);
+  if (rErr) throw rErr;
+  rubricRowsForBatch = rRows ?? [];
+}
+console.log(`  ${rubricRowsForBatch.length} rubric score rows`);
+
+// Group rubric rows by submission_id
+const rubricBySubmission = new Map();
+for (const r of rubricRowsForBatch) {
+  if (!rubricBySubmission.has(r.submission_id)) rubricBySubmission.set(r.submission_id, []);
+  rubricBySubmission.get(r.submission_id).push(r);
+}
+
+// Build task_id → task_code / task_type maps from what we already fetched
+const taskIdToCode = new Map([...(tasks ?? [])].map(t => [t.task_id, t.task_code]));
+const taskIdToType = new Map([...(tasks ?? [])].map(t => [t.task_id, t.task_type ?? ""]));
+
+// Resolve set_family for this batch (NULL if ambiguous across multiple class_ids)
+const { data: classSetRows } = batchId
+  ? await admin.from("tb_class_sets").select("family").eq("batch_id", batchId)
+  : { data: [] };
+const batchFamilies = [...new Set((classSetRows ?? []).map(r => r.family).filter(Boolean))];
+const batchSetFamily = batchFamilies.length === 1 ? batchFamilies[0] : null;
+
+function deriveGrade(score) {
+  if (score >= 85) return "A";
+  if (score >= 75) return "B";
+  if (score >= 65) return "C";
+  if (score >= 55) return "D";
+  if (score >= 45) return "E";
+  return "F";
+}
+
+const outcomeRows = (submissionsForOutcome ?? []).map(sub => {
+  const profileCode = [...codeToProfileId.entries()].find(([, id]) => id === sub.profile_id)?.[0] ?? sub.profile_id;
+  const taskCode = taskIdToCode.get(sub.task_id) ?? sub.task_id;
+  const rubric = rubricBySubmission.get(sub.submission_id) ?? [];
+  const byKey = new Map(rubric.map(r => [r.criterion_key, r]));
+
+  const scores = {};
+  let totalRubric = 0;
+  let maxRubric = 0;
+  let criteriaCount = 0;
+  for (const key of CANONICAL_KEYS) {
+    const r = byKey.get(key);
+    scores[`${key}_score`] = r?.criterion_score ?? "";
+    scores[`${key}_max`]   = r?.max_criterion_score ?? "";
+    if (r) {
+      totalRubric  += Number(r.criterion_score);
+      maxRubric    += Number(r.max_criterion_score);
+      criteriaCount++;
+    }
+  }
+
+  const hasAll = criteriaCount === CANONICAL_KEYS.length;
+  const total2c3l = hasAll && maxRubric > 0
+    ? Math.round((totalRubric / maxRubric) * 10000) / 100
+    : "";
+  const atRisk     = total2c3l !== "" ? (total2c3l < 65 ? 1 : 0) : "";
+  const grade      = total2c3l !== "" ? deriveGrade(total2c3l) : "";
+  const labelSource   = criteriaCount === 0 ? "no_rubric"   : "auto_generated";
+  const labelValidity = criteriaCount === 0 ? "invalid"     : "pilot_only";
+
+  const taskType = taskIdToType.get(sub.task_id) ?? "";
+  const learningMode = taskType === "sql_text" || taskType === "stored_procedure" || taskType === "coding_text"
+    ? "text_based"
+    : taskType === "sql_block" || taskType === "er_diagram" || taskType === "coding_block"
+    ? "block_based"
+    : "";
+
+  return {
+    participant_code:    profileCode,
+    batch_code:          BATCH_CODE,
+    task_code:           taskCode,
+    task_type:           taskType,
+    set_family:          batchSetFamily ?? "",
+    learning_mode:       learningMode,
+    submission_id:       sub.submission_id,
+    submitted_at:        sub.submitted_at ?? "",
+    ...scores,
+    total_rubric_score:  hasAll ? totalRubric  : "",
+    max_rubric_score:    hasAll ? maxRubric    : "",
+    total_2c3l_score:    total2c3l,
+    grade_letter:        grade,
+    at_risk:             atRisk,
+    label_source:        labelSource,
+    label_validity:      labelValidity,
+    is_teacher_reviewed: false,
+    criteria_count:      criteriaCount,
+  };
+});
+
+const outcomeFile = path.join(OUT_DIR, `outcome_${TODAY}_${BATCH_TAG}.csv`);
+fs.writeFileSync(outcomeFile, "﻿" + toCsv(outcomeRows), "utf8");
+
+// ── 8. Schema validation ──────────────────────────────────────────────────────
 const exportedCols = Object.keys(sessionRows[0] ?? {});
 const missingSchemaCols = NB01_SESSION_COLS.filter(c => !exportedCols.includes(c));
 const extraCols = exportedCols.filter(c => !NB01_SESSION_COLS.includes(c));
@@ -198,27 +364,43 @@ const piiFound = exportedCols.filter(c => PII_COLS.some(p => c.toLowerCase().inc
 const has2C3L = ["c1_correctness_result","c2_semantic_consistency","l1_logical_reasoning","l2_learning_process","l3_difficulty_complexity"]
   .every(c => exportedCols.includes(c));
 
-// at_risk proxy count
-const rowsWithAutoScore = sessionRows.filter(r => r.auto_score !== "" && r.auto_score !== null);
-const atRiskProxy = rowsWithAutoScore.filter(r => Number(r.auto_score) < Number(r.max_score) * 0.6).length;
-const notAtRisk = rowsWithAutoScore.filter(r => Number(r.auto_score) >= Number(r.max_score) * 0.6).length;
-const noSubmit = sessionRows.filter(r => r.submitted_at === "").length;
+const seqColsOk = sequenceRows.length === 0 || (
+  ["academy_member_id","batch_code","task_code","session_id","event_order","event_type","event_time"]
+    .every(c => Object.keys(sequenceRows[0]).includes(c))
+);
+
+const outcomeColsOk = outcomeRows.length === 0 || (
+  ["participant_code","batch_code","task_code","submission_id","total_2c3l_score","at_risk","label_source","label_validity"]
+    .every(c => Object.keys(outcomeRows[0]).includes(c))
+);
+
+// at_risk distribution from outcome CSV
+const outcomeWithScore = outcomeRows.filter(r => r.at_risk !== "");
+const atRisk1 = outcomeWithScore.filter(r => r.at_risk === 1).length;
+const atRisk0 = outcomeWithScore.filter(r => r.at_risk === 0).length;
+const noRubric = outcomeRows.filter(r => r.label_source === "no_rubric").length;
 
 console.log(`
 ── Export Validation ──
   Session CSV   : ${sessionFile} (${sessionRows.length} rows)
   Attempt CSV   : ${attemptFile} (${attemptRows.length} rows)
+  Sequence CSV  : ${sequenceFile} (${sequenceRows.length} rows)
+  Outcome CSV   : ${outcomeFile} (${outcomeRows.length} rows)
 
-  Schema vs NB01:
-    All expected cols present: ${missingSchemaCols.length === 0 ? "✅ YES" : "❌ MISSING: " + missingSchemaCols.join(", ")}
-    Extra cols (ok):           ${extraCols.join(", ") || "none"}
-    2C3L columns present:      ${has2C3L ? "✅ YES (empty — no review yet)" : "❌ NO"}
-    PII columns:               ${piiFound.length === 0 ? "✅ NONE" : "❌ FOUND: " + piiFound.join(", ")}
+  Session schema vs NB01:
+    All expected cols present : ${missingSchemaCols.length === 0 ? "✅ YES" : "❌ MISSING: " + missingSchemaCols.join(", ")}
+    Extra cols (ok)           : ${extraCols.join(", ") || "none"}
+    2C3L columns present      : ${has2C3L ? "✅ YES (empty — no review yet)" : "❌ NO"}
+    PII columns               : ${piiFound.length === 0 ? "✅ NONE" : "❌ FOUND: " + piiFound.join(", ")}
 
-  at_risk distribution (proxy — auto_score < 60% of max):
-    at_risk=1 proxy: ${atRiskProxy} rows
-    at_risk=0 proxy: ${notAtRisk} rows
-    no submission:   ${noSubmit} rows
+  Sequence schema : ${seqColsOk ? "✅ required columns present" : "❌ MISSING required columns"}
+  Outcome schema  : ${outcomeColsOk ? "✅ required columns present" : "❌ MISSING required columns"}
 
-⚠️  These CSVs are gitignored. Do NOT commit.
+  at_risk distribution (canonical 2C3L ≥ 65 threshold):
+    at_risk=1 : ${atRisk1} rows
+    at_risk=0 : ${atRisk0} rows
+    no_rubric : ${noRubric} rows
+
+  ⚠️  label_source=auto_generated / label_validity=pilot_only
+  ⚠️  These CSVs are gitignored. Do NOT commit.
 `);

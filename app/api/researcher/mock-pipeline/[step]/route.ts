@@ -8,6 +8,7 @@ import {
   validateMockConfig,
   makeSseChunk,
 } from "@/lib/mock-pipeline";
+import { getLearningMode } from "@/lib/research-context";
 
 const VALID_STEPS = new Set<MockStep>([
   "data", "extract", "process", "train", "evaluate", "outcome", "reset", "run-all",
@@ -137,10 +138,27 @@ async function runStep(
 
   switch (step) {
     case "data": {
+      // Validate: block-based task types cannot be simulated in Phase 4
+      if (config.taskTypeCounts) {
+        const blockTypes = Object.entries(config.taskTypeCounts)
+          .filter(([tt]) => getLearningMode(tt) === "block_based")
+          .map(([tt]) => tt);
+        if (blockTypes.length > 0) {
+          send(makeSseChunk("error", {
+            msg: `Block-based task types are not supported in Phase 4 simulation: ${blockTypes.join(", ")}. ` +
+                 `ER Diagram and Visual Query Builder are planned for Phase 5.`,
+          }));
+          send(makeSseChunk("done", { step: "data", success: false }));
+          return;
+        }
+      }
+
+      const setFamily = config.setFamily ?? "assignment";
       const dataArgs = [
         path.join(SCRIPTS_DIR, "e2e-sim-create-test-data.mjs"),
         ...batchArgs,
         "--students", String(config.nStudents),
+        "--set-family", setFamily,
         ...rateArgs,
       ];
       if (config.taskIds?.length) {
@@ -159,6 +177,8 @@ async function runStep(
         ...batchArgs,
         ...rateArgs,
         "--api-base", config.apiBase,
+        "--set-family", config.setFamily ?? "assignment",
+        "--seed", String(config.seed ?? 42),
       ];
       if (config.taskIds?.length) {
         extractArgs.push("--task-ids", config.taskIds.join(","));

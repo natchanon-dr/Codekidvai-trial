@@ -23,6 +23,13 @@ export interface MockConfig {
   // optional: use real task IDs from a real class instead of generating dummy tasks
   taskIds?: string[];
   taskSetId?: string;
+  // research context — preserved from the selected class set
+  // setFamily defaults to 'assignment' when omitted (backward-compatible)
+  setFamily?: string;
+  // task_type → count map; derived from the selected task set or dummy config
+  taskTypeCounts?: Record<string, number>;
+  // deterministic simulation seed — same seed+family+learner+task → same event signature
+  seed?: number;
 }
 
 export type ModelMetrics = {

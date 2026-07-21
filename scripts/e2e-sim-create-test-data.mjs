@@ -6,12 +6,17 @@
  * Safe to re-run (idempotent via upsert / existence checks).
  *
  * CLI args:
- *   --batch  SIM_E2E_2026_001   (required, must start with SIM_E2E_ or MOCK_)
- *   --class  SIM_E2E_CLASS_001  (default: derived from batch)
- *   --students 40               (default 40, min 5, max 200)
- *   --tasks    3                (default 3, min 1, max 10)
- *   --at-risk-rate 35           (% of students who are at-risk, default 35)
- *   --missing-rate  7           (% of students with no submission, default 7)
+ *   --batch       SIM_E2E_2026_001   (required, must start with SIM_E2E_ or MOCK_)
+ *   --class       SIM_E2E_CLASS_001  (default: derived from batch)
+ *   --students    40                 (default 40, min 5, max 200)
+ *   --tasks       3                  (default 3, min 1, max 10)
+ *   --at-risk-rate 35                (% of students who are at-risk, default 35)
+ *   --missing-rate  7                (% of students with no submission, default 7)
+ *   --set-family  assignment         (assignment|lab|exam, default: assignment)
+ *   --task-type   sql_text           (sql_text only; default: sql_text)
+ *                                    stored_procedure dummy templates are not yet implemented.
+ *                                    Real stored_procedure tasks via --task-ids are supported.
+ *                                    Ignored when --task-ids is provided.
  */
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -40,8 +45,34 @@ const MISSING_RATE = Math.max(0, Math.min(100, parseInt(opts["missing-rate"]  ??
 // real task IDs from a selected task set — if provided, skip dummy task creation
 const REAL_TASK_IDS = opts["task-ids"] ? opts["task-ids"].split(",").filter(Boolean) : [];
 
+// research context
+const ALLOWED_SET_FAMILIES = ["assignment", "lab", "exam"];
+const ALLOWED_TASK_TYPES   = ["sql_text"]; // stored_procedure dummy templates not yet implemented
+const BLOCK_TASK_TYPES     = ["sql_block", "er_diagram", "coding_text", "coding_block"];
+
+const SET_FAMILY = opts["set-family"] ?? "assignment";
+const DUMMY_TASK_TYPE = opts["task-type"] ?? "sql_text";
+
 if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
   console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
+  process.exit(1);
+}
+if (!ALLOWED_SET_FAMILIES.includes(SET_FAMILY)) {
+  console.error(`ERROR: --set-family must be one of: ${ALLOWED_SET_FAMILIES.join(", ")}. Got: ${SET_FAMILY}`);
+  process.exit(1);
+}
+if (!REAL_TASK_IDS.length && !ALLOWED_TASK_TYPES.includes(DUMMY_TASK_TYPE)) {
+  if (DUMMY_TASK_TYPE === "stored_procedure") {
+    console.error(
+      `ERROR: stored_procedure dummy task generation is not yet implemented — ` +
+      `SQL Query templates cannot represent Stored Procedure structure or syntax. ` +
+      `To use stored_procedure tasks, provide real task UUIDs via --task-ids from an existing class set.`
+    );
+  } else if (BLOCK_TASK_TYPES.includes(DUMMY_TASK_TYPE)) {
+    console.error(`ERROR: --task-type '${DUMMY_TASK_TYPE}' is a block-based type not supported in Phase 4 simulation. Planned for Phase 5.`);
+  } else {
+    console.error(`ERROR: --task-type must be one of: ${ALLOWED_TASK_TYPES.join(", ")}. Got: ${DUMMY_TASK_TYPE}`);
+  }
   process.exit(1);
 }
 
@@ -51,8 +82,9 @@ const SIM_TAG  = BATCH_CODE;
 console.log(`\n── Sim Setup Config ──
   Batch      : ${BATCH_CODE}
   Class      : ${CLASS_CODE}
+  Set Family : ${SET_FAMILY}
   Students   : ${N_STUDENTS}
-  Tasks      : ${REAL_TASK_IDS.length ? `(real) ${REAL_TASK_IDS.join(", ")}` : N_TASKS}
+  Tasks      : ${REAL_TASK_IDS.length ? `(real) ${REAL_TASK_IDS.join(", ")}` : `${N_TASKS} × ${DUMMY_TASK_TYPE}`}
   At-Risk %  : ${AT_RISK_RATE}%
   Missing %  : ${MISSING_RATE}%
 `);
@@ -213,19 +245,29 @@ const tasks = [];
 if (REAL_TASK_IDS.length > 0) {
   console.log(`[4/7] Using ${REAL_TASK_IDS.length} real task IDs (skipping dummy task creation)...`);
   const { data: realTasks, error: rtErr } = await admin.from("mst_tasks")
-    .select("task_id, task_code, expected_sql, scoring_rubric_json, difficulty_level")
+    .select("task_id, task_code, task_type, expected_sql, scoring_rubric_json, difficulty_level")
     .in("task_id", REAL_TASK_IDS)
     .eq("is_active", true);
   if (rtErr) throw new Error(`Real task fetch: ${rtErr.message}`);
   if (!realTasks?.length) throw new Error(`None of the provided task IDs found in mst_tasks`);
+
+  // Reject block-based task types — not supported in Phase 4 simulation
+  const blockTasks = realTasks.filter(t => BLOCK_TASK_TYPES.includes(t.task_type));
+  if (blockTasks.length > 0) {
+    const details = blockTasks.map(t => `${t.task_code} (${t.task_type})`).join(", ");
+    console.error(`ERROR: Selected tasks contain block-based types not supported in Phase 4: ${details}. Planned for Phase 5.`);
+    process.exit(1);
+  }
+
   tasks.push(...realTasks.map(t => ({
     ...t,
     correct: (t.expected_sql ?? "SELECT * FROM students").replace(/;$/, "").trim(),
     wrong:   "SELECT name FROM nonexistent_table_xyz",
   })));
-  console.log(`  ✅ Loaded: ${tasks.map(t => t.task_code).join(", ")}`);
+  const typeSummary = [...new Set(realTasks.map(t => t.task_type))].join(", ");
+  console.log(`  ✅ Loaded: ${tasks.map(t => t.task_code).join(", ")} (types: ${typeSummary})`);
 } else {
-  console.log(`[4/7] ${N_TASKS} SQL tasks (dummy)...`);
+  console.log(`[4/7] ${N_TASKS} dummy tasks (task_type: ${DUMMY_TASK_TYPE})...`);
   for (let i = 1; i <= N_TASKS; i++) {
     const tpl = TASK_TEMPLATES[(i - 1) % TASK_TEMPLATES.length];
     const code = taskCode(i);
@@ -233,8 +275,8 @@ if (REAL_TASK_IDS.length > 0) {
       .eq("task_code", code).maybeSingle();
     if (!existing) {
       const { data, error } = await admin.from("mst_tasks").insert({
-        task_code: code, task_title: `[${SIM_TAG}] SQL Task ${i} (${tpl.difficulty})`,
-        task_type: "sql_text", difficulty_level: tpl.difficulty,
+        task_code: code, task_title: `[${SIM_TAG}] Task ${i} (${DUMMY_TASK_TYPE}/${tpl.difficulty})`,
+        task_type: DUMMY_TASK_TYPE, difficulty_level: tpl.difficulty,
         task_status: "published", is_active: true, max_score: 10,
         problem_statement: tpl.problem, expected_answer: tpl.correct, expected_sql: tpl.correct,
         database_schema_json: DB_SCHEMA, sample_data_json: SAMPLE_DATA,
@@ -264,11 +306,11 @@ if (!cls) {
 console.log(`  class_id: ${cls.class_id}`);
 
 const { error: csErr } = await admin.from("tb_class_sets").upsert(
-  { class_id: cls.class_id, batch_id: batch.batch_id, family: "assignment" },
+  { class_id: cls.class_id, batch_id: batch.batch_id, family: SET_FAMILY },
   { onConflict: "class_id,batch_id", ignoreDuplicates: true }
 );
 if (csErr) console.warn(`  class_set warn: ${csErr.message}`);
-else console.log("  ✅ class ↔ batch linked");
+else console.log(`  ✅ class ↔ batch linked (family: ${SET_FAMILY})`);
 
 // ── 6. Enroll ─────────────────────────────────────────────────────────────────
 console.log(`[6/7] Enrolling ${students.length} students...`);
@@ -285,10 +327,36 @@ for (let i = 0; i < enrollRows.length; i += CHUNK) {
 }
 console.log(`  ✅ ${students.length} students enrolled`);
 
-// ── 7. Summary ────────────────────────────────────────────────────────────────
+// ── 7. Task assignments ───────────────────────────────────────────────────────
+console.log(`[7/8] Task assignments (${students.length} students × ${tasks.length} tasks)...`);
+const assignRows = [];
+for (const student of students) {
+  for (let ti = 0; ti < tasks.length; ti++) {
+    assignRows.push({
+      batch_id:       batch.batch_id,
+      profile_id:     student.profId,
+      task_id:        tasks[ti].task_id,
+      assigned_order: ti + 1,
+      assigned_group: "default",
+      is_required:    true,
+      is_unlocked:    true,
+      status:         "assigned",
+    });
+  }
+}
+for (let i = 0; i < assignRows.length; i += CHUNK) {
+  const { error } = await admin.from("trn_task_assignments").upsert(
+    assignRows.slice(i, i + CHUNK),
+    { onConflict: "batch_id,profile_id,task_id", ignoreDuplicates: true }
+  );
+  if (error) console.warn(`  assignment warn: ${error.message}`);
+}
+console.log(`  ✅ ${assignRows.length} task assignments ready`);
+
+// ── 8. Summary ────────────────────────────────────────────────────────────────
 const atRiskCount  = Math.round(N_STUDENTS * AT_RISK_RATE / 100);
 const missingCount = Math.round(N_STUDENTS * MISSING_RATE / 100);
-console.log(`[7/7] ✅ Setup complete.
+console.log(`[8/8] ✅ Setup complete.
   Batch    : ${BATCH_CODE}
   Class    : ${CLASS_CODE}
   Tasks    : ${tasks.map(t => t.task_code ?? t.task_id).join(", ")}
