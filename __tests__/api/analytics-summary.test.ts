@@ -58,10 +58,6 @@ function makeRequest(params: Record<string, string> = {}) {
 }
 
 function mockSupabase(rows: Record<string, string>[] | null, error?: string) {
-  const chain: Record<string, unknown> = {};
-  chain.select = vi.fn(() => chain);
-  chain.eq = vi.fn(() => chain);
-  chain.then = undefined; // not a Promise itself
   // vitest awaits the object returned by .eq(); make chain thenable
   const thenable = {
     select: vi.fn(() => thenable),
@@ -91,7 +87,7 @@ describe("GET /api/researcher/analytics-summary", () => {
   it("returns 401 when auth throws", async () => {
     vi.mocked(requireAdminOrResearcher).mockRejectedValueOnce(new Error("Unauthorized"));
     mockSupabase([]);
-    const res = await GET(makeRequest()) as { _status: number };
+    const res = await GET(makeRequest()) as unknown as { _status: number };
     expect(res._status).toBe(401);
   });
 
@@ -103,7 +99,7 @@ describe("GET /api/researcher/analytics-summary", () => {
       { participant_code: "PC001", session_id: "S002", batch_type: "assignment_set", task_type: "sql_text" },
       { participant_code: "PC002", session_id: "S003", batch_type: "lab_set", task_type: "er_diagram" },
     ]);
-    const res = await GET(makeRequest()) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     expect(res._body.live_stats).toMatchObject({
       learner_count: 2,
@@ -120,7 +116,7 @@ describe("GET /api/researcher/analytics-summary", () => {
     mockSupabase([
       { participant_code: "PC001", session_id: "S001", batch_type: "lab_set", task_type: "sql_text" },
     ]);
-    const res = await GET(makeRequest({ batch_type: "lab_set" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ batch_type: "lab_set" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     const live = res._body.live_stats as { batch_type_filter: string | null; task_type_filter: string | null; learner_count: number };
     expect(live.batch_type_filter).toBe("lab_set");
@@ -135,7 +131,7 @@ describe("GET /api/researcher/analytics-summary", () => {
       { participant_code: "PC001", session_id: "S001", batch_type: "assignment_set", task_type: "er_diagram" },
       { participant_code: "PC002", session_id: "S002", batch_type: "assignment_set", task_type: "er_diagram" },
     ]);
-    const res = await GET(makeRequest({ task_type: "er_diagram" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ task_type: "er_diagram" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     const live = res._body.live_stats as { batch_type_filter: string | null; task_type_filter: string | null; learner_count: number; session_count: number };
     expect(live.task_type_filter).toBe("er_diagram");
@@ -150,7 +146,7 @@ describe("GET /api/researcher/analytics-summary", () => {
     mockSupabase([
       { participant_code: "PC003", session_id: "S005", batch_type: "exam_set", task_type: "stored_procedure" },
     ]);
-    const res = await GET(makeRequest({ batch_type: "exam_set", task_type: "stored_procedure" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ batch_type: "exam_set", task_type: "stored_procedure" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     const live = res._body.live_stats as { batch_type_filter: string | null; task_type_filter: string | null };
     expect(live.batch_type_filter).toBe("exam_set");
@@ -161,7 +157,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("invalid batch_type → 400, no Supabase query", async () => {
     mockSupabase([]); // should not be called
-    const res = await GET(makeRequest({ batch_type: "hacked_value" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ batch_type: "hacked_value" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(400);
     expect(typeof res._body.error).toBe("string");
     expect(mockFrom).not.toHaveBeenCalled();
@@ -169,7 +165,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("invalid task_type → 400, no Supabase query", async () => {
     mockFrom.mockClear();
-    const res = await GET(makeRequest({ task_type: "DROP TABLE" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ task_type: "DROP TABLE" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(400);
     expect(typeof res._body.error).toBe("string");
     expect(mockFrom).not.toHaveBeenCalled();
@@ -179,7 +175,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("empty result — learner_count=0, session_count=0, no error", async () => {
     mockSupabase([]);
-    const res = await GET(makeRequest({ batch_type: "exam_set" })) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest({ batch_type: "exam_set" })) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     const live = res._body.live_stats as { learner_count: number; session_count: number };
     expect(live.learner_count).toBe(0);
@@ -190,7 +186,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("Supabase error → 500, does not fall back to artifact data", async () => {
     mockSupabase(null, "connection refused");
-    const res = await GET(makeRequest()) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(500);
     // Must not expose artifact pipeline_stats as if live data
     expect(res._body.live_stats).toBeUndefined();
@@ -201,7 +197,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("response includes bssa_features from artifact", async () => {
     mockSupabase([]);
-    const res = await GET(makeRequest()) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     expect(res._body.bssa_features).toBeDefined();
   });
@@ -222,7 +218,7 @@ describe("GET /api/researcher/analytics-summary", () => {
 
   it("response includes pipeline_stats and validation from artifact", async () => {
     mockSupabase([]);
-    const res = await GET(makeRequest()) as { _body: Record<string, unknown>; _status: number };
+    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
     expect(res._body.pipeline_stats).toBeDefined();
     expect(res._body.validation).toBeDefined();

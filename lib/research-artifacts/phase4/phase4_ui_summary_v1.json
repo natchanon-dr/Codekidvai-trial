@@ -435,6 +435,7 @@
       "combined": {
         "label": "Combined / Full BSSA",
         "status": "not_implemented",
+        "description": "การรวมคุณลักษณะ BSSA ทุกกลุ่มเพื่อใช้ในโมเดลเดียว ซึ่งยังไม่ได้ดำเนินการใน Phase 4",
         "note": "No full BSSA combined pipeline artifact exists in Phase 4. EXP-B combines Sequential + TAG features only.",
         "feature_count": 0,
         "features": [],
