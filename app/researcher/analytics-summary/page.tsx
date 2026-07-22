@@ -92,6 +92,25 @@ const BATCH_TYPE_OPTIONS: { value: BatchTypeValue; label: string }[] = [
   { value: "exam_set", label: "Exam" },
 ];
 
+function BatchTypeIcon({ value, className }: { value: BatchTypeValue; className?: string }) {
+  if (value === "assignment_set") return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+      <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd"/>
+    </svg>
+  );
+  if (value === "lab_set") return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
+      <path fillRule="evenodd" d="M7 2a1 1 0 00-.707 1.707L7 4.414v3.758a1 1 0 01-.293.707l-4 4C.817 14.769 2.156 18 4.828 18h10.343c2.673 0 4.012-3.231 2.122-5.121l-4-4A1 1 0 0113 8.172V4.414l.707-.707A1 1 0 0013 2H7zm2 6.172V4h2v4.172a3 3 0 00.879 2.12l1.027 1.028a4 4 0 00-2.171.102l-.47.156a4 4 0 01-2.53 0l-.563-.187a1.993 1.993 0 00-.114-.035l1.063-1.063A3 3 0 009 8.172z" clipRule="evenodd"/>
+    </svg>
+  );
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/>
+    </svg>
+  );
+}
+
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 function PilotDisclaimer({ warning }: { warning: string }) {
@@ -105,9 +124,8 @@ function PilotDisclaimer({ warning }: { warning: string }) {
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white tracking-wide">PILOT ONLY</span>
           </div>
           <p className="text-amber-700 text-xs mt-2 leading-relaxed">
-            ข้อมูลนี้ใช้ <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">proxy_behavioral</code> labels
-            {" "}(Proxy Label — ป้ายกำกับทดแทนที่ยังไม่ใช่ผลประเมินจริง) ที่ derive จาก attempt stream.
-            Proxy-target circularity มีอยู่. ห้ามสรุปผลวิจัยยืนยัน.
+            This data uses <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">proxy_behavioral</code> labels
+            {" "}derived from the attempt stream. Proxy-target circularity is present. Results must not be interpreted as confirmatory research findings.
           </p>
           <p className="text-amber-600 text-xs mt-1.5 italic">{warning}</p>
         </div>
@@ -123,14 +141,11 @@ function PilotDisclaimer({ warning }: { warning: string }) {
   );
 }
 
-function StatRow({ label, value, note }: { label: string; value: string | number; note?: string }) {
+function StatRow({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex items-baseline justify-between py-2 border-b border-[#F1F5F9] last:border-0">
+    <div className="flex items-baseline justify-between py-2.5 border-b border-[#F1F5F9]">
       <span className="text-xs text-[#475569]">{label}</span>
-      <div className="text-right">
-        <span className="text-sm font-semibold text-[#0F172A]">{value}</span>
-        {note && <span className="ml-2 text-xs text-[#94A3B8]">{note}</span>}
-      </div>
+      <span className="text-sm font-semibold text-[#0F172A] ml-3 text-right">{value}</span>
     </div>
   );
 }
@@ -145,14 +160,17 @@ function CheckBadge({ ok, label }: { ok: boolean; label: string }) {
 }
 
 function ToggleBtn({
-  active, onClick, children,
+  active, onClick, children, title, "aria-label": ariaLabel, compact,
 }: {
   active: boolean; onClick: () => void; children: React.ReactNode;
+  title?: string; "aria-label"?: string; compact?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+      title={title}
+      aria-label={ariaLabel}
+      className={`${compact ? "px-2" : "px-3"} py-1.5 rounded-lg text-xs font-medium transition-colors border ${
         active
           ? "bg-[#F37021] text-white border-[#F37021]"
           : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#F37021] hover:text-[#F37021]"
@@ -200,7 +218,7 @@ function BssaGroupCard({ groupKey, group }: { groupKey: string; group: BssaGroup
 
       {group.model_usage.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          <span className="text-[10px] text-[#94A3B8]">ใช้โดย:</span>
+          <span className="text-[10px] text-[#94A3B8]">Used by:</span>
           {group.model_usage.map(m => (
             <span key={m} className="text-[10px] font-mono bg-[#F1F5F9] text-[#475569] px-1.5 py-0.5 rounded">{m}</span>
           ))}
@@ -221,7 +239,7 @@ function BssaGroupCard({ groupKey, group }: { groupKey: string; group: BssaGroup
             onClick={() => setExpanded(v => !v)}
             className="text-[10px] text-[#F37021] hover:underline font-medium"
           >
-            {expanded ? "▲ ซ่อนรายชื่อ feature" : `▼ ดู feature ทั้ง ${group.features.length} ตัว`}
+            {expanded ? `▲ Hide features` : `▼ Show all ${group.features.length} features`}
           </button>
           {expanded && (
             <div className="mt-2 flex flex-wrap gap-1">
@@ -253,7 +271,7 @@ function C2L3ComponentCard({ code, description }: { code: string; description: s
       </div>
       <p className="text-[11px] text-[#64748B] leading-relaxed">{description}</p>
       <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-[10px] text-[#94A3B8]">
-        ไม่มี teacher-reviewed หรือ expert-validated assessment — ยังไม่สามารถแสดงคะแนนได้
+        No teacher-reviewed or expert-validated assessment — results cannot be displayed yet
       </div>
     </div>
   );
@@ -322,7 +340,7 @@ export default function AnalyticsSummaryPage() {
 
   useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
 
-  const bssaGroupOrder = ["behavioral", "sequential", "tag_based", "semantic", "combined"];
+  const bssaGroupOrder = ["tag_based", "behavioral", "sequential", "semantic", "combined"];
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
@@ -339,37 +357,68 @@ export default function AnalyticsSummaryPage() {
         {/* Pilot Disclaimer */}
         {data && <PilotDisclaimer warning={data.data_warning} />}
 
-        {/* ── ส่วนที่ 1: มิติการวิเคราะห์ ── */}
+        {/* ── Section 1: Dimension Filters ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-          <div>
-            <h2 className="font-semibold text-[#0F172A] text-sm">มิติการวิเคราะห์</h2>
-            <p className="text-[11px] text-[#64748B] mt-1">
-              เลือกมิติเพื่อกรองข้อมูลสถิติกิจกรรมด้านล่าง — ผลการเปรียบเทียบโมเดลไม่เปลี่ยนตามมิตินี้
-            </p>
+          {/* Header row: icon-only filter button + title + clear */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button
+                title="Filters"
+                aria-label="Filters"
+                className="p-1.5 rounded-lg text-[#94A3B8] hover:text-[#F37021] hover:bg-orange-50 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-.293.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="font-semibold text-[#0F172A] text-sm">Dimension Filters</h2>
+                <p className="text-[11px] text-[#64748B]">
+                  Filter live activity statistics below — model comparison results are not affected.
+                </p>
+              </div>
+            </div>
+            {(batchType ?? taskType) && (
+              <button
+                onClick={() => { setBatchType(null); setTaskType(null); }}
+                className="text-[10px] font-semibold text-[#F37021] hover:underline"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
 
-          {/* มิติชุดกิจกรรม */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">
-              ชุดกิจกรรม (Activity Set) — <code className="text-[#64748B] font-normal normal-case">batch_type</code>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <ToggleBtn active={batchType === null} onClick={() => setBatchType(null)}>ทั้งหมด</ToggleBtn>
+          {/* Single toolbar: Activity Set + Task Type side-by-side on desktop */}
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-y-3 gap-x-0 items-start">
+            {/* Activity Set group */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
+                Activity Set
+              </span>
+              <ToggleBtn active={batchType === null} onClick={() => setBatchType(null)}>All</ToggleBtn>
               {BATCH_TYPE_OPTIONS.map(o => (
-                <ToggleBtn key={o.value} active={batchType === o.value} onClick={() => setBatchType(o.value)}>
-                  {o.label}
+                <ToggleBtn
+                  key={o.value}
+                  active={batchType === o.value}
+                  onClick={() => setBatchType(o.value)}
+                  title={o.label}
+                  aria-label={o.label}
+                  compact
+                >
+                  <BatchTypeIcon value={o.value} className="w-3.5 h-3.5" />
                 </ToggleBtn>
               ))}
             </div>
-          </div>
 
-          {/* มิติประเภทโจทย์ */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">
-              ประเภทโจทย์ (Task Type) — <code className="text-[#64748B] font-normal normal-case">task_type</code>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <ToggleBtn active={taskType === null} onClick={() => setTaskType(null)}>ทั้งหมด</ToggleBtn>
+            {/* Vertical divider — desktop only */}
+            <div className="hidden sm:block w-px bg-[#E2E8F0] self-stretch mx-4" />
+
+            {/* Task Type group */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
+                Task Type
+              </span>
+              <ToggleBtn active={taskType === null} onClick={() => setTaskType(null)}>All</ToggleBtn>
               {(availableTaskTypes.length > 0
                 ? [...availableTaskTypes].sort((a, b) => {
                     const ai = TASK_TYPE_ORDER.indexOf(a);
@@ -378,11 +427,15 @@ export default function AnalyticsSummaryPage() {
                   })
                 : [...TASK_TYPE_ORDER]
               ).map(t => (
-                <ToggleBtn key={t} active={taskType === t} onClick={() => setTaskType(t)}>
-                  <span className="flex items-center gap-1">
-                    <TaskTypeIcon type={t} className="w-3.5 h-3.5" />
-                    <span>{TASK_TYPE_LABEL[t] ?? t}</span>
-                  </span>
+                <ToggleBtn
+                  key={t}
+                  active={taskType === t}
+                  onClick={() => setTaskType(t)}
+                  title={TASK_TYPE_LABEL[t] ?? t}
+                  aria-label={TASK_TYPE_LABEL[t] ?? t}
+                  compact
+                >
+                  <TaskTypeIcon type={t} className="w-3.5 h-3.5" />
                 </ToggleBtn>
               ))}
             </div>
@@ -392,7 +445,7 @@ export default function AnalyticsSummaryPage() {
           {(batchType ?? taskType) && (
             <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-[11px] text-orange-700 flex items-center justify-between flex-wrap gap-2">
               <span>
-                กรองโดย:{" "}
+                Filtered by:{" "}
                 {batchType && <strong>{BATCH_TYPE_OPTIONS.find(o => o.value === batchType)?.label ?? batchType}</strong>}
                 {batchType && taskType && " × "}
                 {taskType && <strong>{TASK_TYPE_LABEL[taskType] ?? taskType}</strong>}
@@ -401,20 +454,20 @@ export default function AnalyticsSummaryPage() {
                 onClick={() => { setBatchType(null); setTaskType(null); }}
                 className="text-[10px] font-semibold text-[#F37021] hover:underline"
               >
-                ล้างตัวกรอง
+                Clear filters
               </button>
             </div>
           )}
         </section>
 
-        {/* ── ส่วนที่ 2: สถิติกิจกรรม (Live จาก Supabase) ── */}
+        {/* ── Section 2: Activity Statistics (Live from Supabase) ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">สถิติกิจกรรม</h2>
+              <h2 className="font-semibold text-[#0F172A] text-sm">Activity Statistics</h2>
               <p className="text-[10px] text-[#94A3B8] mt-0.5">
-                Live query จาก <code>vw_dataset_session_level</code> — grain: 1 row ต่อ session
-                {(batchType ?? taskType) ? " (filtered)" : " (ทั้งหมด)"}
+                Live query from <code>vw_dataset_session_level</code> — grain: 1 row per session
+                {(batchType ?? taskType) ? " (filtered)" : " (all)"}
               </p>
             </div>
             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
@@ -423,7 +476,7 @@ export default function AnalyticsSummaryPage() {
           </div>
 
           {loading ? (
-            <p className="text-sm text-[#94A3B8]">กำลังโหลดข้อมูล...</p>
+            <p className="text-sm text-[#94A3B8]">Loading...</p>
           ) : error ? (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
           ) : data ? (
@@ -443,7 +496,7 @@ export default function AnalyticsSummaryPage() {
 
               {data.live_stats.learner_count === 0 && (
                 <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-4 py-3 text-xs text-[#64748B] text-center">
-                  ไม่พบข้อมูลสำหรับมิติที่เลือก — ลองเปลี่ยนตัวกรอง
+                  No data found for the selected filters — try changing the filter.
                 </div>
               )}
 
@@ -452,53 +505,54 @@ export default function AnalyticsSummaryPage() {
               </p>
 
               <p className="text-[10px] text-[#94A3B8]">
-                Sequence Count (90 sequences จาก Phase 4 pipeline) คือข้อมูลจาก offline artifact — ดูในส่วน Pipeline Statistics ด้านล่าง
+                Sequence Count (90 sequences from Phase 4 pipeline) is from an offline artifact — see Pipeline Statistics below
               </p>
             </>
           ) : null}
         </section>
 
-        {/* ── ส่วนที่ 3: Pipeline Statistics (Frozen artifact) ── */}
+        {/* ── Section 3: Pipeline Statistics (Frozen artifact) ── */}
         {data && (
           <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
             <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">สถิติ Pipeline (Phase 4 Artifact)</h2>
+              <h2 className="font-semibold text-[#0F172A] text-sm">Pipeline Statistics</h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#64748B] bg-[#F1F5F9] border border-[#E2E8F0] px-2 py-0.5 rounded-full">
                   Frozen at NB05
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">— ไม่เปลี่ยนตามมิติที่เลือกด้านบน</span>
+                <span className="text-[10px] text-[#94A3B8]">— not affected by dimension filters above</span>
               </div>
             </div>
 
-            <div className="space-y-0">
-              <StatRow label="จำนวน learner ทั้งหมด" value={data.pipeline_stats.total_learners}
-                note={`thesis minimum: ${data.pipeline_stats.thesis_minimum_learners}`} />
-              <StatRow label="Train / test learners" value={`${data.pipeline_stats.train_learners} / ${data.pipeline_stats.test_learners}`} />
-              <StatRow label="Sequence ทั้งหมด" value={data.pipeline_stats.total_sequences}
-                note={`train ${data.pipeline_stats.train_sequences} / test ${data.pipeline_stats.test_sequences}`} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+              <StatRow label="Total learners" value={data.pipeline_stats.total_learners} />
+              <StatRow label="Thesis minimum learners" value={data.pipeline_stats.thesis_minimum_learners} />
+              <StatRow label="Training learners" value={data.pipeline_stats.train_learners} />
+              <StatRow label="Test learners" value={data.pipeline_stats.test_learners} />
+              <StatRow label="Total sequences" value={data.pipeline_stats.total_sequences} />
+              <StatRow label="Training sequences" value={data.pipeline_stats.train_sequences} />
+              <StatRow label="Test sequences" value={data.pipeline_stats.test_sequences} />
               <StatRow label="Canonical events" value={data.pipeline_stats.total_canonical_events} />
-              <StatRow label="Max sequence length" value={`${data.pipeline_stats.max_sequence_length} steps`}
-                note={`${data.pipeline_stats.sequence_length_percentile}th percentile`} />
+              <StatRow label="Max sequence length" value={`${data.pipeline_stats.max_sequence_length} steps`} />
+              <StatRow label="Sequence length percentile" value={`${data.pipeline_stats.sequence_length_percentile}th`} />
               <StatRow label="Features per timestep" value={data.pipeline_stats.features_per_timestep} />
-              <StatRow label="Vocabulary size" value={data.pipeline_stats.vocab_size} note="event types" />
-              <StatRow label="Split method" value={data.pipeline_stats.split_method} />
+              <StatRow label="Vocabulary size" value={data.pipeline_stats.vocab_size} />
             </div>
 
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-              ⚠ {data.pipeline_stats.total_learners} learners — ต่ำกว่าเกณฑ์ขั้นต่ำของวิทยานิพนธ์ ({data.pipeline_stats.thesis_minimum_learners} learners). Pipeline validation scope เท่านั้น.
+              ⚠ {data.pipeline_stats.total_learners} learners — below thesis minimum ({data.pipeline_stats.thesis_minimum_learners} learners). Pipeline validation scope only.
             </div>
           </section>
         )}
 
-        {/* ── ส่วนที่ 4: BSSA Feature Analysis ── */}
+        {/* ── Section 4: BSSA Feature Analysis ── */}
         {data?.bssa_features && (
           <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
             <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">การวิเคราะห์คุณลักษณะ BSSA</h2>
+              <h2 className="font-semibold text-[#0F172A] text-sm">Feature Analysis</h2>
               <p className="text-[11px] text-[#64748B] mt-1">
-                BSSA คือ Feature Framework (กรอบการแบ่งกลุ่ม feature) ไม่ใช่มิติการวิเคราะห์
-                — แหล่งข้อมูล: <code className="text-[10px]">comparison_manifest_v1.json</code>
+                BSSA is a Feature Framework (grouping of feature sets), not an analysis dimension.
+                Source: <code className="text-[10px]">comparison_manifest_v1.json</code>
               </p>
             </div>
             <div className="grid grid-cols-1 gap-3">
@@ -511,49 +565,49 @@ export default function AnalyticsSummaryPage() {
           </section>
         )}
 
-        {/* ── ส่วนที่ 5: 2C3L Assessment ── */}
+        {/* ── Section 5: 2C3L Assessment ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
           <div>
-            <h2 className="font-semibold text-[#0F172A] text-sm">การประเมินตามเกณฑ์ 2C3L</h2>
+            <h2 className="font-semibold text-[#0F172A] text-sm">Assessment Rubric</h2>
             <p className="text-[11px] text-[#64748B] mt-1">
-              2C3L คือ Assessment Rubric (เกณฑ์การประเมินผู้เรียน) ไม่ใช่มิติการวิเคราะห์ ไม่ใช่ BSSA feature และไม่ใช่ analytical model
+              Assessment Rubric is an evaluation criterion (learner evaluation criteria), not an analysis dimension, not a BSSA feature, and not an analytical model
             </p>
           </div>
 
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
-            <p className="font-semibold">สถานะปัจจุบัน: Pilot Only — ยังไม่ผ่านการตรวจสอบ</p>
-            <p>ยังไม่มี teacher-reviewed หรือ expert-validated assessment results เพียงพอสำหรับการรายงานผล</p>
+            <p className="font-semibold">Current Status: Pilot Only — Not Yet Validated</p>
+            <p>Insufficient teacher-reviewed or expert-validated assessment results for reporting</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <C2L3ComponentCard
               code="C1"
-              description="Correctness — ความถูกต้องของผลลัพธ์จากโจทย์ (เช่น SQL query ให้ผลถูกต้องหรือไม่)"
+              description="Correctness — accuracy of task output (e.g. whether a SQL query returns the correct result)"
             />
             <C2L3ComponentCard
               code="C2"
-              description="Clarity — ความชัดเจนและความเหมาะสมของวิธีการแก้ปัญหา"
+              description="Clarity — clarity and appropriateness of the solution approach"
             />
             <C2L3ComponentCard
               code="L1"
-              description="Logic — ความสมเหตุสมผลของกระบวนการคิดและลำดับขั้นตอน"
+              description="Logic — soundness of reasoning and step-by-step problem-solving process"
             />
             <C2L3ComponentCard
               code="L2"
-              description="Learning Process — พฤติกรรมการเรียนรู้ เช่น การ revise การ retry และการใช้ hint"
+              description="Learning Process — learning behaviors such as revision, retry, and hint usage"
             />
             <C2L3ComponentCard
               code="L3"
-              description="Level of Mastery — ระดับความเชี่ยวชาญโดยรวมที่ประเมินจาก rubric ทั้งหมด"
+              description="Level of Mastery — overall mastery level assessed from the full rubric"
             />
           </div>
 
           <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 space-y-2">
-            <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wide">เงื่อนไขก่อนแสดงผล 2C3L จริง</p>
+            <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wide">Prerequisites for Displaying Assessment Rubric Results</p>
             <ul className="text-[11px] text-[#64748B] space-y-1">
-              <li>• teacher-reviewed หรือ expert-validated labels พร้อมใช้งาน</li>
-              <li>• อย่างน้อย 60 learners (เกณฑ์ขั้นต่ำวิทยานิพนธ์)</li>
-              <li>• ผ่าน validation protocol ที่กำหนดในสัญญาวิจัย</li>
+              <li>• teacher-reviewed or expert-validated labels are available</li>
+              <li>• at least 60 learners (thesis minimum)</li>
+              <li>• passed the validation protocol defined in the research contract</li>
             </ul>
           </div>
         </section>
