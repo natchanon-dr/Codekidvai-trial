@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase-client";
 
 type ModelRow = {
   name: string; accuracy: number; precision: number; recall: number;
-  f1: number; roc_auc: number; train_time_sec: number;
+  f1: number; roc_auc: number; pr_auc: number | null; train_time_sec: number;
   inference_time_per_seq_sec: number; parameters: number | null; type: string;
 };
 type SeedRow = { seed: number; accuracy: number; f1: number; roc_auc: number };
@@ -46,7 +46,7 @@ type ApiData = {
 type Experiment  = "exp_a" | "exp_b";
 type SeedOption  = 11 | 22 | 33 | 42 | 55 | "mean";
 type ModelOption = "all" | "Dummy" | "Logistic Regression" | "Random Forest" | "TAG-based LR" | "LSTM" | "GRU";
-type MetricKey   = "overview" | "accuracy" | "precision" | "recall" | "f1" | "roc_auc" | "train_time" | "infer_time";
+type MetricKey   = "overview" | "accuracy" | "precision" | "recall" | "f1" | "roc_auc" | "pr_auc" | "train_time" | "infer_time";
 type DisplayMode = "table" | "chart";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -72,6 +72,7 @@ const METRIC_LABELS: Record<MetricKey, string> = {
   recall:     "Recall",
   f1:         "F1 Score",
   roc_auc:    "ROC-AUC",
+  pr_auc:     "PR-AUC",
   train_time: "Training Time",
   infer_time: "Inference Time / seq",
 };
@@ -81,7 +82,8 @@ const METRIC_LABELS: Record<MetricKey, string> = {
 type Resolved = {
   name: string;
   accuracy: number | null; precision: number | null; recall: number | null;
-  f1: number | null; roc_auc: number | null; train_time_sec: number | null;
+  f1: number | null; roc_auc: number | null; pr_auc: number | null;
+  train_time_sec: number | null;
   inference_time_per_seq_sec: number | null; parameters: number | null;
 };
 
@@ -96,7 +98,7 @@ function resolveModel(data: ApiData, exp: Experiment, seed: SeedOption, name: st
   if (exp === "exp_a" && seed === 42) {
     const m = data.model_comparison.models.find(r => r.name === name);
     if (!m) return null;
-    return { name: m.name, accuracy: m.accuracy, precision: m.precision, recall: m.recall, f1: m.f1, roc_auc: m.roc_auc, train_time_sec: m.train_time_sec, inference_time_per_seq_sec: m.inference_time_per_seq_sec, parameters: m.parameters };
+    return { name: m.name, accuracy: m.accuracy, precision: m.precision, recall: m.recall, f1: m.f1, roc_auc: m.roc_auc, pr_auc: m.pr_auc ?? null, train_time_sec: m.train_time_sec, inference_time_per_seq_sec: m.inference_time_per_seq_sec, parameters: m.parameters };
   }
 
   if (!isSeq) return null;
@@ -104,11 +106,11 @@ function resolveModel(data: ApiData, exp: Experiment, seed: SeedOption, name: st
   const expData = exp === "exp_a" ? data.seed_stability[key].exp_a_seq_only : data.seed_stability[key].exp_b_seq_plus_tag;
 
   if (seed === "mean") {
-    return { name, accuracy: expData.accuracy_mean, precision: null, recall: null, f1: expData.f1_mean, roc_auc: expData.roc_auc_mean, train_time_sec: expData.train_time_sec_mean, inference_time_per_seq_sec: null, parameters: null };
+    return { name, accuracy: expData.accuracy_mean, precision: null, recall: null, f1: expData.f1_mean, roc_auc: expData.roc_auc_mean, pr_auc: null, train_time_sec: expData.train_time_sec_mean, inference_time_per_seq_sec: null, parameters: null };
   }
   const row = expData.seeds.find(s => s.seed === seed);
   if (!row) return null;
-  return { name, accuracy: row.accuracy, precision: null, recall: null, f1: row.f1, roc_auc: row.roc_auc, train_time_sec: null, inference_time_per_seq_sec: null, parameters: null };
+  return { name, accuracy: row.accuracy, precision: null, recall: null, f1: row.f1, roc_auc: row.roc_auc, pr_auc: null, train_time_sec: null, inference_time_per_seq_sec: null, parameters: null };
 }
 
 function getRows(data: ApiData, exp: Experiment, seed: SeedOption, modelOpt: ModelOption): Resolved[] {
@@ -148,6 +150,7 @@ function metricVal(r: Resolved, k: MetricKey): number | null {
   if (k === "recall")    return r.recall;
   if (k === "f1")        return r.f1;
   if (k === "roc_auc")   return r.roc_auc;
+  if (k === "pr_auc")    return r.pr_auc;
   if (k === "train_time") return r.train_time_sec;
   if (k === "infer_time") return r.inference_time_per_seq_sec;
   return null;
@@ -387,6 +390,7 @@ function ResultsTable({ rows, metric }: { rows: Resolved[]; metric: MetricKey })
             {(overview || metric === "recall")     && <th className="text-right px-3 py-2.5">Recall</th>}
             {(overview || metric === "f1")         && <th className="text-right px-3 py-2.5">F1</th>}
             {(overview || metric === "roc_auc")    && <th className="text-right px-3 py-2.5">ROC-AUC</th>}
+            {(overview || metric === "pr_auc")     && <th className="text-right px-3 py-2.5">PR-AUC</th>}
             {(overview || metric === "train_time") && <th className="text-right px-3 py-2.5">Train</th>}
             {(overview || metric === "infer_time") && <th className="text-right px-3 py-2.5">Infer/seq</th>}
             {overview && <th className="text-right px-3 py-2.5">Params</th>}
@@ -404,6 +408,7 @@ function ResultsTable({ rows, metric }: { rows: Resolved[]; metric: MetricKey })
               {(overview || metric === "recall")     && <td className="px-3 py-2.5 text-right font-mono">{fmt(r.recall)}</td>}
               {(overview || metric === "f1")         && <td className="px-3 py-2.5 text-right font-mono">{fmt(r.f1)}</td>}
               {(overview || metric === "roc_auc")    && <td className="px-3 py-2.5 text-right font-mono">{fmt(r.roc_auc)}</td>}
+              {(overview || metric === "pr_auc")     && <td className="px-3 py-2.5 text-right font-mono">{r.pr_auc !== null ? fmt(r.pr_auc) : <span className="text-[#CBD5E1]" title="PR-AUC ไม่ถูก record ใน combination นี้">N/A</span>}</td>}
               {(overview || metric === "train_time") && <td className="px-3 py-2.5 text-right font-mono">{fmtMs(r.train_time_sec)}</td>}
               {(overview || metric === "infer_time") && <td className="px-3 py-2.5 text-right font-mono">{fmtMs(r.inference_time_per_seq_sec)}</td>}
               {overview && <td className="px-3 py-2.5 text-right font-mono">{r.parameters ?? "—"}</td>}
@@ -414,7 +419,8 @@ function ResultsTable({ rows, metric }: { rows: Resolved[]; metric: MetricKey })
       {rows.some(r => r.precision === null && metric !== "train_time" && metric !== "infer_time") && (
         <p className="text-[10px] text-[#94A3B8] mt-2 px-1">
           — indicates metric not recorded for this experiment/seed combination.
-          Precision, Recall, Timing are only available at EXP-A / Seed 42 (primary comparison).
+          Precision, Recall, PR-AUC, Timing are only available at EXP-A / Seed 42 (primary comparison).
+          N/A = metric undefined for this combination — not zero.
         </p>
       )}
     </div>
@@ -460,6 +466,7 @@ function MetricCards({ r, exp, seed }: { r: Resolved; exp: Experiment; seed: See
     { label: "Accuracy",  value: fmt(r.accuracy),  note: r.accuracy === null ? "not in this combination" : undefined },
     { label: "F1 Score",  value: fmt(r.f1),         note: r.f1 === null       ? "not in this combination" : undefined },
     { label: "ROC-AUC",   value: fmt(r.roc_auc),    note: r.roc_auc === null  ? "not in this combination" : undefined },
+    { label: "PR-AUC",    value: r.pr_auc !== null ? fmt(r.pr_auc) : "N/A", note: r.pr_auc === null ? "available at EXP-A Seed 42 only" : undefined },
     ...(r.precision !== null ? [{ label: "Precision", value: fmt(r.precision) }] : []),
     ...(r.recall    !== null ? [{ label: "Recall",    value: fmt(r.recall) }]    : []),
     ...(r.train_time_sec !== null            ? [{ label: "Train Time",  value: fmtMs(r.train_time_sec) }]            : []),
@@ -509,6 +516,13 @@ function TrainingConfig({ name, cfg, exp }: { name: string; cfg: ModelConfig; ex
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]">Read only</span>
       </div>
       <p className="text-[10px] text-[#94A3B8]">Configuration used to produce this recorded artifact. No hyperparameter editing or retraining available in this view.</p>
+      {name === "GRU" && (
+        <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          หมายเหตุ GRU parameters: EXP-A (Sequence only) = 4,257 params (input=10 features).
+          EXP-B (Sequence + TAG) = 4,275 params (input=28 features = 10 seq + 18 TAG).
+          ค่า 4,257 ในตาราง comparison คือ EXP-A primary comparison (seed 42).
+        </p>
+      )}
       <table className="w-full text-xs">
         <tbody>
           {rows.map(([k, v]) => (
@@ -567,7 +581,8 @@ const METRIC_HELP: { term: string; def: string }[] = [
   { term: "ROC-AUC", def: "Area under the Receiver Operating Characteristic curve. Measures the model's ability to rank at-risk sequences above safe ones across all thresholds. 0.5 = random; 1.0 = perfect separation. Values of 1.0 here reflect circularity in the proxy label." },
   { term: "Training Time", def: "Wall-clock time to train the model on the 72 training sequences (one run). sklearn models (LR, RF) train in milliseconds; PyTorch models (LSTM, GRU) take seconds due to per-epoch gradient descent. Framework differences make direct comparison misleading." },
   { term: "Inference Time / seq", def: "Average time to produce one prediction at inference. Measured on 18 test sequences with Python time.perf_counter(). Microsecond-range for sklearn; tens of microseconds for PyTorch (after JIT warm-up)." },
-  { term: "Trainable Parameters", def: "Number of learnable weights in the model. Dummy has none; LR has 18 (one per flat feature); LSTM has 5665; GRU has 4257. Larger parameter count does not imply better performance on this pilot." },
+  { term: "PR-AUC", def: "พื้นที่ใต้ Precision–Recall Curve (Area under the Precision-Recall Curve). วัดความสามารถของโมเดลในการจัดลำดับผู้เรียนที่มีความเสี่ยงสูงเมื่อ class distribution ไม่สมดุล (เน้น positive class). 0.5 = random; 1.0 = perfect. ค่า PR-AUC 1.0 ในนี้เป็น artifact ของ proxy-target circularity เช่นเดียวกับ ROC-AUC. PR-AUC = N/A หมายความว่าไม่ถูก record ใน combination นี้ — ไม่ใช่ค่า 0." },
+  { term: "Trainable Parameters", def: "Number of learnable weights in the model. Dummy has none; LR has 18 (one per flat feature); LSTM has 5,665; GRU has 4,257 (EXP-A) or 4,275 (EXP-B — extra 18 TAG features added). Larger parameter count does not imply better performance on this pilot." },
 ];
 
 function HelpSection() {
@@ -661,6 +676,18 @@ export default function ModelResultsPage() {
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
         <PilotDisclaimer warning={data.data_warning} />
+
+        {/* Note: dimension filters do not apply to model comparison */}
+        <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3 flex items-start gap-3">
+          <span className="text-[#94A3B8] text-base mt-0.5">ℹ</span>
+          <div>
+            <p className="text-xs font-semibold text-[#475569]">ผลการเปรียบเทียบโมเดลไม่เปลี่ยนตามมิติการวิเคราะห์</p>
+            <p className="text-[11px] text-[#64748B] mt-0.5 leading-relaxed">
+              โมเดลใน Phase 4 ถูก train และ evaluate บน dataset รวมทั้งหมด (10 learners) ยังไม่มีผลการ train/evaluate แยกตาม
+              ชุดกิจกรรม (batch_type) หรือ ประเภทโจทย์ (task_type) — ตัวกรองมิติมีผลเฉพาะ Dataset Statistics ใน Analytics Summary
+            </p>
+          </div>
+        </div>
 
         <ControlBar exp={exp} seed={seed} modelOpt={modelOpt} metric={metric} display={display}
           setExp={setExp} setSeed={setSeed} setModelOpt={setModelOpt} setMetric={setMetric} setDisplay={setDisplay} />
