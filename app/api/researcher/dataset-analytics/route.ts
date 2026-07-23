@@ -280,7 +280,7 @@ export async function GET(request: NextRequest) {
   // ── Dataset list query ────────────────────────────────────────────────────
   let datasetQuery = supabaseAdmin
     .from("mst_datasets")
-    .select("id, code, name, batch_type, set_family, task_type, class_id, task_id, active, created_at, updated_at, archived_at")
+    .select("id, code, name, batch_type, set_family, task_type, class_id, task_set_id, active, created_at, updated_at, archived_at")
     .is("archived_at", null); // exclude soft-deleted
 
   if (search) {
@@ -315,7 +315,7 @@ export async function GET(request: NextRequest) {
         set_family: String(row.set_family),
         task_type: String(row.task_type),
         class_id: row.class_id ? String(row.class_id) : null,
-        task_id: row.task_id ? String(row.task_id) : null,
+        task_id: row.task_set_id ? String(row.task_set_id) : null,
         active: Boolean(row.active),
         usage_status: resolveUsageStatus(String(row.id)),
         created_at: String(row.created_at),
