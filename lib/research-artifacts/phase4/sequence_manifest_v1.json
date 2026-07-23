@@ -1,0 +1,65 @@
+{
+  "schema_version": "seq_v1",
+  "created_at_utc": "2026-07-15T14:36:28.070483+00:00",
+  "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
+  "input_files": {
+    "sequence_csv": "data\\raw\\sequence_20260715_MOCK-VALID3-20260715.csv",
+    "sequence_sha": "6f836ad093b55bc2",
+    "attempt_csv": "data\\raw\\attempt_20260715_MOCK-VALID3-20260715.csv",
+    "attempt_sha": "ca5f59ec2caf5ce1",
+    "outcome_csv": "data\\raw\\outcome_20260715_MOCK-VALID3-20260715.csv",
+    "outcome_sha": "c64bc55de88d3ab9"
+  },
+  "parameters": {
+    "at_risk_threshold": 65.0,
+    "dedup_window_sec": 5,
+    "max_seq_len_percentile": 95,
+    "max_seq_len": 6,
+    "n_features": 10,
+    "feature_names": [
+      "event_type_code",
+      "duration_from_start_norm",
+      "is_sql_run",
+      "is_submit",
+      "is_error_event",
+      "cumulative_run_count",
+      "cumulative_submit_count",
+      "cumulative_error_count",
+      "attempt_is_correct",
+      "step_position_norm"
+    ],
+    "random_state": 42,
+    "test_size": 0.2
+  },
+  "dataset_stats": {
+    "raw_events": 702,
+    "dropped_as_duplicate": 0,
+    "canonical_events": 702,
+    "pre_cutoff_events": 540,
+    "total_learners": 10,
+    "eligible_learners": 10,
+    "train_learners": 8,
+    "test_learners": 2,
+    "thesis_eligible_labels": 0,
+    "proxy_behavioral_labels": 10,
+    "train_shape": [
+      72,
+      6,
+      10
+    ],
+    "test_shape": [
+      18,
+      6,
+      10
+    ]
+  },
+  "data_warning": "TECHNICAL VALIDATION ONLY \u2014 mock dataset, no valid 2C3L labels. labels=proxy_behavioral/pilot_only. Final thesis requires >=60 participants.",
+  "artifacts": {
+    "canonical_events": "data\\sequences\\canonical_events.parquet",
+    "sequence_index": "data\\sequences\\sequence_index.parquet",
+    "split_assignments": "data\\sequences\\split_assignments.parquet",
+    "sequence_tensors": "data\\sequences\\sequence_tensors_v1.npz",
+    "vocabulary": "data\\sequences\\vocabulary_v1.json",
+    "scaler": "data\\sequences\\scaler_v1.json"
+  }
+}

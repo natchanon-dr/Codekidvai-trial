@@ -1,0 +1,65 @@
+{
+  "schema_version": "tag_v1",
+  "created_at_utc": "2026-07-21T13:07:14.650900+00:00",
+  "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
+  "m2_manifest_sha": "d5acd8c97967061d",
+  "transition_types": [
+    "NEXT_EVENT",
+    "RETRY",
+    "REVISION",
+    "ERROR_TRANSITION",
+    "ERROR_RECOVERY",
+    "ASSESSMENT_TRANSITION",
+    "NEXT_TASK",
+    "SESSION_RETURN"
+  ],
+  "graph_feature_names": [
+    "node_count",
+    "edge_count",
+    "unique_event_types",
+    "retry_count",
+    "revision_count",
+    "error_transition_count",
+    "error_recovery_count",
+    "error_recovery_rate",
+    "assessment_count",
+    "session_return_count",
+    "transition_entropy",
+    "event_type_entropy",
+    "mean_delta_time_sec",
+    "std_delta_time_sec",
+    "max_delta_time_sec",
+    "min_delta_time_sec",
+    "run_to_submit_ratio",
+    "graph_density"
+  ],
+  "n_features": 18,
+  "dataset_stats": {
+    "total_sequences": 90,
+    "total_nodes": 540,
+    "total_edges": 450,
+    "train_sequences": 72,
+    "test_sequences": 18,
+    "train_cohort_nodes": 3,
+    "train_cohort_edges": 3,
+    "full_pilot_nodes": 3,
+    "full_pilot_edges": 3,
+    "feature_leakage_check": "PASS",
+    "nan_in_features": "NONE"
+  },
+  "artifacts": {
+    "tag_nodes": "data\\tag\\tag_nodes_v1.parquet",
+    "tag_edges": "data\\tag\\tag_edges_v1.parquet",
+    "tag_transition_stats": "data\\tag\\tag_transition_stats_v1.parquet",
+    "tag_sequence_stats": "data\\tag\\tag_sequence_stats_v1.parquet",
+    "tag_graph_features": "data\\tag\\tag_graph_features_v1.parquet"
+  },
+  "artifact_checksums": {
+    "tag_nodes": "70097235bf9eacb9",
+    "tag_edges": "1575012fb425c1ab",
+    "tag_transition_stats": "067fa206bd6a3c5b",
+    "tag_sequence_stats": "c4114e58cf625e7a",
+    "tag_graph_features": "f3cda661e3de47a8"
+  },
+  "data_warning": "TECHNICAL VALIDATION ONLY \u2014 mock dataset, proxy_behavioral/pilot_only labels. TAG is not a classifier in Phase 4. Do not report AUC/F1. Final thesis requires teacher-reviewed labels and >=60 participants."
+}

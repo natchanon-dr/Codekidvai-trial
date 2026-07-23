@@ -1,0 +1,1059 @@
+{
+  "generated_at": "2026-07-23T11:21:06.375567+00:00",
+  "artifact_name": "sequence_analytics_v1",
+  "artifact_version": "1.0.0",
+  "generation_script": "notebooks/scripts/generate_sequence_analytics_v1.py",
+  "source_artifacts": {
+    "canonical_events": {
+      "path": "notebooks/data/sequences/canonical_events.parquet",
+      "sha256": "95e9dd5faa54a9c46a9020fde68aa2f76a45201c4cd93759e79e8c8247e0a878"
+    },
+    "sequence_index": {
+      "path": "notebooks/data/sequences/sequence_index.parquet",
+      "sha256": "58813f211248545ccf672709095dc26d5de3c5951877442ee382ad43b569bbe9"
+    },
+    "split_assignments": {
+      "path": "notebooks/data/sequences/split_assignments.parquet",
+      "sha256": "435b3418cdd1f4104d0cb0bb81f674ff141789e11f679b62c0468f57f7c048fe"
+    },
+    "vocabulary_v1": {
+      "path": "notebooks/data/sequences/vocabulary_v1.json",
+      "sha256": "6d1e0346aef09fcfd30aaca09e18254243cfb385a5832d04d7a3e14cf8cf12d7"
+    },
+    "sequence_manifest_v1": {
+      "path": "notebooks/data/sequences/sequence_manifest_v1.json",
+      "sha256": "d5acd8c97967061d38030948a515344fb47116abd8783938640a4ec4225e71cf"
+    },
+    "tag_transition_stats_v1": {
+      "path": "notebooks/data/tag/tag_transition_stats_v1.parquet",
+      "sha256": "067fa206bd6a3c5b10a165df2e0c6a0fee1f05747156df580d7cd8d617ea1a9c"
+    },
+    "tag_edges_v1": {
+      "path": "notebooks/data/tag/tag_edges_v1.parquet",
+      "sha256": "1575012fb425c1ab8fc4844c0634996bc8d32c1e2fefe86a42c1f2061f5379e0"
+    },
+    "tag_graph_features_v1": {
+      "path": "notebooks/data/tag/tag_graph_features_v1.parquet",
+      "sha256": "f3cda661e3de47a84a51346c41e641e672c5835d4bea4f875e1ebd73095075fb"
+    },
+    "tag_manifest_v1": {
+      "path": "notebooks/data/tag/tag_manifest_v1.json",
+      "sha256": "3ad8e035f2e73f4e604521b0c368d85e942a842e30320e3a49eab8ecbd79537b"
+    }
+  },
+  "validity_metadata": {
+    "label_source": "proxy_behavioral",
+    "label_validity": "pilot_only",
+    "evaluation_purpose": "technical_pipeline_validation",
+    "proxy_target_circularity": true,
+    "confirmatory_analysis_allowed": false,
+    "data_warning": "TECHNICAL VALIDATION ONLY \u2014 mock dataset, no valid 2C3L labels. labels=proxy_behavioral/pilot_only. Final thesis requires >=60 participants."
+  },
+  "dataset_summary": {
+    "total_learners": 10,
+    "train_learners": 8,
+    "test_learners": 2,
+    "total_sequences": 90,
+    "train_sequences": 72,
+    "test_sequences": 18,
+    "total_canonical_events": 702,
+    "total_eligible_events": 540,
+    "cutoff_rule": "Events with is_post_cutoff=True excluded; events with dropped_as_duplicate=True excluded",
+    "dedup_rule": "dedup_window_sec=5",
+    "split_integrity_status": "PASS",
+    "learner_overlap_status": "PASS"
+  },
+  "event_frequency": {
+    "denominator": 540,
+    "denominator_note": "Total pre-cutoff non-duplicate events in canonical_events.parquet (N=540). Padding (code=0) excluded from behavioral percentages \u2014 padding is not present in canonical_events.",
+    "vocabulary_ordering": "vocabulary_v1.json insertion order; padding prepended",
+    "event_frequency": [
+      {
+        "event_code": 0,
+        "event_name": "__PADDING__",
+        "status": "padding_token",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0,
+        "note": "Padding token not present in canonical_events; used in tensors only"
+      },
+      {
+        "event_code": 1,
+        "event_name": "session_end",
+        "status": "active",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      },
+      {
+        "event_code": 2,
+        "event_name": "sql_error",
+        "status": "active",
+        "event_count": 216,
+        "pct_of_eligible_events": 40.0,
+        "sequences_containing_event": 90
+      },
+      {
+        "event_code": 3,
+        "event_name": "sql_run",
+        "status": "active",
+        "event_count": 270,
+        "pct_of_eligible_events": 50.0,
+        "sequences_containing_event": 90
+      },
+      {
+        "event_code": 4,
+        "event_name": "sql_success",
+        "status": "active",
+        "event_count": 54,
+        "pct_of_eligible_events": 10.0,
+        "sequences_containing_event": 54
+      },
+      {
+        "event_code": 5,
+        "event_name": "submit_answer",
+        "status": "active",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      },
+      {
+        "event_code": 6,
+        "event_name": "block_add",
+        "status": "reserved_not_collected",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      },
+      {
+        "event_code": 7,
+        "event_name": "block_delete",
+        "status": "reserved_not_collected",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      },
+      {
+        "event_code": 8,
+        "event_name": "block_move",
+        "status": "reserved_not_collected",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      },
+      {
+        "event_code": 9,
+        "event_name": "block_submit",
+        "status": "reserved_not_collected",
+        "event_count": 0,
+        "pct_of_eligible_events": 0.0,
+        "sequences_containing_event": 0
+      }
+    ]
+  },
+  "sequence_length_distribution": {
+    "length_definition": "n_steps from sequence_index.parquet = number of non-padding events per sequence",
+    "all": {
+      "count": 90,
+      "min": 6.0,
+      "max": 6.0,
+      "mean": 6.0,
+      "median": 6.0,
+      "std": 0.0,
+      "q1": 6.0,
+      "q3": 6.0,
+      "histogram": {
+        "bin_rule": "numpy equal-width, n_bins=10",
+        "bin_edges": [
+          5.5,
+          5.6,
+          5.7,
+          5.8,
+          5.9,
+          6.0,
+          6.1,
+          6.2,
+          6.3,
+          6.4,
+          6.5
+        ],
+        "bin_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          90,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "train": {
+      "count": 72,
+      "min": 6.0,
+      "max": 6.0,
+      "mean": 6.0,
+      "median": 6.0,
+      "std": 0.0,
+      "q1": 6.0,
+      "q3": 6.0
+    },
+    "test": {
+      "count": 18,
+      "min": 6.0,
+      "max": 6.0,
+      "mean": 6.0,
+      "median": 6.0,
+      "std": 0.0,
+      "q1": 6.0,
+      "q3": 6.0
+    }
+  },
+  "sequence_duration_distribution": {
+    "available": true,
+    "duration_definition": "last_event_time - first_event_time from sequence_index.parquet, in seconds (timestamps in UTC)",
+    "all": {
+      "count": 90,
+      "min": 5.124,
+      "max": 6.57,
+      "mean": 5.847333,
+      "median": 5.871,
+      "std": 0.232147,
+      "q1": 5.7435,
+      "q3": 5.97675,
+      "histogram": {
+        "bin_rule": "numpy equal-width, n_bins=10",
+        "bin_edges": [
+          5.124,
+          5.2686,
+          5.4132,
+          5.5578,
+          5.7024,
+          5.847,
+          5.9916,
+          6.1362,
+          6.2808,
+          6.4254,
+          6.57
+        ],
+        "bin_counts": [
+          2,
+          1,
+          7,
+          9,
+          18,
+          33,
+          15,
+          2,
+          1,
+          2
+        ]
+      }
+    },
+    "train": {
+      "count": 72,
+      "min": 5.225,
+      "max": 6.528,
+      "mean": 5.859514,
+      "median": 5.872,
+      "std": 0.212051,
+      "q1": 5.764,
+      "q3": 5.9875
+    },
+    "test": {
+      "count": 18,
+      "min": 5.124,
+      "max": 6.57,
+      "mean": 5.798611,
+      "median": 5.813,
+      "std": 0.301996,
+      "q1": 5.67925,
+      "q3": 5.94425
+    }
+  },
+  "event_transitions": {
+    "transition_definition": "Adjacent eligible events within same sequence only (source_event_type -> target_event_type from tag_edges_v1.parquet). Padding excluded. No cross-sequence boundaries (sequence_id enforces boundary). Self-transitions included if present.",
+    "denominator": 450,
+    "denominator_note": "Total edges in tag_edges_v1.parquet = 450. Each edge represents one adjacent event pair within a sequence.",
+    "transitions": [
+      {
+        "from_event_code": 2,
+        "from_event_name": "sql_error",
+        "to_event_code": 3,
+        "to_event_name": "sql_run",
+        "count": 180,
+        "pct": 40.0,
+        "sequences_containing_transition": 90,
+        "tag_transition_type": "ERROR_RECOVERY"
+      },
+      {
+        "from_event_code": 3,
+        "from_event_name": "sql_run",
+        "to_event_code": 2,
+        "to_event_name": "sql_error",
+        "count": 216,
+        "pct": 48.0,
+        "sequences_containing_transition": 90,
+        "tag_transition_type": "ERROR_TRANSITION"
+      },
+      {
+        "from_event_code": 3,
+        "from_event_name": "sql_run",
+        "to_event_code": 4,
+        "to_event_name": "sql_success",
+        "count": 54,
+        "pct": 12.0,
+        "sequences_containing_transition": 54,
+        "tag_transition_type": "NEXT_EVENT"
+      }
+    ]
+  },
+  "tag_graph_feature_distributions": {
+    "source": "tag_graph_features_v1.parquet",
+    "feature_count": 18,
+    "features": {
+      "node_count": {
+        "count": 90,
+        "min": 6.0,
+        "max": 6.0,
+        "mean": 6.0,
+        "median": 6.0,
+        "std": 0.0,
+        "q1": 6.0,
+        "q3": 6.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            5.5,
+            5.6,
+            5.7,
+            5.8,
+            5.9,
+            6.0,
+            6.1,
+            6.2,
+            6.3,
+            6.4,
+            6.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "edge_count": {
+        "count": 90,
+        "min": 5.0,
+        "max": 5.0,
+        "mean": 5.0,
+        "median": 5.0,
+        "std": 0.0,
+        "q1": 5.0,
+        "q3": 5.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            4.5,
+            4.6,
+            4.7,
+            4.8,
+            4.9,
+            5.0,
+            5.1,
+            5.2,
+            5.3,
+            5.4,
+            5.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "unique_event_types": {
+        "count": 90,
+        "min": 2.0,
+        "max": 3.0,
+        "mean": 2.6,
+        "median": 3.0,
+        "std": 0.492642,
+        "q1": 2.0,
+        "q3": 3.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            2.0,
+            2.1,
+            2.2,
+            2.3,
+            2.4,
+            2.5,
+            2.6,
+            2.7,
+            2.8,
+            2.9,
+            3.0
+          ],
+          "bin_counts": [
+            36,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            54
+          ]
+        }
+      },
+      "retry_count": {
+        "count": 90,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            -0.5,
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "revision_count": {
+        "count": 90,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            -0.5,
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "error_transition_count": {
+        "count": 90,
+        "min": 2.0,
+        "max": 3.0,
+        "mean": 2.4,
+        "median": 2.0,
+        "std": 0.492642,
+        "q1": 2.0,
+        "q3": 3.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            2.0,
+            2.1,
+            2.2,
+            2.3,
+            2.4,
+            2.5,
+            2.6,
+            2.7,
+            2.8,
+            2.9,
+            3.0
+          ],
+          "bin_counts": [
+            54,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            36
+          ]
+        }
+      },
+      "error_recovery_count": {
+        "count": 90,
+        "min": 2.0,
+        "max": 2.0,
+        "mean": 2.0,
+        "median": 2.0,
+        "std": 0.0,
+        "q1": 2.0,
+        "q3": 2.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            1.5,
+            1.6,
+            1.7,
+            1.8,
+            1.9,
+            2.0,
+            2.1,
+            2.2,
+            2.3,
+            2.4,
+            2.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "error_recovery_rate": {
+        "count": 90,
+        "min": 0.666667,
+        "max": 1.0,
+        "mean": 0.866667,
+        "median": 1.0,
+        "std": 0.164214,
+        "q1": 0.666667,
+        "q3": 1.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            0.666667,
+            0.7,
+            0.733334,
+            0.766667,
+            0.8,
+            0.833333,
+            0.866667,
+            0.9,
+            0.933333,
+            0.966667,
+            1.0
+          ],
+          "bin_counts": [
+            36,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            54
+          ]
+        }
+      },
+      "assessment_count": {
+        "count": 90,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            -0.5,
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "session_return_count": {
+        "count": 90,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "q1": 0.0,
+        "q3": 0.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            -0.5,
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "transition_entropy": {
+        "count": 90,
+        "min": 0.673012,
+        "max": 1.05492,
+        "mean": 0.902157,
+        "median": 1.05492,
+        "std": 0.188144,
+        "q1": 0.673012,
+        "q3": 1.05492,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            0.673012,
+            0.711203,
+            0.749394,
+            0.787584,
+            0.825775,
+            0.863966,
+            0.902157,
+            0.940348,
+            0.978538,
+            1.016729,
+            1.05492
+          ],
+          "bin_counts": [
+            36,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            54
+          ]
+        }
+      },
+      "event_type_entropy": {
+        "count": 90,
+        "min": 0.693147,
+        "max": 1.011404,
+        "mean": 0.884101,
+        "median": 1.011404,
+        "std": 0.156787,
+        "q1": 0.693147,
+        "q3": 1.011404,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            0.693147,
+            0.724973,
+            0.756798,
+            0.788624,
+            0.82045,
+            0.852275,
+            0.884101,
+            0.915927,
+            0.947753,
+            0.979578,
+            1.011404
+          ],
+          "bin_counts": [
+            36,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            54
+          ]
+        }
+      },
+      "mean_delta_time_sec": {
+        "count": 90,
+        "min": 1.025,
+        "max": 1.314,
+        "mean": 1.169444,
+        "median": 1.174,
+        "std": 0.046456,
+        "q1": 1.1485,
+        "q3": 1.19575,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            1.025,
+            1.0539,
+            1.0828,
+            1.1117,
+            1.1406,
+            1.1695,
+            1.1984,
+            1.2273,
+            1.2562,
+            1.2851,
+            1.314
+          ],
+          "bin_counts": [
+            2,
+            1,
+            7,
+            9,
+            18,
+            33,
+            15,
+            2,
+            1,
+            2
+          ]
+        }
+      },
+      "std_delta_time_sec": {
+        "count": 90,
+        "min": 0.152,
+        "max": 0.566,
+        "mean": 0.234556,
+        "median": 0.2315,
+        "std": 0.049097,
+        "q1": 0.211,
+        "q3": 0.248,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            0.152,
+            0.1934,
+            0.2348,
+            0.2762,
+            0.3176,
+            0.359,
+            0.4004,
+            0.4418,
+            0.4832,
+            0.5246,
+            0.566
+          ],
+          "bin_counts": [
+            10,
+            39,
+            33,
+            6,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "max_delta_time_sec": {
+        "count": 90,
+        "min": 1.26,
+        "max": 2.026,
+        "mean": 1.496422,
+        "median": 1.492,
+        "std": 0.092267,
+        "q1": 1.46,
+        "q3": 1.514,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            1.26,
+            1.3366,
+            1.4132,
+            1.4898,
+            1.5664,
+            1.643,
+            1.7196,
+            1.7962,
+            1.8728,
+            1.9494,
+            2.026
+          ],
+          "bin_counts": [
+            3,
+            4,
+            37,
+            36,
+            6,
+            1,
+            2,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "min_delta_time_sec": {
+        "count": 90,
+        "min": 0.0,
+        "max": 1.024,
+        "mean": 0.938433,
+        "median": 0.95,
+        "std": 0.11024,
+        "q1": 0.9165,
+        "q3": 0.986,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            0.0,
+            0.1024,
+            0.2048,
+            0.3072,
+            0.4096,
+            0.512,
+            0.6144,
+            0.7168,
+            0.8192,
+            0.9216,
+            1.024
+          ],
+          "bin_counts": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            24,
+            64
+          ]
+        }
+      },
+      "run_to_submit_ratio": {
+        "count": 90,
+        "min": 3.0,
+        "max": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "std": 0.0,
+        "q1": 3.0,
+        "q3": 3.0,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            2.5,
+            2.6,
+            2.7,
+            2.8,
+            2.9,
+            3.0,
+            3.1,
+            3.2,
+            3.3,
+            3.4,
+            3.5
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "graph_density": {
+        "count": 90,
+        "min": 0.166667,
+        "max": 0.166667,
+        "mean": 0.166667,
+        "median": 0.166667,
+        "std": 0.0,
+        "q1": 0.166667,
+        "q3": 0.166667,
+        "histogram": {
+          "bin_rule": "numpy equal-width, n_bins=10",
+          "bin_edges": [
+            -0.333333,
+            -0.233333,
+            -0.133333,
+            -0.033333,
+            0.066667,
+            0.166667,
+            0.266667,
+            0.366667,
+            0.466667,
+            0.566667,
+            0.666667
+          ],
+          "bin_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            90,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  "validation_results": {
+    "source_files_loaded": {
+      "status": "PASS",
+      "detail": "All 9 source files found and readable"
+    },
+    "source_hashes_match": {
+      "status": "PASS",
+      "detail": "SHA-256 hashes computed from source files; stored as reference in artifact"
+    },
+    "no_train_test_learner_overlap": {
+      "status": "PASS",
+      "detail": "No learner appears in both train and test splits"
+    },
+    "split_counts_reconcile": {
+      "status": "PASS",
+      "detail": "train=72 + test=18 = total=90"
+    },
+    "histogram_counts_reconcile": {
+      "status": "PASS",
+      "detail": "Histogram bin counts sum to 90 == total_sequences=90"
+    },
+    "no_cross_sequence_transitions": {
+      "status": "PASS",
+      "detail": "All edges verified: source and target share same sequence_id prefix (spot-check via node_id prefix)"
+    },
+    "transition_counts_reconcile": {
+      "status": "PASS",
+      "detail": "Sum of transition counts = 450 == total edges"
+    },
+    "event_counts_reconcile": {
+      "status": "PASS",
+      "detail": "Sum of event_frequency counts = 540 == total_eligible_events=540"
+    },
+    "sequence_counts_reconcile": {
+      "status": "PASS",
+      "detail": "train=72 + test=18 = 90"
+    },
+    "padding_excluded_correctly": {
+      "status": "PASS",
+      "detail": "Padding token (code=0, __PADDING__) not present in canonical_events; behavioral percentages computed over real events only"
+    },
+    "vocabulary_codes_valid": {
+      "status": "PASS",
+      "detail": "All event codes are unique positive integers; padding=0 reserved"
+    },
+    "no_nan_or_infinity": {
+      "status": "PASS",
+      "detail": "No NaN or Infinity detected in sections B and C"
+    },
+    "schema_validation_passes": {
+      "status": "PASS",
+      "detail": "All required top-level metadata keys present"
+    }
+  },
+  "analytical_content_hash": "eef97d4778c02de258c028cf93f2280fe5f57c855617507fb82bb778f5fa175b"
+}

@@ -60,6 +60,8 @@ type BssaGroup = {
   description: string;
   phase?: string;
   note?: string;
+  circular_features?: string[];
+  circular_reason?: string;
 };
 
 type BssaFeatures = {
@@ -233,6 +235,13 @@ function BssaGroupCard({ groupKey, group }: { groupKey: string; group: BssaGroup
         </div>
       )}
 
+      {group.circular_features && group.circular_features.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-800 space-y-0.5">
+          <p className="font-semibold">⚠ Proxy-target circularity: PRESENT in this group</p>
+          <p className="leading-relaxed">{group.circular_reason}</p>
+        </div>
+      )}
+
       {isImplemented && group.features && group.features.length > 0 && (
         <div>
           <button
@@ -243,9 +252,23 @@ function BssaGroupCard({ groupKey, group }: { groupKey: string; group: BssaGroup
           </button>
           {expanded && (
             <div className="mt-2 flex flex-wrap gap-1">
-              {group.features.map(f => (
-                <code key={f} className="text-[9px] bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] px-1.5 py-0.5 rounded">{f}</code>
-              ))}
+              {group.features.map(f => {
+                const isCircular = group.circular_features?.includes(f) ?? false;
+                return (
+                  <span key={f} className="inline-flex items-center gap-1">
+                    <code className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                      isCircular
+                        ? "bg-amber-50 border-amber-300 text-amber-800 font-semibold"
+                        : "bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]"
+                    }`}>{f}</code>
+                    {isCircular && (
+                      <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-1 py-0.5 rounded uppercase tracking-wide">
+                        circular
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
@@ -577,6 +600,10 @@ export default function AnalyticsSummaryPage() {
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
             <p className="font-semibold">Current Status: Pilot Only — Not Yet Validated</p>
             <p>Insufficient teacher-reviewed or expert-validated assessment results for reporting</p>
+            <p className="pt-1 border-t border-amber-200 text-[11px] font-mono">
+              Current pilot labels: <code className="bg-amber-100 border border-amber-200 px-1 rounded">at_risk = NOT any_correct</code> (behavioral proxy).
+              The 2C3L threshold of 65/100 requires teacher-reviewed scores and is not applied in Phase 4.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -614,17 +641,48 @@ export default function AnalyticsSummaryPage() {
 
         {/* ── Pipeline Validation Gate ── */}
         {data && (
-          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-3">
+          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
             <h2 className="font-semibold text-[#0F172A] text-sm">Pipeline Validation Gate</h2>
-            <p className="text-xs text-[#64748B]">{data.validation.checks_passed} / {data.validation.checks_run} checks passed</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <CheckBadge ok={data.validation.checks_passed === data.validation.checks_run}
-                label={`All ${data.validation.checks_run} pipeline checks passed`} />
-              <CheckBadge ok={data.validation.no_learner_overlap} label="No learner overlap (train/test)" />
-              <CheckBadge ok={data.validation.no_pii_in_exports} label="No PII in exports" />
-              <CheckBadge ok={data.validation.leakage_check_passed} label="Leakage check passed" />
-              <CheckBadge ok={data.validation.split_integrity_passed} label="Split integrity passed" />
+
+            {/* Structural checks — green when all pass */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide">
+                Structural Checks — {data.validation.checks_passed}/{data.validation.checks_run} passed
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <CheckBadge ok={data.validation.checks_passed === data.validation.checks_run}
+                  label={`All ${data.validation.checks_run} structural checks passed`} />
+                <CheckBadge ok={data.validation.no_learner_overlap} label="No learner overlap (train/test)" />
+                <CheckBadge ok={data.validation.no_pii_in_exports} label="No PII in pipeline exports" />
+                <CheckBadge ok={data.validation.split_integrity_passed} label="Split integrity passed" />
+              </div>
             </div>
+
+            {/* Feature-level circularity — always amber when proxy_target_circularity is true */}
+            {data.proxy_target_circularity && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="text-amber-500 text-base mt-0.5">⚠</span>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Feature-Level Circularity: PRESENT (by design)
+                    </p>
+                    <p className="text-[11px] text-amber-700 leading-relaxed">
+                      Behavioral features <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">any_correct</code> and{" "}
+                      <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">correctness_ratio</code> were used as predictors
+                      AND to construct the proxy label <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">at_risk = NOT any_correct</code>.
+                      Sequential feature <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">attempt_is_correct</code> creates an equivalent
+                      circularity for LSTM and GRU.
+                    </p>
+                    <p className="text-[11px] text-amber-700 leading-relaxed">
+                      All non-Dummy 1.0 metric results are artifacts of this circularity.
+                      This is a documented property of the Phase 4 pilot dataset, not a pipeline failure.
+                      Confirmatory analysis is prohibited.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

@@ -22,7 +22,9 @@ type ModelConfig = {
   input_features_exp_a: number; input_features_exp_b: number;
   max_sequence_length: number; tag_features_exp_b: number;
   trainable_params_exp_a: number; trainable_params_exp_b: number; architecture: string;
+  architecture_exp_a?: string; architecture_exp_b?: string;
 };
+type ClassDist = { positive: number; negative: number };
 type ChartItem = { key: string; title: string; path: string };
 type ApiData = {
   evaluation_purpose: string; label_source: string; label_validity: string;
@@ -31,6 +33,7 @@ type ApiData = {
   model_comparison: {
     primary_seed: number; all_seeds: number[]; test_sequences: number;
     timing_note: string; models: ModelRow[];
+    test_class_distribution?: ClassDist;
   };
   seed_stability: {
     lstm: { exp_a_seq_only: ExpResult; exp_b_seq_plus_tag: ExpResult };
@@ -161,9 +164,10 @@ function seedLabel(s: SeedOption) { return s === "mean" ? "Mean (seeds 11–55)"
 // ─── Confusion matrix derivation ───────────────────────────────────────────────
 
 type CM = { tp: number; tn: number; fp: number; fn: number };
-function deriveConfusion(r: Resolved): CM | null {
+function deriveConfusion(r: Resolved, testDist: ClassDist): CM | null {
   if (r.precision === null || r.recall === null || r.accuracy === null) return null;
-  const pos = 9; const neg = 9;
+  const pos = testDist.positive;
+  const neg = testDist.negative;
   const tp = Math.round(r.recall * pos);
   const fn = pos - tp;
   const fp = r.precision > 0 ? Math.round(tp / r.precision - tp) : 0;
@@ -427,7 +431,7 @@ function ResultsTable({ rows, metric }: { rows: Resolved[]; metric: MetricKey })
   );
 }
 
-function ConfusionMatrix({ cm, modelName }: { cm: CM; modelName: string }) {
+function ConfusionMatrix({ cm, modelName, testDist }: { cm: CM; modelName: string; testDist: ClassDist }) {
   const total = cm.tp + cm.tn + cm.fp + cm.fn;
   function cell(v: number, label: string, bg: string) {
     return (
@@ -456,7 +460,7 @@ function ConfusionMatrix({ cm, modelName }: { cm: CM; modelName: string }) {
         {cell(cm.fp, "False Pos", "bg-red-50")}
         {cell(cm.tn, "True Neg", "bg-green-50")}
       </div>
-      <p className="text-[10px] text-amber-600">Note: Derived mathematically from precision/recall/accuracy. 18 test sequences, 9 positive, 9 negative.</p>
+      <p className="text-[10px] text-amber-600">Note: Derived mathematically from precision/recall/accuracy. {testDist.positive + testDist.negative} test sequences, {testDist.positive} positive, {testDist.negative} negative.</p>
     </div>
   );
 }
@@ -494,6 +498,9 @@ function TrainingConfig({ name, cfg, exp }: { name: string; cfg: ModelConfig; ex
   const isExpB = exp === "exp_b";
   const params = isExpB ? cfg.trainable_params_exp_b : cfg.trainable_params_exp_a;
   const inFeats = isExpB ? cfg.input_features_exp_b : cfg.input_features_exp_a;
+  const arch = isExpB
+    ? (cfg.architecture_exp_b ?? cfg.architecture)
+    : (cfg.architecture_exp_a ?? cfg.architecture);
   const rows: [string, string][] = [
     ["Recurrent cell",        cfg.cell_type],
     ["Hidden size",           String(cfg.hidden_size)],
@@ -507,7 +514,7 @@ function TrainingConfig({ name, cfg, exp }: { name: string; cfg: ModelConfig; ex
     ["TAG features (EXP-B)",  String(cfg.tag_features_exp_b)],
     ["Max sequence length",   `${cfg.max_sequence_length} steps`],
     ["Trainable parameters",  String(params)],
-    ["Architecture",          cfg.architecture],
+    ["Architecture",          arch],
   ];
   return (
     <div className="space-y-2">
@@ -541,7 +548,8 @@ function ModelDetail({ r, data, exp, seed }: { r: Resolved; data: ApiData; exp: 
   const isSeq = (SEQ_MODELS as readonly string[]).includes(r.name);
   const cfgKey = r.name === "LSTM" ? "lstm" : r.name === "GRU" ? "gru" : null;
   const cfg = cfgKey && data.model_configs ? data.model_configs[cfgKey] : null;
-  const cm = deriveConfusion(r);
+  const testDist: ClassDist = data.model_comparison.test_class_distribution ?? { positive: 9, negative: 9 };
+  const cm = deriveConfusion(r, testDist);
   const interp = r.accuracy === 1.0 && r.f1 === 1.0
     ? `All metrics at 1.0 for ${r.name} in this pilot. This is a pipeline validation artifact caused by proxy-target circularity — behavioral features directly encode the proxy label. This does not indicate real model performance.`
     : r.accuracy !== null && r.accuracy < 1.0
@@ -558,7 +566,7 @@ function ModelDetail({ r, data, exp, seed }: { r: Resolved; data: ApiData; exp: 
 
       <MetricCards r={r} exp={exp} seed={seed} />
 
-      {cm && <ConfusionMatrix cm={cm} modelName={r.name} />}
+      {cm && <ConfusionMatrix cm={cm} modelName={r.name} testDist={testDist} />}
 
       {cfg && <TrainingConfig name={r.name} cfg={cfg} exp={exp} />}
 
@@ -582,7 +590,7 @@ const METRIC_HELP: { term: string; def: string }[] = [
   { term: "Training Time", def: "Wall-clock time to train the model on the 72 training sequences (one run). sklearn models (LR, RF) train in milliseconds; PyTorch models (LSTM, GRU) take seconds due to per-epoch gradient descent. Framework differences make direct comparison misleading." },
   { term: "Inference Time / seq", def: "Average time to produce one prediction at inference. Measured on 18 test sequences with Python time.perf_counter(). Microsecond-range for sklearn; tens of microseconds for PyTorch (after JIT warm-up)." },
   { term: "PR-AUC", def: "พื้นที่ใต้ Precision–Recall Curve (Area under the Precision-Recall Curve). วัดความสามารถของโมเดลในการจัดลำดับผู้เรียนที่มีความเสี่ยงสูงเมื่อ class distribution ไม่สมดุล (เน้น positive class). 0.5 = random; 1.0 = perfect. ค่า PR-AUC 1.0 ในนี้เป็น artifact ของ proxy-target circularity เช่นเดียวกับ ROC-AUC. PR-AUC = N/A หมายความว่าไม่ถูก record ใน combination นี้ — ไม่ใช่ค่า 0." },
-  { term: "Trainable Parameters", def: "Number of learnable weights in the model. Dummy has none; LR has 18 (one per flat feature); LSTM has 5,665; GRU has 4,257 (EXP-A) or 4,275 (EXP-B — extra 18 TAG features added). Larger parameter count does not imply better performance on this pilot." },
+  { term: "Trainable Parameters", def: "Number of learnable weights in the model. Dummy has none; LR has 18 (one per flat feature); LSTM EXP-A has 5,665 (LSTM: 5,632 + fc Linear(32→1): 33); LSTM EXP-B has 5,683 (LSTM: 5,632 + fc Linear(50→1): 51 — TAG(18) concat adds 18 fc input weights); GRU EXP-A has 4,257; GRU EXP-B has 4,275. Larger parameter count does not imply better performance on this pilot." },
 ];
 
 function HelpSection() {
