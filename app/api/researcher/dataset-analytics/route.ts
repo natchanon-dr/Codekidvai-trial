@@ -116,6 +116,8 @@ type DatasetRecord = {
   task_id: string | null;
   active: boolean;
   usage_status: "used" | "not_used";
+  session_count: number;
+  learner_count: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -306,23 +308,66 @@ export async function GET(request: NextRequest) {
   let datasetList: DatasetRecord[] = [];
   const { data: rawDatasets, error: datasetError } = await datasetQuery;
   if (!datasetError && rawDatasets) {
+    // Bulk-fetch session/learner counts per unique class_id
+    const classIds = [...new Set(rawDatasets.map((r) => r.class_id as string | null).filter(Boolean))] as string[];
+    const classStats = new Map<string, { session_count: number; learner_count: number }>();
+
+    if (classIds.length > 0) {
+      const { data: sets } = await supabaseAdmin
+        .from("tb_class_sets")
+        .select("class_id, batch_id")
+        .in("class_id", classIds);
+
+      if (sets && sets.length > 0) {
+        // Group batch_ids per class
+        const classBatches = new Map<string, string[]>();
+        for (const s of sets) {
+          const cid = s.class_id as string;
+          if (!classBatches.has(cid)) classBatches.set(cid, []);
+          classBatches.get(cid)!.push(s.batch_id as string);
+        }
+
+        const allBatchIds = sets.map((s) => s.batch_id as string);
+        const { data: sessions } = await supabaseAdmin
+          .from("trn_learning_sessions")
+          .select("batch_id, session_id, profile_id")
+          .in("batch_id", allBatchIds);
+
+        if (sessions) {
+          // Per-class counts
+          for (const [cid, bids] of classBatches) {
+            const bidSet = new Set(bids);
+            const rows = sessions.filter((s) => bidSet.has(s.batch_id as string));
+            const sessionSet = new Set(rows.map((r) => r.session_id as string));
+            const profileSet = new Set(rows.map((r) => r.profile_id as string));
+            classStats.set(cid, { session_count: sessionSet.size, learner_count: profileSet.size });
+          }
+        }
+      }
+    }
+
     datasetList = rawDatasets
-      .map((row) => ({
-        id: String(row.id),
-        code: String(row.code),
-        name: String(row.name),
-        batch_type: String(row.batch_type),
-        set_family: String(row.set_family),
-        task_type: String(row.task_type),
-        class_id: row.class_id ? String(row.class_id) : null,
-        task_id: row.task_set_id ? String(row.task_set_id) : null,
-        active: Boolean(row.active),
-        usage_status: resolveUsageStatus(String(row.id)),
-        created_at: String(row.created_at),
-        updated_at: String(row.updated_at),
-        archived_at: row.archived_at ? String(row.archived_at) : null,
-      }))
-      // Apply usage filter after resolution (since it's computed, not DB-stored)
+      .map((row) => {
+        const cid = row.class_id ? String(row.class_id) : null;
+        const stats = cid ? (classStats.get(cid) ?? { session_count: 0, learner_count: 0 }) : { session_count: 0, learner_count: 0 };
+        return {
+          id: String(row.id),
+          code: String(row.code),
+          name: String(row.name),
+          batch_type: String(row.batch_type),
+          set_family: String(row.set_family),
+          task_type: String(row.task_type),
+          class_id: cid,
+          task_id: row.task_set_id ? String(row.task_set_id) : null,
+          active: Boolean(row.active),
+          usage_status: resolveUsageStatus(String(row.id)),
+          session_count: stats.session_count,
+          learner_count: stats.learner_count,
+          created_at: String(row.created_at),
+          updated_at: String(row.updated_at),
+          archived_at: row.archived_at ? String(row.archived_at) : null,
+        };
+      })
       .filter((d) => !filterUsage || d.usage_status === filterUsage);
   }
 
@@ -506,19 +551,21 @@ export async function POST(request: NextRequest) {
   }
 
   const record: DatasetRecord = {
-    id:          String(inserted.id),
-    code:        String(inserted.code),
-    name:        String(inserted.name),
-    batch_type:  String(inserted.batch_type),
-    set_family:  String(inserted.set_family),
-    task_type:   inserted.task_type ? String(inserted.task_type) : "",
-    class_id:    inserted.class_id ? String(inserted.class_id) : null,
-    task_id:     inserted.task_set_id ? String(inserted.task_set_id) : null,
-    active:      Boolean(inserted.active),
+    id:           String(inserted.id),
+    code:         String(inserted.code),
+    name:         String(inserted.name),
+    batch_type:   String(inserted.batch_type),
+    set_family:   String(inserted.set_family),
+    task_type:    inserted.task_type ? String(inserted.task_type) : "",
+    class_id:     inserted.class_id ? String(inserted.class_id) : null,
+    task_id:      inserted.task_set_id ? String(inserted.task_set_id) : null,
+    active:       Boolean(inserted.active),
     usage_status: "not_used",
-    created_at:  String(inserted.created_at),
-    updated_at:  String(inserted.updated_at),
-    archived_at: null,
+    session_count: 0,
+    learner_count: 0,
+    created_at:   String(inserted.created_at),
+    updated_at:   String(inserted.updated_at),
+    archived_at:  null,
   };
 
   return NextResponse.json({ dataset: record }, { status: 201 });

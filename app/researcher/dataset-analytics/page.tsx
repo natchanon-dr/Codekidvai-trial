@@ -73,6 +73,8 @@ type DatasetRecord = {
   task_id: string | null;
   active: boolean;
   usage_status: "used" | "not_used";
+  session_count: number;
+  learner_count: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -929,6 +931,14 @@ function DatasetRow({
           <span title="All (Exam)" className="text-[10px] font-mono text-[#94A3B8]">EX</span>
         )}
       </td>
+      {/* Sessions */}
+      <td className="px-3 py-3 whitespace-nowrap text-center">
+        <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+      </td>
+      {/* Learners */}
+      <td className="px-3 py-3 whitespace-nowrap text-center">
+        <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+      </td>
       {/* Usage Status — icon only */}
       <td className="px-3 py-3 whitespace-nowrap text-center">
         {ds.usage_status === "used" ? (
@@ -1546,7 +1556,7 @@ export default function DatasetAnalyticsPage() {
               <table className="w-full text-left min-w-[700px]">
                 <thead>
                   <tr className="bg-[#FFF7ED] border-b border-[#FED7AA]">
-                    {["Code", "Name", "Batch Type", "Activity", "Task Type", "Usage", "Active", "Actions"].map((h) => (
+                    {["Code", "Name", "Batch Type", "Activity", "Task Type", "Sessions", "Learners", "Usage", "Active", "Actions"].map((h) => (
                       <th key={h} className="px-3 py-2 text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
