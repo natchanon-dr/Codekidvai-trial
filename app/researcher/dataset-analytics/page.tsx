@@ -410,10 +410,10 @@ function CreateModal({
   }, [setFamily]);
 
   // Reload sets + scoped stats when class changes
+  const isInitialClassLoad = useRef(true);
   useEffect(() => {
-    if (!classId) { setAllSets([]); setTaskId(""); setScopedStats(null); return; }
+    if (!classId) { setAllSets([]); setTaskId(""); setScopedStats(null); isInitialClassLoad.current = false; return; }
     setLoadingSets(true);
-    // Fetch sets and class summary in parallel
     void Promise.all([
       fetch(`/api/researcher/classes/${classId}/sets`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.ok ? r.json() as Promise<{ sets: TaskSetOption[] }> : Promise.resolve({ sets: [] })),
@@ -421,7 +421,9 @@ function CreateModal({
         .then((r) => r.ok ? r.json() as Promise<{ session_count: number; learner_count: number }> : Promise.resolve(null)),
     ]).then(([setsData, stats]) => {
       setAllSets(setsData.sets ?? []);
-      setTaskId("");
+      // On initial load (edit/copy mode): keep existing taskId; on user class-change: clear
+      if (!isInitialClassLoad.current) setTaskId("");
+      isInitialClassLoad.current = false;
       setScopedStats(stats);
     }).finally(() => setLoadingSets(false));
   }, [classId, token]);
@@ -541,91 +543,69 @@ function CreateModal({
           {fieldErrors.name && <p className="text-xs text-red-600 mt-1">{fieldErrors.name}</p>}
         </div>
 
-        {/* ── 3–5. Batch · Activity · Task Type — one row ── */}
-        {isEdit ? (
-          <div className={`grid gap-3 ${editDataset?.set_family === "exam" ? "grid-cols-2" : "grid-cols-3"}`}>
-            <div>
-              <label className="block text-xs font-semibold text-[#475569] mb-1">Batch Type</label>
-              <div className={readonlyBox}>
-                {editDataset?.batch_type ? editDataset.batch_type.charAt(0).toUpperCase() + editDataset.batch_type.slice(1) : "—"}
-                <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>
-              </div>
+        {/* ── 3–5. Batch · Activity · Task Type — icon selectors (locked in edit mode) ── */}
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Batch Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-[#475569]">
+              Batch Type {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>}
+            </label>
+            <div className={`flex rounded-xl border overflow-hidden ${isEdit ? "border-[#E2E8F0] opacity-70 pointer-events-none" : "border-[#FED7AA]"} bg-white`}>
+              {selectorBtn("main",  batchType === "main",  () => setBatchType("main"),  "Main",  <StarIcon className="w-4 h-4" />)}
+              {selectorBtn("trial", batchType === "trial", () => setBatchType("trial"), "Trial", <DumbbellIcon className="w-4 h-4" />)}
+              {selectorBtn("pilot", batchType === "pilot", () => setBatchType("pilot"), "Pilot", <PaperAirplaneIcon className="w-4 h-4" />, true)}
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#475569] mb-1">Activity Type</label>
-              <div className={readonlyBox}>
-                {editDataset?.set_family ? SET_FAMILY_LABEL[editDataset.set_family as SetFamily] : "—"}
-                <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>
-              </div>
-            </div>
-            {editDataset?.set_family !== "exam" && (
-              <div>
-                <label className="block text-xs font-semibold text-[#475569] mb-1">Task Type</label>
-                <div className={readonlyBox}>
-                  {editDataset?.task_type ? (DATASET_TASK_LABEL[editDataset.task_type] ?? editDataset.task_type) : "—"}
-                  <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>
-                </div>
-              </div>
-            )}
           </div>
-        ) : (
-          <div className="flex flex-wrap gap-4 items-end">
-            {/* Batch Type */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#475569]">Batch Type <span className="text-red-500">*</span></label>
-              {selectorGroup(<>
-                {selectorBtn("main",  batchType === "main",  () => setBatchType("main"),  "Main",  <StarIcon className="w-4 h-4" />)}
-                {selectorBtn("trial", batchType === "trial", () => setBatchType("trial"), "Trial", <DumbbellIcon className="w-4 h-4" />)}
-                {selectorBtn("pilot", batchType === "pilot", () => setBatchType("pilot"), "Pilot", <PaperAirplaneIcon className="w-4 h-4" />, true)}
-              </>)}
-              {fieldErrors.batch_type && <p className="text-xs text-red-600">{fieldErrors.batch_type}</p>}
+          {/* Activity Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-[#475569]">
+              Activity Type {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>}
+            </label>
+            <div className={`flex rounded-xl border overflow-hidden ${isEdit ? "border-[#E2E8F0] opacity-70 pointer-events-none" : "border-[#FED7AA]"} bg-white`}>
+              {selectorBtn("assignment", setFamily === "assignment", () => setSetFamily("assignment"), "Assignment",
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                  <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                  <rect x="4" y="3" width="16" height="18" rx="2"/>
+                </svg>)}
+              {selectorBtn("lab", setFamily === "lab", () => setSetFamily("lab"), "Lab",
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                  <path d="M8 2h8"/><path d="M7 15h10"/>
+                </svg>)}
+              {selectorBtn("exam", setFamily === "exam", () => setSetFamily("exam"), "Exam",
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                </svg>, true)}
             </div>
-            {/* Activity Type */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#475569]">Activity Type <span className="text-red-500">*</span></label>
-              {selectorGroup(<>
-                {selectorBtn("assignment", setFamily === "assignment", () => setSetFamily("assignment"), "Assignment",
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
-                    <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
-                    <rect x="4" y="3" width="16" height="18" rx="2"/>
-                  </svg>)}
-                {selectorBtn("lab", setFamily === "lab", () => setSetFamily("lab"), "Lab",
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
-                    <path d="M8 2h8"/><path d="M7 15h10"/>
-                  </svg>)}
-                {selectorBtn("exam", setFamily === "exam", () => setSetFamily("exam"), "Exam",
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
-                    <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
-                  </svg>, true)}
-              </>)}
-              {fieldErrors.set_family && <p className="text-xs text-red-600">{fieldErrors.set_family}</p>}
-            </div>
-            {/* Task Type — EX (All) when Exam; selector otherwise */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#475569]">
-                Task Type {setFamily !== "exam" && <span className="text-red-500">*</span>}
-              </label>
-              {setFamily === "exam" ? (
-                <div className="flex rounded-xl border border-[#E2E8F0] overflow-hidden bg-white opacity-70 cursor-not-allowed" title="Exam covers all task types">
-                  <span className="flex items-center gap-1.5 px-3 py-2.5 bg-[#F8FAFC] text-[#94A3B8] text-xs font-mono select-none">
-                    EX
-                    <span className="font-sans text-[#94A3B8]">= All</span>
-                  </span>
-                </div>
-              ) : selectorGroup(<>
+          </div>
+          {/* Task Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-[#475569]">
+              Task Type {!isEdit && setFamily !== "exam" && <span className="text-red-500">*</span>}
+              {isEdit && <span className="ml-1 text-[10px] text-[#94A3B8]">(locked)</span>}
+            </label>
+            {setFamily === "exam" ? (
+              <div className="flex rounded-xl border border-[#E2E8F0] overflow-hidden bg-white opacity-70 cursor-not-allowed" title="Exam covers all task types">
+                <span className="flex items-center gap-1.5 px-3 py-2.5 bg-[#F8FAFC] text-[#94A3B8] text-xs font-mono select-none">
+                  EX <span className="font-sans">= All</span>
+                </span>
+              </div>
+            ) : (
+              <div className={`flex rounded-xl border overflow-hidden ${isEdit ? "border-[#E2E8F0] opacity-70 pointer-events-none" : "border-[#FED7AA]"} bg-white`}>
                 {DATASET_TASK_TYPES_IN_SCOPE.map((v, i) =>
                   selectorBtn(v, taskType === v, () => setTaskType(v), DATASET_TASK_LABEL[v],
                     <TaskTypeIcon type={v} />,
                     i === DATASET_TASK_TYPES_IN_SCOPE.length - 1)
                 )}
-              </>)}
-              {fieldErrors.task_type && <p className="text-xs text-red-600">{fieldErrors.task_type}</p>}
-            </div>
+              </div>
+            )}
+            {fieldErrors.task_type && <p className="text-xs text-red-600">{fieldErrors.task_type}</p>}
           </div>
-        )}
+        </div>
 
         {/* ── 6. Class ── */}
         <div>
