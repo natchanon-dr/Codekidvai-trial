@@ -877,72 +877,65 @@ function DatasetRow({
     }
   }
 
+  const iconCell = "px-2 py-3.5 whitespace-nowrap text-center align-middle";
+  const numCell  = "px-2 py-3.5 whitespace-nowrap text-center align-middle";
+
   return (
-    <tr className="border-b border-[#F1F5F9] hover:bg-[#FAFAFA]">
+    <tr className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors">
       {/* Code */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        <span className="font-mono text-xs font-semibold text-[#0F172A] bg-[#F1F5F9] px-2 py-0.5 rounded">
+      <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+        <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
           {ds.code}
         </span>
       </td>
       {/* Name */}
-      <td className="px-3 py-3">
-        <span className="text-xs text-[#0F172A] font-medium">{ds.name}</span>
+      <td className="px-3 py-3.5 align-middle min-w-[140px]">
+        <span className="text-xs text-[#0F172A] font-medium leading-snug">{ds.name}</span>
       </td>
-      {/* Batch Type — icon only */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
+      {/* Batch Type */}
+      <td className={iconCell}>
         {bto ? (
-          <span title={bto.label} aria-label={bto.aria_label}>
+          <span title={bto.label} aria-label={bto.aria_label} className="inline-flex items-center justify-center">
             <BatchIcon icon={bto.icon} className="w-4 h-4 text-[#F37021]" />
           </span>
         ) : (
-          <span className="text-xs text-[#94A3B8]">{ds.batch_type}</span>
+          <span className="text-[10px] text-[#94A3B8]">{ds.batch_type}</span>
         )}
       </td>
-      {/* Activity Type — icon only */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
-        <span title={SET_FAMILY_LABEL[ds.set_family as "assignment" | "lab" | "exam"] ?? ds.set_family} className="inline-flex items-center justify-center text-[#475569]">
-          {ds.set_family === "assignment" && (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
-              <path d="M9 14h6"/><path d="M9 18h4"/>
-            </svg>
-          )}
-          {ds.set_family === "lab" && (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/>
-            </svg>
-          )}
-          {ds.set_family === "exam" && (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-          )}
+      {/* Activity */}
+      <td className={iconCell}>
+        <span title={SET_FAMILY_LABEL[ds.set_family as "assignment" | "lab" | "exam"] ?? ds.set_family} className="inline-flex items-center justify-center text-[#64748B]">
+          {ds.set_family === "assignment" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg>}
+          {ds.set_family === "lab" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/></svg>}
+          {ds.set_family === "exam" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
         </span>
       </td>
-      {/* Task Type — icon only */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
+      {/* Task Type */}
+      <td className={iconCell}>
         {ds.task_type ? (
-          <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#475569]">
+          <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#64748B]">
             <TaskTypeIcon type={ds.task_type} />
           </span>
         ) : (
-          <span title="All (Exam)" className="text-[10px] font-mono text-[#94A3B8]">EX</span>
+          <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
         )}
       </td>
       {/* Sessions */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
-        <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+      <td className={numCell}>
+        <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+          {ds.session_count}
+        </span>
       </td>
       {/* Learners */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
-        <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+      <td className={numCell}>
+        <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+          {ds.learner_count}
+        </span>
       </td>
-      {/* Usage Status — icon only */}
-      <td className="px-3 py-3 whitespace-nowrap text-center">
+      {/* Usage */}
+      <td className={iconCell}>
         {ds.usage_status === "used" ? (
-          <span title="Used" className="inline-flex items-center justify-center text-amber-600">
+          <span title="Used" className="inline-flex items-center justify-center text-amber-500">
             <LightningIcon className="w-4 h-4" />
           </span>
         ) : (
@@ -951,57 +944,35 @@ function DatasetRow({
           </span>
         )}
       </td>
-      {/* Active */}
-      <td className="px-3 py-3 whitespace-nowrap">
+      {/* Active toggle */}
+      <td className={iconCell}>
         <button
           onClick={() => { void handleToggle(); }}
           disabled={toggling}
           aria-label={ds.active ? "Deactivate dataset" : "Activate dataset"}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${ds.active ? "bg-[#F37021]" : "bg-[#E2E8F0]"} ${toggling ? "opacity-50" : ""}`}
         >
-          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${ds.active ? "translate-x-4" : "translate-x-0.5"}`} />
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${ds.active ? "translate-x-[18px]" : "translate-x-0.5"}`} />
         </button>
       </td>
-      {/* Actions — icon only */}
-      <td className="px-3 py-3 whitespace-nowrap">
-        <div className="flex items-center gap-1">
-          {/* Run Pipeline */}
-          <button onClick={() => onRunPipeline(ds)} title="Run Full Pipeline" aria-label={`Run full pipeline for dataset ${ds.code}`}
-            className="flex items-center justify-center w-7 h-7 rounded border border-[#FED7AA] text-[#F37021] hover:bg-orange-50 transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
+      {/* Actions */}
+      <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+        <div className="inline-flex items-center gap-1">
+          <button onClick={() => onRunPipeline(ds)} title="Run Pipeline" className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#FED7AA] text-[#F37021] hover:bg-[#FFF7ED] transition-colors">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
-          {/* History */}
-          <button onClick={() => onViewHistory(ds)} title="Run History" aria-label={`View run history for dataset ${ds.code}`}
-            className="flex items-center justify-center w-7 h-7 rounded border border-[#E2E8F0] text-[#475569] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
+          <button onClick={() => onViewHistory(ds)} title="Run History" className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </button>
-          {/* Edit */}
-          <button onClick={() => onEdit(ds)} title="Edit" aria-label={`Edit dataset ${ds.code}`}
-            className="flex items-center justify-center w-7 h-7 rounded border border-[#E2E8F0] text-[#475569] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
+          <button onClick={() => onEdit(ds)} title="Edit" className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
-          {/* Copy */}
-          <button onClick={() => onCopy(ds)} title="Copy" aria-label={`Copy dataset ${ds.code}`}
-            className="flex items-center justify-center w-7 h-7 rounded border border-[#E2E8F0] text-[#475569] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
+          <button onClick={() => onCopy(ds)} title="Copy" className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
-          {/* Delete — only when not used */}
           {ds.usage_status === "not_used" && (
-            <button onClick={() => onDelete(ds)} title="Delete" aria-label={`Delete dataset ${ds.code}`}
-              className="flex items-center justify-center w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-              </svg>
+            <button onClick={() => onDelete(ds)} title="Delete" className="flex items-center justify-center w-7 h-7 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
             </button>
           )}
         </div>
@@ -1536,9 +1507,6 @@ export default function DatasetAnalyticsPage() {
           )}
         </section>
 
-        {/* ── Scoped Summary: Session + Learner counts ── */}
-        {data && <ScopeSummaryCard summary={data.scoped_summary} />}
-
         {/* ── Dataset Table ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
 
@@ -1553,12 +1521,23 @@ export default function DatasetAnalyticsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left min-w-[700px]">
+              <table className="w-full min-w-[820px]">
                 <thead>
-                  <tr className="bg-[#FFF7ED] border-b border-[#FED7AA]">
-                    {["Code", "Name", "Batch Type", "Activity", "Task Type", "Sessions", "Learners", "Usage", "Active", "Actions"].map((h) => (
-                      <th key={h} className="px-3 py-2 text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
-                        {h}
+                  <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                    {[
+                      { label: "Code",       align: "left"   },
+                      { label: "Name",       align: "left"   },
+                      { label: "Batch",      align: "center" },
+                      { label: "Activity",   align: "center" },
+                      { label: "Task Type",  align: "center" },
+                      { label: "Sessions",   align: "center" },
+                      { label: "Learners",   align: "center" },
+                      { label: "Usage",      align: "center" },
+                      { label: "Active",     align: "center" },
+                      { label: "Actions",    align: "center" },
+                    ].map(({ label, align }) => (
+                      <th key={label} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                        {label}
                       </th>
                     ))}
                   </tr>
