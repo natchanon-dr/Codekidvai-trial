@@ -1526,6 +1526,9 @@ export default function DatasetAnalyticsPage() {
           )}
         </section>
 
+        {/* ── Scoped Summary: Session + Learner counts ── */}
+        {data && <ScopeSummaryCard summary={data.scoped_summary} />}
+
         {/* ── Dataset Table ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
 
@@ -1543,18 +1546,9 @@ export default function DatasetAnalyticsPage() {
               <table className="w-full text-left min-w-[700px]">
                 <thead>
                   <tr className="bg-[#FFF7ED] border-b border-[#FED7AA]">
-                    {[
-                      { label: "Code",       icon: null },
-                      { label: "Name",       icon: null },
-                      { label: "Batch Type", icon: <StarIcon className="w-3.5 h-3.5" /> },
-                      { label: "Activity",   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg> },
-                      { label: "Task Type",  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-                      { label: "Usage",      icon: <LightningIcon className="w-3.5 h-3.5" /> },
-                      { label: "Active",     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> },
-                      { label: "Actions",    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg> },
-                    ].map(({ label, icon }) => (
-                      <th key={label} className="px-3 py-2 text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap" title={label}>
-                        {icon ?? label}
+                    {["Code", "Name", "Batch Type", "Activity", "Task Type", "Usage", "Active", "Actions"].map((h) => (
+                      <th key={h} className="px-3 py-2 text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
+                        {h}
                       </th>
                     ))}
                   </tr>
