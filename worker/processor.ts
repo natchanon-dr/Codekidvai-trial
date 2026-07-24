@@ -1,5 +1,5 @@
 import type { WorkerDb, WorkerRunRow, AnalysisStepRow } from "./db.js";
-import { executeStep, NonRetryableAnalysisError } from "./step-executors.js";
+import { executeStep, NonRetryableAnalysisError, DEFERRED_STEPS, DEFERRED_REASONS } from "./step-executors.js";
 import type { Logger } from "./logger.js";
 
 export interface ShutdownSignal {
@@ -79,11 +79,33 @@ export async function processRun(
         return;
       }
 
+      const stepName = steps[i].analysis;
+
+      // ── Deferred step (Phase 5+ capability, skip gracefully) ─────────────
+      // A deferred step does not block the run from reaching "completed".
+      // PhaseDeferredError is preserved for explicit unsupported requests.
+      if (DEFERRED_STEPS.has(stepName)) {
+        steps[i] = {
+          ...steps[i],
+          status: "deferred",
+          deferred_reason: DEFERRED_REASONS[stepName] ?? "not_enabled",
+          completed_at: new Date().toISOString(),
+        };
+        await db.persistSteps(runId, workerId, steps);
+        log.info({
+          event: "step_deferred",
+          run_id: runId,
+          step: stepName,
+          reason: DEFERRED_REASONS[stepName],
+          worker_id: workerId,
+        });
+        continue;
+      }
+
       // ── Transition step to running ────────────────────────────────────────
       steps[i] = { ...steps[i], status: "running", started_at: new Date().toISOString() };
       await db.persistSteps(runId, workerId, steps);
 
-      const stepName = steps[i].analysis;
       const stepStart = Date.now();
 
       log.info({ event: "step_started", run_id: runId, step: stepName, attempt: attempt_count, worker_id: workerId });

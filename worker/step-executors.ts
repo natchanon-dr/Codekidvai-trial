@@ -21,6 +21,21 @@ import { NonRetryableAnalysisError } from "@/lib/analysis/types";
 export type { StepContext } from "@/lib/analysis/types";
 export { NonRetryableAnalysisError } from "@/lib/analysis/types";
 
+/**
+ * Analysis steps that belong to a future research phase and must not be
+ * executed by the Phase 4 worker. The processor marks these as "deferred"
+ * and continues to the next step — the run can still reach "completed".
+ *
+ * PhaseDeferredError is preserved for cases where a caller explicitly
+ * requests an unavailable capability (e.g. run_type="semantic" directly).
+ */
+export const DEFERRED_STEPS: ReadonlySet<string> = new Set(["semantic"]);
+
+/** Stable reason codes written to AnalysisStep.deferred_reason. */
+export const DEFERRED_REASONS: Readonly<Record<string, string>> = {
+  semantic: "phase_5_not_enabled",
+};
+
 /** Thrown for an analysis_type not registered in STEP_EXECUTORS. */
 export class UnknownStepError extends NonRetryableAnalysisError {
   constructor(analysis: string) {

@@ -7,10 +7,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface AnalysisStepRow {
   analysis: string;
+  /** Includes "deferred" for Phase 5+ steps skipped by the Phase 4 worker. */
   status: string;
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
+  deferred_reason?: string;
 }
 
 export interface WorkerRunRow {

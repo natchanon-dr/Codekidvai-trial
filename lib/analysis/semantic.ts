@@ -18,6 +18,7 @@
 import { PhaseDeferredError } from "./types";
 import type { StepContext } from "./types";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function runSemanticAnalysis(_ctx: StepContext): Promise<void> {
   throw new PhaseDeferredError(
     "semantic",

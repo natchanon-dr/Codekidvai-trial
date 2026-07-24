@@ -29,6 +29,8 @@ vi.mock("@/worker/step-executors", () => {
   return {
     executeStep: mockExecuteStep,
     NonRetryableAnalysisError,
+    DEFERRED_STEPS: new Set(["semantic"]),
+    DEFERRED_REASONS: { semantic: "phase_5_not_enabled" },
   };
 });
 
@@ -358,6 +360,116 @@ describe("processRun — step failure", () => {
     expect(capturedOptions).toMatchObject({ terminateRetries: true });
     expect(capturedSummary).not.toMatch(/password/i);
     expect(capturedSummary).not.toMatch(/postgresql:\/\//i);
+  });
+});
+
+// ── processRun — deferred steps (Phase 5+) ───────────────────────────────────
+
+describe("processRun — deferred steps", () => {
+  /** A three-step run where semantic sits between two executable steps. */
+  function makeRunWithSemantic(overrides: Partial<import("@/worker/db").WorkerRunRow> = {}): import("@/worker/db").WorkerRunRow {
+    return makeRun({
+      analysis_steps: [
+        { analysis: "behavioral", status: "pending", started_at: null, completed_at: null, error: null },
+        { analysis: "semantic", status: "pending", started_at: null, completed_at: null, error: null },
+        { analysis: "assessment", status: "pending", started_at: null, completed_at: null, error: null },
+      ],
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    mockExecuteStep.mockReset();
+    mockExecuteStep.mockResolvedValue(undefined);
+  });
+
+  it("does not call executeStep for a deferred step", async () => {
+    const db = makeMockDb();
+    await processRun(db, WORKER_ID, makeRunWithSemantic(), silentLogger, NO_SHUTDOWN);
+
+    const calledWith = mockExecuteStep.mock.calls.map((c) => (c as unknown[])[0]);
+    expect(calledWith).not.toContain("semantic");
+    expect(calledWith).toContain("behavioral");
+    expect(calledWith).toContain("assessment");
+    expect(mockExecuteStep).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists deferred step with status='deferred' and deferred_reason", async () => {
+    const persistedStepSets: import("@/worker/db").AnalysisStepRow[][] = [];
+    const db = makeMockDb({
+      persistSteps: vi.fn().mockImplementation(
+        (_runId: string, _workerId: string, steps: import("@/worker/db").AnalysisStepRow[]) => {
+          persistedStepSets.push(steps.map((s) => ({ ...s })));
+          return Promise.resolve();
+        },
+      ),
+    });
+
+    await processRun(db, WORKER_ID, makeRunWithSemantic(), silentLogger, NO_SHUTDOWN);
+
+    // Find the persist call where semantic was marked deferred
+    const deferredPersist = persistedStepSets.find((steps) =>
+      steps.some((s) => s.analysis === "semantic" && s.status === "deferred"),
+    );
+    expect(deferredPersist).toBeDefined();
+    const semanticStep = deferredPersist!.find((s) => s.analysis === "semantic")!;
+    expect(semanticStep.status).toBe("deferred");
+    expect(semanticStep.deferred_reason).toBe("phase_5_not_enabled");
+    expect(semanticStep.completed_at).toBeTruthy();
+  });
+
+  it("deferred step does not cause markFailed — run reaches completed", async () => {
+    const db = makeMockDb();
+    await processRun(db, WORKER_ID, makeRunWithSemantic(), silentLogger, NO_SHUTDOWN);
+
+    expect(db.markFailed).not.toHaveBeenCalled();
+    expect(db.markCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs step_deferred event for semantic", async () => {
+    const db = makeMockDb();
+    await processRun(db, WORKER_ID, makeRunWithSemantic(), silentLogger, NO_SHUTDOWN);
+
+    expect(silentLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "step_deferred", step: "semantic", reason: "phase_5_not_enabled" }),
+    );
+  });
+
+  it("pre-step cancellation is still honoured before a deferred step", async () => {
+    // cancellation fires when we are about to process the semantic step (index 1)
+    let callCount = 0;
+    const db = makeMockDb({
+      checkCancellation: vi.fn().mockImplementation(() => {
+        callCount++;
+        // First check (before behavioral) → false; second (before semantic) → true
+        return Promise.resolve(callCount >= 2);
+      }),
+    });
+
+    await processRun(db, WORKER_ID, makeRunWithSemantic(), silentLogger, NO_SHUTDOWN);
+
+    expect(db.markCancelled).toHaveBeenCalled();
+    expect(db.markCompleted).not.toHaveBeenCalled();
+    // semantic was never deferred (cancelled before reaching it)
+    expect(mockExecuteStep).toHaveBeenCalledTimes(1); // only behavioral
+  });
+
+  it("full Phase 4 pipeline — behavioral, sequential, semantic(deferred), assessment — reaches completed", async () => {
+    const fullRun = makeRun({
+      analysis_steps: [
+        { analysis: "behavioral", status: "pending", started_at: null, completed_at: null, error: null },
+        { analysis: "sequential", status: "pending", started_at: null, completed_at: null, error: null },
+        { analysis: "semantic", status: "pending", started_at: null, completed_at: null, error: null },
+        { analysis: "assessment", status: "pending", started_at: null, completed_at: null, error: null },
+      ],
+    });
+
+    const db = makeMockDb();
+    await processRun(db, WORKER_ID, fullRun, silentLogger, NO_SHUTDOWN);
+
+    expect(mockExecuteStep).toHaveBeenCalledTimes(3); // behavioral, sequential, assessment
+    expect(db.markCompleted).toHaveBeenCalledTimes(1);
+    expect(db.markFailed).not.toHaveBeenCalled();
   });
 });
 

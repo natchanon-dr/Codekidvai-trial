@@ -84,12 +84,22 @@ export type PipelineRunStatus =
   | "failed"
   | "cancelled";
 
+/**
+ * Status values valid on a single analysis step.
+ * Extends PipelineRunStatus with "deferred" for steps belonging to future
+ * research phases that are explicitly not executed in the current pipeline.
+ * A deferred step does not cause the parent run to fail.
+ */
+export type AnalysisStepStatus = PipelineRunStatus | "deferred";
+
 export type AnalysisStep = {
   analysis: string;
-  status: PipelineRunStatus;
+  status: AnalysisStepStatus;
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
+  /** Stable reason code set when status = "deferred". E.g. "phase_5_not_enabled". */
+  deferred_reason?: string;
 };
 
 export type PipelineRun = {
