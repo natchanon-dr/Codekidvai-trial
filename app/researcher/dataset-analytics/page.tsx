@@ -1129,6 +1129,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ─── Cancel confirmation dialog ──────────────────────────────────────────────
 
+// Selector for all keyboard-focusable elements (excluding disabled and hidden).
+const FOCUSABLE_SELECTORS =
+  'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 function CancelRunConfirmModal({
   run,
   datasetCode,
@@ -1148,15 +1152,41 @@ function CancelRunConfirmModal({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const keepRunningRef = useRef<HTMLButtonElement>(null);
 
-  // Escape key dismisses (not cancels) when not submitting
+  // Move focus to "Keep Running" on mount (safe initial focus — not the destructive action).
+  useEffect(() => {
+    keepRunningRef.current?.focus();
+  }, []);
+
+  // Escape — capture phase so it fires before ModalOverlay's bubble-phase handler,
+  // preventing the backing RunHistoryModal from also closing.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if (e.key === "Escape" && !submitting) onDismiss();
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation(); // block ModalOverlay's window listener
+      if (!submitting) onDismiss();
     }
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", handler, true); // capture
+    return () => window.removeEventListener("keydown", handler, true);
   }, [submitting, onDismiss]);
+
+  // Tab trap — keep focus inside the dialog.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS),
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
 
   async function handleConfirmCancel() {
     if (submitting) return;
@@ -1168,11 +1198,12 @@ function CancelRunConfirmModal({
         { method: "PATCH", headers: { Authorization: `Bearer ${token}` } },
       );
       if (res.ok) {
-        onCancelled(); // caller increments refreshKey and closes this modal
+        onCancelled(); // parent clears pendingCancelRun + increments refreshKey
       } else {
         const j = await res.json().catch(() => ({})) as { error?: string };
         setError(j.error ?? "Failed to cancel run.");
         setSubmitting(false);
+        // Keep focus inside dialog — focus stays on "Cancel Run" (last active element)
       }
     } catch {
       setError("Network error. The run was not cancelled.");
@@ -1182,11 +1213,13 @@ function CancelRunConfirmModal({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="cancel-run-title"
       aria-describedby="cancel-run-desc"
+      onKeyDown={handleKeyDown}
       onClick={(e) => { if (!submitting && e.target === e.currentTarget) onDismiss(); }}
     >
       <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-2xl w-full max-w-sm">
@@ -1241,7 +1274,7 @@ function CancelRunConfirmModal({
             </div>
           </dl>
 
-          {/* Error */}
+          {/* Error — role="alert" so screen readers announce it immediately */}
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700" role="alert">
               {error}
@@ -1252,6 +1285,7 @@ function CancelRunConfirmModal({
         {/* Actions */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#F1F5F9]">
           <button
+            ref={keepRunningRef}
             onClick={onDismiss}
             disabled={submitting}
             className="px-4 py-2 text-xs font-medium text-[#475569] bg-white border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40 transition-colors"
@@ -1289,6 +1323,10 @@ function RunHistoryModal({
   const [pendingCancelRun, setPendingCancelRun] = useState<PipelineRun | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Return-focus refs: button that opened the confirmation dialog, and a safe fallback.
+  const initiatingButtonRef = useRef<HTMLButtonElement | null>(null);
+  const refreshButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -1314,6 +1352,32 @@ function RunHistoryModal({
     return () => { cancelled = true; };
   }, [dataset.id, token, refreshKey]);
 
+  // Return focus to the initiating button if it still exists, otherwise fall back
+  // to the Refresh button. requestAnimationFrame defers until after React flushes DOM.
+  function returnFocus(useInitiator: boolean) {
+    requestAnimationFrame(() => {
+      const btn = useInitiator ? initiatingButtonRef.current : null;
+      if (btn && document.contains(btn) && !btn.disabled) {
+        btn.focus();
+      } else if (refreshButtonRef.current && document.contains(refreshButtonRef.current)) {
+        refreshButtonRef.current.focus();
+      }
+    });
+  }
+
+  function handleDismiss() {
+    setPendingCancelRun(null);
+    returnFocus(true); // initiator button should still exist
+  }
+
+  function handleCancelled() {
+    setPendingCancelRun(null);
+    setRefreshKey((k) => k + 1);
+    // After successful cancel the run's status becomes "cancelled", so its Cancel
+    // button is removed from the list. Always use the fallback (Refresh button).
+    returnFocus(false);
+  }
+
   return (
     <>
       {/* Confirmation dialog — rendered above RunHistoryModal (z-[60]) */}
@@ -1324,18 +1388,18 @@ function RunHistoryModal({
           datasetName={dataset.name}
           datasetId={dataset.id}
           token={token}
-          onDismiss={() => setPendingCancelRun(null)}
-          onCancelled={() => {
-            setPendingCancelRun(null);
-            setRefreshKey((k) => k + 1);
-          }}
+          onDismiss={handleDismiss}
+          onCancelled={handleCancelled}
         />
       )}
 
       <ModalOverlay onClose={onClose} title={`Run History — ${dataset.code}`}>
         <div className="px-6 pt-4 pb-2 flex items-center justify-between border-b border-[#F1F5F9]">
           <p className="text-[10px] text-[#94A3B8]">{runs ? `${runs.length} run${runs.length !== 1 ? "s" : ""}` : ""}</p>
-          <button onClick={() => setRefreshKey((k) => k + 1)} disabled={loading}
+          <button
+            ref={refreshButtonRef}
+            onClick={() => setRefreshKey((k) => k + 1)}
+            disabled={loading}
             className="flex items-center gap-1 text-[10px] text-[#F37021] hover:underline disabled:opacity-50">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
               <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.56"/>
@@ -1364,7 +1428,10 @@ function RunHistoryModal({
                     <span className="text-[10px] text-[#94A3B8]">{new Date(run.created_at).toLocaleString()}</span>
                     {["pending", "running"].includes(run.status) && (
                       <button
-                        onClick={() => setPendingCancelRun(run)}
+                        onClick={(e) => {
+                          initiatingButtonRef.current = e.currentTarget;
+                          setPendingCancelRun(run);
+                        }}
                         aria-label={`Cancel run ${run.id.slice(0, 8)}`}
                         className="text-[9px] text-red-500 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-50 transition-colors">
                         Cancel
