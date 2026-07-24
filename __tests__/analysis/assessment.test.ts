@@ -2,9 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   computeResult,
   fetchDataset,
-  fetchSessions,
-  fetchSubmissions,
-  fetchRubricScores,
   runAssessmentAnalysis,
   persistResult,
 } from "@/lib/analysis/assessment";
