@@ -45,8 +45,18 @@ export interface WorkerDb {
    * Returns true if the row was updated (false = cancellation won the race).
    */
   markCompleted(runId: string, workerId: string, steps: AnalysisStepRow[]): Promise<boolean>;
-  /** Write status='failed'. Guards: status='running' AND claimed_by=workerId. */
-  markFailed(runId: string, workerId: string, steps: AnalysisStepRow[], errorSummary: string): Promise<void>;
+  /**
+   * Write status='failed'. Guards: status='running' AND claimed_by=workerId.
+   * When options.terminateRetries is true, sets attempt_count = options.maxAttempts
+   * so the stale-run recovery loop never re-queues this run.
+   */
+  markFailed(
+    runId: string,
+    workerId: string,
+    steps: AnalysisStepRow[],
+    errorSummary: string,
+    options?: { terminateRetries?: boolean; maxAttempts?: number },
+  ): Promise<void>;
   /**
    * Write status='cancelled', cancelled_at=now(). Guards:
    *   status IN ('pending','running') AND claimed_by=workerId
@@ -123,16 +133,27 @@ export class SupabaseWorkerDb implements WorkerDb {
     return data !== null;
   }
 
-  async markFailed(runId: string, workerId: string, steps: AnalysisStepRow[], errorSummary: string): Promise<void> {
+  async markFailed(
+    runId: string,
+    workerId: string,
+    steps: AnalysisStepRow[],
+    errorSummary: string,
+    options?: { terminateRetries?: boolean; maxAttempts?: number },
+  ): Promise<void> {
+    const update: Record<string, unknown> = {
+      status: "failed",
+      error_summary: errorSummary,
+      analysis_steps: steps,
+      claimed_by: null,
+      lease_expires_at: null,
+    };
+    // Prevent the stale-run recovery loop from re-queuing a non-retryable failure.
+    if (options?.terminateRetries && options.maxAttempts !== undefined) {
+      update.attempt_count = options.maxAttempts;
+    }
     await this.supabase
       .from("mst_pipeline_runs")
-      .update({
-        status: "failed",
-        error_summary: errorSummary,
-        analysis_steps: steps,
-        claimed_by: null,
-        lease_expires_at: null,
-      })
+      .update(update)
       .eq("id", runId)
       .eq("claimed_by", workerId)
       .eq("status", "running");

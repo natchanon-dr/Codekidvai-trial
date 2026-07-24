@@ -47,6 +47,8 @@ CREATE INDEX IF NOT EXISTS idx_mst_pipeline_runs_worker_poll
 -- Side effects: status → 'running', started_at set (first claim only),
 --               claimed_by set, lease_expires_at set, attempt_count incremented.
 
+REVOKE ALL ON FUNCTION fn_claim_pipeline_run(text, int) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION fn_claim_pipeline_run(
   p_worker_id     text,
   p_lease_seconds int DEFAULT 300
@@ -54,6 +56,7 @@ CREATE OR REPLACE FUNCTION fn_claim_pipeline_run(
 RETURNS SETOF public.mst_pipeline_runs
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = pg_catalog, public
 AS $$
   UPDATE public.mst_pipeline_runs
   SET
@@ -82,6 +85,8 @@ GRANT EXECUTE ON FUNCTION fn_claim_pipeline_run(text, int) TO service_role;
 -- 'running'. Returns the number of rows updated (0 means the lease was stolen
 -- or the run transitioned — the worker should treat this as a terminal signal).
 
+REVOKE ALL ON FUNCTION fn_extend_pipeline_run_lease(uuid, text, int) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION fn_extend_pipeline_run_lease(
   p_run_id        uuid,
   p_worker_id     text,
@@ -90,6 +95,7 @@ CREATE OR REPLACE FUNCTION fn_extend_pipeline_run_lease(
 RETURNS int
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = pg_catalog, public
 AS $$
   WITH updated AS (
     UPDATE public.mst_pipeline_runs
@@ -109,10 +115,13 @@ GRANT EXECUTE ON FUNCTION fn_extend_pipeline_run_lease(uuid, text, int) TO servi
 -- to 'pending' for retry. Runs at max_attempts transition to 'failed'.
 -- Intended to be called periodically by the worker's recovery loop.
 
+REVOKE ALL ON FUNCTION fn_recover_stale_pipeline_runs() FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION fn_recover_stale_pipeline_runs()
 RETURNS int
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = pg_catalog, public
 AS $$
   WITH recovered AS (
     UPDATE public.mst_pipeline_runs

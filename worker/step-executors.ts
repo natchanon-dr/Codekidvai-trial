@@ -1,83 +1,54 @@
-// Analysis step executors for the pipeline worker.
+// Analysis step executor registry.
 //
-// The four analysis types (behavioral, sequential, semantic, assessment) defined
-// in mst_pipeline_runs.analysis_steps do not yet have real implementations in
-// this repository. Each executor below throws StepNotImplementedError naming
-// the exact module and inputs required. Runs will fail with a sanitized
-// error_summary rather than silently simulate completion.
+// Each entry maps an analysis_type string (from mst_pipeline_runs.analysis_steps)
+// to its implementation in lib/analysis/. The processor calls executeStep() with
+// the step name and a StepContext; the executor is responsible for querying data,
+// computing results, and persisting to mst_pipeline_run_results.
 //
-// To implement a step, replace the throw with real logic that:
-//   1. Queries the required data from Supabase using ctx.datasetId.
-//   2. Computes the analysis result.
-//   3. Persists the result durably before returning.
-//   4. Calls ctx.onHeartbeat() during any sub-operation that may take > 60 s.
+// Current status:
+//   assessment  — complete: rubric score aggregation via trn_submission_rubric_scores
+//   behavioral  — partial:  8 of 14 Phase 4 features (6 deferred, formula TBD)
+//   sequential  — partial:  event frequency statistics; ML inference deferred
+//   semantic    — blocked:  Phase 5 research scope; PhaseDeferredError (non-retryable)
 
-export interface StepContext {
-  runId: string;
-  datasetId: string;
-  /** Call periodically during long sub-operations to prevent lease expiry. */
-  onHeartbeat: () => Promise<void>;
-}
+import { runAssessmentAnalysis } from "@/lib/analysis/assessment";
+import { runBehavioralAnalysis } from "@/lib/analysis/behavioral";
+import { runSequentialAnalysis } from "@/lib/analysis/sequential";
+import { runSemanticAnalysis } from "@/lib/analysis/semantic";
+import { NonRetryableAnalysisError } from "@/lib/analysis/types";
 
-export class StepNotImplementedError extends Error {
-  constructor(
-    public readonly step: string,
-    public readonly missingDependency: string,
-  ) {
-    super(`Step '${step}' is not yet implemented: ${missingDependency}`);
-    this.name = "StepNotImplementedError";
+// Re-export StepContext so processor.ts and tests can import from one place.
+export type { StepContext } from "@/lib/analysis/types";
+export { NonRetryableAnalysisError } from "@/lib/analysis/types";
+
+/** Thrown for an analysis_type not registered in STEP_EXECUTORS. */
+export class UnknownStepError extends NonRetryableAnalysisError {
+  constructor(analysis: string) {
+    super(
+      `Unknown analysis type '${analysis}'. Add an executor to STEP_EXECUTORS in worker/step-executors.ts.`,
+      "unknown_step",
+    );
+    this.name = "UnknownStepError";
   }
 }
 
-const STEP_EXECUTORS: Record<string, (ctx: StepContext) => Promise<void>> = {
-  behavioral: async (_ctx) => {
-    throw new StepNotImplementedError(
-      "behavioral",
-      "lib/analysis/behavioral.ts — requires: learner session data query by " +
-        "dataset_id, behavioral feature computation (time-on-task, attempt " +
-        "patterns, help-seeking), and durable result persistence to the " +
-        "appropriate result table.",
-    );
-  },
-
-  sequential: async (_ctx) => {
-    throw new StepNotImplementedError(
-      "sequential",
-      "lib/analysis/sequential.ts — requires: event-sequence extraction per " +
-        "learner per dataset, sequential pattern computation (order, gaps, " +
-        "repetitions), and durable result persistence.",
-    );
-  },
-
-  semantic: async (_ctx) => {
-    throw new StepNotImplementedError(
-      "semantic",
-      "lib/analysis/semantic.ts — requires: code or text extraction per " +
-        "submission, semantic similarity or embedding computation, and durable " +
-        "result persistence.",
-    );
-  },
-
-  assessment: async (_ctx) => {
-    throw new StepNotImplementedError(
-      "assessment",
-      "lib/analysis/assessment.ts — requires: rubric score aggregation by " +
-        "dataset_id, assessment metric computation (pass rate, score " +
-        "distribution, mastery thresholds), and durable result persistence.",
-    );
-  },
+const STEP_EXECUTORS: Record<
+  string,
+  (ctx: import("@/lib/analysis/types").StepContext) => Promise<void>
+> = {
+  assessment: runAssessmentAnalysis,
+  behavioral: runBehavioralAnalysis,
+  sequential: runSequentialAnalysis,
+  semantic: runSemanticAnalysis,
 };
 
 export async function executeStep(
   analysis: string,
-  ctx: StepContext,
+  ctx: import("@/lib/analysis/types").StepContext,
 ): Promise<void> {
   const executor = STEP_EXECUTORS[analysis];
   if (!executor) {
-    throw new StepNotImplementedError(
-      analysis,
-      `Unknown analysis type '${analysis}'. Add an executor to STEP_EXECUTORS in worker/step-executors.ts.`,
-    );
+    throw new UnknownStepError(analysis);
   }
   await executor(ctx);
 }

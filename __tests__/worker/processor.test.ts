@@ -16,24 +16,25 @@ const { mockExecuteStep } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/worker/step-executors", () => {
-  class StepNotImplementedError extends Error {
+  class NonRetryableAnalysisError extends Error {
+    readonly nonRetryable = true as const;
     constructor(
-      public readonly step: string,
-      public readonly missingDependency: string,
+      message: string,
+      public readonly reason: string = message,
     ) {
-      super(`${step}: ${missingDependency}`);
-      this.name = "StepNotImplementedError";
+      super(message);
+      this.name = "NonRetryableAnalysisError";
     }
   }
   return {
     executeStep: mockExecuteStep,
-    StepNotImplementedError,
+    NonRetryableAnalysisError,
   };
 });
 
 import { processRun, claimRun, recoverStaleRuns, sanitizeError } from "@/worker/processor";
 import type { WorkerDb, WorkerRunRow, AnalysisStepRow } from "@/worker/db";
-import { StepNotImplementedError } from "@/worker/step-executors";
+import { NonRetryableAnalysisError } from "@/worker/step-executors";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -327,16 +328,24 @@ describe("processRun — step failure", () => {
     expect(mockExecuteStep).toHaveBeenCalledTimes(1);
   });
 
-  it("sanitizes error_summary for StepNotImplementedError", async () => {
+  it("treats NonRetryableAnalysisError as non-retryable and terminates retries", async () => {
     mockExecuteStep.mockRejectedValueOnce(
-      new StepNotImplementedError("behavioral", "lib/analysis/behavioral.ts not found"),
+      new NonRetryableAnalysisError("Phase 5 deferred", "phase5_deferred"),
     );
 
     let capturedSummary = "";
+    let capturedOptions: unknown;
     const db = makeMockDb({
       markFailed: vi.fn().mockImplementation(
-        (_runId: string, _workerId: string, _steps: AnalysisStepRow[], errorSummary: string) => {
+        (
+          _runId: string,
+          _workerId: string,
+          _steps: AnalysisStepRow[],
+          errorSummary: string,
+          options?: unknown,
+        ) => {
           capturedSummary = errorSummary;
+          capturedOptions = options;
           return Promise.resolve();
         },
       ),
@@ -344,7 +353,9 @@ describe("processRun — step failure", () => {
 
     await processRun(db, WORKER_ID, makeRun(), silentLogger, NO_SHUTDOWN);
 
-    expect(capturedSummary).toContain("Step not implemented: behavioral");
+    expect(capturedSummary).toContain("phase5_deferred");
+    expect(capturedSummary).toContain("Phase 5 deferred");
+    expect(capturedOptions).toMatchObject({ terminateRetries: true });
     expect(capturedSummary).not.toMatch(/password/i);
     expect(capturedSummary).not.toMatch(/postgresql:\/\//i);
   });
@@ -473,11 +484,11 @@ describe("sanitizeError", () => {
     expect(sanitizeError(err)).not.toContain("supersecret123");
   });
 
-  it("returns stable message for StepNotImplementedError", () => {
-    const err = new StepNotImplementedError("behavioral", "lib/analysis/behavioral.ts");
+  it("returns prefixed message for NonRetryableAnalysisError", () => {
+    const err = new NonRetryableAnalysisError("Phase 5 deferred", "phase5_deferred");
     const msg = sanitizeError(err);
-    expect(msg).toContain("Step not implemented: behavioral");
-    expect(msg).toContain("lib/analysis/behavioral.ts");
+    expect(msg).toContain("[phase5_deferred]");
+    expect(msg).toContain("Phase 5 deferred");
   });
 
   it("returns generic message for non-Error thrown values", () => {

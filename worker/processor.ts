@@ -1,5 +1,5 @@
 import type { WorkerDb, WorkerRunRow, AnalysisStepRow } from "./db.js";
-import { executeStep, StepNotImplementedError } from "./step-executors.js";
+import { executeStep, NonRetryableAnalysisError } from "./step-executors.js";
 import type { Logger } from "./logger.js";
 
 export interface ShutdownSignal {
@@ -95,6 +95,7 @@ export async function processRun(
           onHeartbeat: () => db.extendLease(runId, workerId, LEASE_SECONDS).then(() => void 0),
         });
       } catch (err) {
+        const isNonRetryable = err instanceof NonRetryableAnalysisError;
         const errorSummary = sanitizeError(err);
         steps[i] = {
           ...steps[i],
@@ -103,12 +104,20 @@ export async function processRun(
           completed_at: new Date().toISOString(),
         };
         await db.persistSteps(runId, workerId, steps);
-        await db.markFailed(runId, workerId, steps, errorSummary);
+        if (isNonRetryable) {
+          await db.markFailed(runId, workerId, steps, errorSummary, {
+            terminateRetries: true,
+            maxAttempts: run.max_attempts,
+          });
+        } else {
+          await db.markFailed(runId, workerId, steps, errorSummary);
+        }
 
         log.error({
           event: "step_failed",
           run_id: runId,
           step: stepName,
+          non_retryable: isNonRetryable,
           duration_ms: Date.now() - stepStart,
           worker_id: workerId,
         });
@@ -164,11 +173,9 @@ export async function processRun(
 export function sanitizeError(err: unknown): string {
   let msg: string;
 
-  if (err instanceof StepNotImplementedError) {
-    return `Step not implemented: ${err.step}. ${err.missingDependency}`;
-  }
-
-  if (err instanceof Error) {
+  if (err instanceof NonRetryableAnalysisError) {
+    msg = `[${err.reason}] ${err.message}`.slice(0, 500);
+  } else if (err instanceof Error) {
     msg = err.message.slice(0, 500);
   } else {
     return "An unexpected error occurred during pipeline execution.";
