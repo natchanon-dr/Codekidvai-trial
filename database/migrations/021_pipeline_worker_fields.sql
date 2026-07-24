@@ -46,8 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_mst_pipeline_runs_worker_poll
 -- Eligibility: status = 'pending' AND attempt_count < max_attempts
 -- Side effects: status → 'running', started_at set (first claim only),
 --               claimed_by set, lease_expires_at set, attempt_count incremented.
-
-REVOKE ALL ON FUNCTION fn_claim_pipeline_run(text, int) FROM PUBLIC;
+--
+-- Note: REVOKE is placed after CREATE OR REPLACE so the statement succeeds on
+-- a fresh schema where the function does not yet exist.
 
 CREATE OR REPLACE FUNCTION fn_claim_pipeline_run(
   p_worker_id     text,
@@ -77,6 +78,7 @@ AS $$
   RETURNING *;
 $$;
 
+REVOKE ALL ON FUNCTION fn_claim_pipeline_run(text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION fn_claim_pipeline_run(text, int) TO service_role;
 
 -- ── 5. Lease extension RPC ────────────────────────────────────────────────────
@@ -84,8 +86,6 @@ GRANT EXECUTE ON FUNCTION fn_claim_pipeline_run(text, int) TO service_role;
 -- the caller still owns the run (claimed_by = p_worker_id) and status is still
 -- 'running'. Returns the number of rows updated (0 means the lease was stolen
 -- or the run transitioned — the worker should treat this as a terminal signal).
-
-REVOKE ALL ON FUNCTION fn_extend_pipeline_run_lease(uuid, text, int) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION fn_extend_pipeline_run_lease(
   p_run_id        uuid,
@@ -108,14 +108,13 @@ AS $$
   SELECT count(*)::int FROM updated;
 $$;
 
+REVOKE ALL ON FUNCTION fn_extend_pipeline_run_lease(uuid, text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION fn_extend_pipeline_run_lease(uuid, text, int) TO service_role;
 
 -- ── 6. Stale-run recovery RPC ─────────────────────────────────────────────────
 -- Resets running runs whose lease has expired. Runs below max_attempts go back
 -- to 'pending' for retry. Runs at max_attempts transition to 'failed'.
 -- Intended to be called periodically by the worker's recovery loop.
-
-REVOKE ALL ON FUNCTION fn_recover_stale_pipeline_runs() FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION fn_recover_stale_pipeline_runs()
 RETURNS int
@@ -144,6 +143,7 @@ AS $$
   SELECT count(*)::int FROM recovered;
 $$;
 
+REVOKE ALL ON FUNCTION fn_recover_stale_pipeline_runs() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION fn_recover_stale_pipeline_runs() TO service_role;
 
 -- ── Rollback ──────────────────────────────────────────────────────────────────
