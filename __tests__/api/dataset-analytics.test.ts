@@ -1406,3 +1406,167 @@ describe("PATCH /api/researcher/dataset-analytics/[id]/runs — cancel run", () 
   });
 
 });
+
+// ── POST idempotency ───────────────────────────────────────────────────────────
+
+describe("POST /api/researcher/dataset-analytics/[id]/runs — idempotency_key", () => {
+
+  beforeEach(() => {
+    mockFrom.mockClear();
+    mockRpc.mockClear();
+    vi.mocked(requireAdminOrResearcher).mockResolvedValue({
+      user_id: "u1",
+      profile_id: "p1",
+      participant_code: "PC001",
+      role: "researcher",
+    } as Parameters<typeof requireAdminOrResearcher>[0] extends never ? never : Awaited<ReturnType<typeof requireAdminOrResearcher>>);
+  });
+
+  function makeIdempotentRequest(datasetId: string, body?: unknown, idempotencyHeader?: string) {
+    return {
+      headers: {
+        get: (name: string) => {
+          if (name.toLowerCase() === "authorization") return "Bearer test-token";
+          if (name.toLowerCase() === "x-idempotency-key") return idempotencyHeader ?? null;
+          return null;
+        },
+      },
+      nextUrl: { searchParams: new URLSearchParams() },
+      json: async () => body ?? {},
+    } as unknown as import("next/server").NextRequest;
+  }
+
+  const BASE_RUN_ROW = {
+    id: "run-idem-1", dataset_id: "ds1", run_type: "full_pipeline",
+    status: "pending", cancellation_requested: false, cancelled_at: null,
+    analysis_steps: [
+      { analysis: "behavioral", status: "pending", started_at: null, completed_at: null, error: null },
+      { analysis: "sequential", status: "pending", started_at: null, completed_at: null, error: null },
+      { analysis: "semantic",   status: "pending", started_at: null, completed_at: null, error: null },
+      { analysis: "assessment", status: "pending", started_at: null, completed_at: null, error: null },
+    ],
+    started_at: null, completed_at: null, error_summary: null,
+    initiated_by: null, configuration: null, result_version: null,
+    created_at: new Date().toISOString(),
+    attempt_count: 0, max_attempts: 3, idempotency_key: "idem-key-abc",
+  };
+
+  it("82: POST enqueues run and returns 201 without executing work (idempotency_key present)", async () => {
+    // Call sequence (full_pipeline):
+    //   from #1: mst_datasets maybySingle → active dataset
+    //   from #2: mst_pipeline_runs maybySingle → no conflict
+    //   from #3: mst_pipeline_runs single (insert) → new run row
+    let fromIdx = 0;
+    mockFrom.mockImplementation(() => {
+      const myIdx = ++fromIdx;
+      const t = {
+        select: vi.fn(() => t), eq: vi.fn(() => t), in: vi.fn(() => t),
+        is: vi.fn(() => t), insert: vi.fn(() => t), order: vi.fn(() => t),
+        single: vi.fn(async () =>
+          myIdx === 1 ? { data: { id: "ds1", active: true }, error: null } : { data: BASE_RUN_ROW, error: null },
+        ),
+        maybeSingle: vi.fn(async () =>
+          myIdx === 1 ? { data: { id: "ds1", active: true }, error: null } : { data: null, error: null },
+        ),
+      };
+      return t;
+    });
+
+    const req = makeIdempotentRequest("ds1", { run_type: "full_pipeline", idempotency_key: "idem-key-abc" });
+    const res = await RunsPOST(req, { params: makeRunsParams("ds1") }) as unknown as { _body: RunsApiBody; _status: number };
+
+    expect(res._status).toBe(201);
+    expect(res._body.run?.id).toBe("run-idem-1");
+    expect(res._body.run?.status).toBe("pending");
+    expect(res._body.run?.status).not.toBe("running");
+    expect(res._body.run?.status).not.toBe("completed");
+  });
+
+  it("83: POST with duplicate idempotency_key returns existing run with 200 (idempotent retry)", async () => {
+    // Call sequence (full_pipeline, 23505 on insert):
+    //   from #1: mst_datasets maybySingle → active dataset
+    //   from #2: mst_pipeline_runs maybySingle → no conflict
+    //   from #3: mst_pipeline_runs single (insert) → 23505 unique violation
+    //   from #4: mst_pipeline_runs maybySingle → existing run by idempotency_key
+    let fromIdx = 0;
+    mockFrom.mockImplementation(() => {
+      const myIdx = ++fromIdx;
+      const t = {
+        select: vi.fn(() => t), eq: vi.fn(() => t), in: vi.fn(() => t),
+        is: vi.fn(() => t), insert: vi.fn(() => t), order: vi.fn(() => t),
+        single: vi.fn(async () =>
+          myIdx === 1
+            ? { data: { id: "ds1", active: true }, error: null }
+            : { data: null, error: { message: "duplicate key value", code: "23505" } },
+        ),
+        maybeSingle: vi.fn(async () =>
+          myIdx === 1
+            ? { data: { id: "ds1", active: true }, error: null }
+            : myIdx === 4
+            ? { data: BASE_RUN_ROW, error: null }
+            : { data: null, error: null },
+        ),
+      };
+      return t;
+    });
+
+    const req = makeIdempotentRequest("ds1", { run_type: "full_pipeline", idempotency_key: "idem-key-abc" });
+    const res = await RunsPOST(req, { params: makeRunsParams("ds1") }) as unknown as { _body: RunsApiBody; _status: number };
+
+    expect(res._status).toBe(200);
+    expect(res._body.run?.id).toBe("run-idem-1");
+  });
+
+  it("84: POST without idempotency_key returns 201 on every call (no dedup)", async () => {
+    // run_type 'behavioral' skips the full_pipeline conflict check.
+    // Call sequence: from #1 dataset (maybySingle), from #2 insert (single).
+    const run1 = { ...BASE_RUN_ROW, id: "run-no-idem", idempotency_key: null };
+    let fromIdx = 0;
+    mockFrom.mockImplementation(() => {
+      const myIdx = ++fromIdx;
+      const t = {
+        select: vi.fn(() => t), eq: vi.fn(() => t), in: vi.fn(() => t),
+        is: vi.fn(() => t), insert: vi.fn(() => t), order: vi.fn(() => t),
+        single: vi.fn(async () =>
+          myIdx === 1 ? { data: { id: "ds1", active: true }, error: null } : { data: run1, error: null },
+        ),
+        maybeSingle: vi.fn(async () =>
+          myIdx === 1 ? { data: { id: "ds1", active: true }, error: null } : { data: null, error: null },
+        ),
+      };
+      return t;
+    });
+
+    const req1 = makeIdempotentRequest("ds1", { run_type: "behavioral" });
+    const res1 = await RunsPOST(req1, { params: makeRunsParams("ds1") }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res1._status).toBe(201);
+  });
+
+  it("85: POST idempotency_key via X-Idempotency-Key header is accepted", async () => {
+    // Same call sequence as test 82 but key comes via header
+    let fromIdx = 0;
+    mockFrom.mockImplementation(() => {
+      const myIdx = ++fromIdx;
+      const t = {
+        select: vi.fn(() => t), eq: vi.fn(() => t), in: vi.fn(() => t),
+        is: vi.fn(() => t), insert: vi.fn(() => t), order: vi.fn(() => t),
+        single: vi.fn(async () =>
+          myIdx === 1
+            ? { data: { id: "ds1", active: true }, error: null }
+            : { data: { ...BASE_RUN_ROW, idempotency_key: "header-key-123" }, error: null },
+        ),
+        maybeSingle: vi.fn(async () =>
+          myIdx === 1 ? { data: { id: "ds1", active: true }, error: null } : { data: null, error: null },
+        ),
+      };
+      return t;
+    });
+
+    const req = makeIdempotentRequest("ds1", { run_type: "full_pipeline" }, "header-key-123");
+    const res = await RunsPOST(req, { params: makeRunsParams("ds1") }) as unknown as { _body: RunsApiBody; _status: number };
+
+    expect(res._status).toBe(201);
+    expect(res._body.run?.id).toBe("run-idem-1");
+  });
+
+});
