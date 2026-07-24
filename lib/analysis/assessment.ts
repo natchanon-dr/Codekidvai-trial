@@ -18,7 +18,6 @@ import type { StepContext } from "./types";
 interface DatasetRow {
   id: string;
   task_set_id: string | null;
-  task_id: string | null;
   active: boolean;
 }
 
@@ -122,7 +121,7 @@ export async function runAssessmentAnalysis(ctx: StepContext): Promise<void> {
 export async function fetchDataset(datasetId: string): Promise<DatasetRow> {
   const { data, error } = await supabaseAdmin
     .from("mst_datasets")
-    .select("id, task_set_id, task_id, active")
+    .select("id, task_set_id, active")
     .eq("id", datasetId)
     .maybeSingle();
   if (error) throw new Error(`Dataset fetch failed: ${error.message}`);
