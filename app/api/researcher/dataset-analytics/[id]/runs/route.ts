@@ -35,6 +35,8 @@ function rowToRun(row: Record<string, unknown>): PipelineRun {
     analysis_steps: (row.analysis_steps ?? null) as AnalysisStep[] | null,
     started_at: row.started_at ? String(row.started_at) : null,
     completed_at: row.completed_at ? String(row.completed_at) : null,
+    cancelled_at: row.cancelled_at ? String(row.cancelled_at) : null,
+    cancellation_requested: Boolean(row.cancellation_requested ?? false),
     error_summary: row.error_summary ? String(row.error_summary) : null,
     initiated_by: row.initiated_by ? String(row.initiated_by) : null,
     configuration: (row.configuration ?? null) as Record<string, unknown> | null,
@@ -79,7 +81,7 @@ export async function GET(
   const { data: runs, error } = await supabaseAdmin
     .from("mst_pipeline_runs")
     .select(
-      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, error_summary, initiated_by, configuration, result_version, created_at",
+      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at",
     )
     .eq("dataset_id", id)
     .order("created_at", { ascending: false });
@@ -197,7 +199,7 @@ export async function POST(
       initiated_by: initiatedBy ?? null,
     })
     .select(
-      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, error_summary, initiated_by, configuration, result_version, created_at",
+      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at",
     )
     .single();
 
@@ -254,7 +256,7 @@ export async function PATCH(
     .from("mst_pipeline_runs")
     .update({ status: "cancelled" })
     .eq("id", runId)
-    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, error_summary, initiated_by, configuration, result_version, created_at")
+    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at")
     .single();
 
   if (updateErr) {

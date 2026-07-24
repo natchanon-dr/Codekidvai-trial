@@ -100,6 +100,8 @@ export type PipelineRun = {
   analysis_steps: AnalysisStep[] | null;
   started_at: string | null;
   completed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_requested: boolean;
   error_summary: string | null;
   initiated_by: string | null;
   configuration: Record<string, unknown> | null;
