@@ -233,10 +233,11 @@ export async function PATCH(
     return NextResponse.json({ error: "run_id query param is required." }, { status: 400 });
   }
 
-  // Verify the run belongs to this dataset and is cancellable
+  // Step 1: ownership + terminal-status check.
+  // Also fetch cancellation_requested for the idempotent early-return.
   const { data: run, error: fetchErr } = await supabaseAdmin
     .from("mst_pipeline_runs")
-    .select("id, dataset_id, status")
+    .select("id, dataset_id, status, cancellation_requested")
     .eq("id", runId)
     .eq("dataset_id", id)
     .maybeSingle();
@@ -245,23 +246,64 @@ export async function PATCH(
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
   }
 
-  if (!["pending", "running"].includes(String(run.status))) {
+  const currentStatus = String(run.status);
+
+  if (!["pending", "running"].includes(currentStatus)) {
     return NextResponse.json(
-      { error: `Cannot cancel a run with status '${String(run.status)}'.` },
+      { error: `Cannot request cancellation for a run with status '${currentStatus}'.` },
       { status: 422 },
     );
   }
 
+  // Step 2: Conditional UPDATE — race-safe.
+  // WHERE status IN ('pending','running') AND cancellation_requested = false ensures:
+  //   - The run has not transitioned to a terminal state between Step 1 and now.
+  //   - A duplicate request does not re-write an already-requested row.
+  // maybeSingle() returns null (no error) when zero rows matched instead of
+  // throwing, so the caller can distinguish a no-match from a DB failure.
   const { data: updated, error: updateErr } = await supabaseAdmin
     .from("mst_pipeline_runs")
-    .update({ status: "cancelled" })
+    .update({ cancellation_requested: true })
     .eq("id", runId)
+    .eq("dataset_id", id)
+    .in("status", ["pending", "running"])
+    .eq("cancellation_requested", false)
     .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at")
-    .single();
+    .maybeSingle();
 
   if (updateErr) {
-    return NextResponse.json({ error: "Failed to cancel run." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to request cancellation." }, { status: 500 });
   }
 
-  return NextResponse.json({ run: rowToRun(updated as unknown as Record<string, unknown>) });
+  // Conditional UPDATE matched and returned the updated row — success.
+  if (updated) {
+    return NextResponse.json({ run: rowToRun(updated as unknown as Record<string, unknown>) });
+  }
+
+  // UPDATE matched nothing: the run transitioned between Step 1 and Step 2,
+  // or cancellation_requested was already true (idempotent duplicate request).
+  // Re-read the authoritative state to determine the correct response.
+  const { data: reread, error: rereadErr } = await supabaseAdmin
+    .from("mst_pipeline_runs")
+    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at")
+    .eq("id", runId)
+    .eq("dataset_id", id)
+    .maybeSingle();
+
+  if (rereadErr || !reread) {
+    return NextResponse.json({ error: "Run not found." }, { status: 404 });
+  }
+
+  const rereadStatus = String(reread.status);
+
+  // Idempotent: cancellation already requested and run is still active.
+  if (Boolean(reread.cancellation_requested) && ["pending", "running"].includes(rereadStatus)) {
+    return NextResponse.json({ run: rowToRun(reread as unknown as Record<string, unknown>) });
+  }
+
+  // Run transitioned to a terminal state — return the same rejection used for Step 1.
+  return NextResponse.json(
+    { error: `Cannot request cancellation for a run with status '${rereadStatus}'.` },
+    { status: 422 },
+  );
 }
