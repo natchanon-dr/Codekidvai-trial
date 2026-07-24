@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
@@ -13,12 +13,11 @@ import {
   THESIS_TASK_TYPE_ORDER,
   THESIS_TASK_TYPE_LABEL,
   isPhase4Supported,
-  getLearningMode,
   type SetFamily,
   type TaskType,
 } from "@/lib/research-context";
 
-// ── types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface ClassOption {
   class_id: string;
   class_code: string;
@@ -122,7 +121,7 @@ const STEP_META: Record<string, { label: string; desc: string; icon: React.React
   },
 };
 
-// ── small helpers ─────────────────────────────────────────────────────────────
+// â”€â”€ small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function MetricBar({ label, value, color }: { label: string; value: number | null | undefined; color: string }) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
@@ -142,7 +141,7 @@ function ConfusionMatrix({ matrix }: { matrix: number[][] }) {
   const labels = ["Not at-risk", "At-risk"];
   return (
     <div>
-      <p className="text-xs font-semibold text-[#64748B] mb-2">Confusion Matrix (predicted → actual)</p>
+      <p className="text-xs font-semibold text-[#64748B] mb-2">Confusion Matrix (predicted â†’ actual)</p>
       <table className="text-xs border-collapse">
         <thead>
           <tr>
@@ -191,10 +190,10 @@ function Spinner({ size = "sm" }: { size?: "sm" | "md" }) {
   );
 }
 
-// ── helpers (module-level — safe to call anywhere) ────────────────────────────
+// â”€â”€ helpers (module-level — safe to call anywhere) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getTimestamp(): number { return Date.now(); }
 
-// ── main component ────────────────────────────────────────────────────────────
+// â”€â”€ main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function MockLab() {
   // config
   const [config, setConfig] = useState<MockConfig>({
@@ -237,7 +236,9 @@ export default function MockLab() {
   const [finalStats, setFinalStats]       = useState<FinalStats | null>(null);
 
   // UI state
-  const [activeTab, setActiveTab]     = useState<OutcomeTab>("summary");
+  const [activeTab, setActiveTab]       = useState<OutcomeTab>("summary");
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [showCreateModal, setShowCreateModal]     = useState(false);
   const logEndRef          = useRef<HTMLDivElement>(null);
   const abortRef           = useRef<AbortController | null>(null);
   const pipelineStepRef    = useRef<MockStep>("data");
@@ -286,7 +287,7 @@ export default function MockLab() {
     });
   }, [selectedClassId]);
 
-  // Sync dummy selectors → config when no real task set is active
+  // Sync dummy selectors â†’ config when no real task set is active
   useEffect(() => {
     if (selectedSetId) return; // real set overrides dummy selectors
     queueMicrotask(() => {
@@ -359,7 +360,7 @@ export default function MockLab() {
     } else {
       setStepStatus(prev => ({ ...prev, [step]: "running" }));
     }
-    addLog(`── Starting: ${step} ──`);
+    addLog(`â”€â”€ Starting: ${step} â”€â”€`);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -424,9 +425,9 @@ export default function MockLab() {
                 continue;
               }
               addLog(msg);
-              if (msg.includes("❌")) setErrorCount(c => c + 1);
+              if (msg.includes("âŒ")) setErrorCount(c => c + 1);
               // detect step transitions in run-all
-              const match = msg.match(/^── Step: (\w+)/);
+              const match = msg.match(/^â”€â”€ Step: (\w+)/);
               if (match) {
                 if (pipelineStepRef.current !== step) {
                   setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "completed" }));
@@ -437,7 +438,7 @@ export default function MockLab() {
               }
             }
             if (eventType === "error") {
-              addLog(`❌ ${payload.msg}`);
+              addLog(`âŒ ${payload.msg}`);
               setErrorCount(c => c + 1);
               setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "failed" }));
             }
@@ -465,7 +466,7 @@ export default function MockLab() {
     } catch (err) {
       // fetch aborted by Stop button — mark any still-running step as aborted
       if (err instanceof DOMException && err.name === "AbortError") {
-        addLog("⛔ Stopped by user.");
+        addLog("â›” Stopped by user.");
         setStepStatus(prev => {
           const next = { ...prev };
           for (const s of PIPELINE_STEPS) {
@@ -480,12 +481,17 @@ export default function MockLab() {
       setStartTime(null);
       setHangSeconds(null);
       lastProgressAtRef.current = null;
-      addLog("── Done ──");
+      addLog("â”€â”€ Done â”€â”€");
     }
   }
 
   function stopPipeline() {
     abortRef.current?.abort();
+  }
+
+  function handleRunPipeline() {
+    setShowPipelineModal(true);
+    void runStep("run-all");
   }
 
   function parseOutcome(payload: { report?: MockOutcome }) {
@@ -520,71 +526,106 @@ export default function MockLab() {
 
   const fmtElapsed = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
 
-  return (
-    <section className="space-y-5">
-      {/* ── Status Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {topStatus.map(({ label, status }) => (
-          <div key={label} className="bg-white border border-[#FED7AA] rounded-2xl px-4 py-3 space-y-1.5">
-            <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide leading-tight">{label}</p>
-            <StatusPill status={status} />
-          </div>
-        ))}
-      </div>
+  // â”€â”€ icon helpers for compact row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const SET_FAMILY_ICON: Record<SetFamily, React.ReactNode> = {
+    assignment: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+        <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+        <rect x="4" y="3" width="16" height="18" rx="2"/>
+      </svg>
+    ),
+    lab: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+        <path d="M8 2h8"/><path d="M7 15h10"/>
+      </svg>
+    ),
+    exam: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+        <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+      </svg>
+    ),
+  };
 
-      {/* ── Configuration + Summary ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Config panels — left 2/3 */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Batch Configuration */}
-          <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-[#0F172A]">Batch Configuration</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Mock Code</label>
-                <input
-                  type="text"
-                  value={config.batchCode}
-                  onChange={e => updateConfig("batchCode", e.target.value)}
-                  disabled={isRunning}
-                  placeholder="MOCK_20260714_001"
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50"
-                />
-                {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
-                <input type="number" min={5} max={200} value={config.nStudents}
-                  onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
-                <input type="number" min={0} max={100} value={config.atRiskRate}
-                  onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Missing Submission %</label>
-                <input type="number" min={0} max={100} value={config.missingRate}
-                  onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Sim Seed</label>
-                <input type="number" min={0} max={2147483647} value={config.seed ?? 42}
-                  onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50" />
+  const currentActivity = config.setFamily as SetFamily | undefined;
+  const currentTaskType = (Object.entries(config.taskTypeCounts ?? {})[0]?.[0]) as TaskType | undefined;
+
+  return (
+    <>
+    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        CREATE MOCK MODAL — Batch Configuration form
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    {showCreateModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+        onClick={(e) => { if (e.target === e.currentTarget && !isRunning) setShowCreateModal(false); }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[#FED7AA] shrink-0">
+            <div>
+              <h2 className="text-base font-bold text-[#0F172A]">Create Mock</h2>
+              <p className="text-xs text-[#64748B] mt-0.5">Configure batch parameters for the simulated pipeline</p>
+            </div>
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className="text-[#94A3B8] hover:text-[#0F172A] transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Body — scrollable */}
+          <div className="overflow-y-auto flex-1 p-6 space-y-5">
+            {/* Numeric params */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-3">Batch Parameters</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1">
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Mock Code</label>
+                  <input
+                    type="text"
+                    value={config.batchCode}
+                    onChange={e => updateConfig("batchCode", e.target.value)}
+                    placeholder="MOCK_20260714_001"
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021]"
+                  />
+                  {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
+                  <input type="number" min={5} max={200} value={config.nStudents}
+                    onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Sim Seed</label>
+                  <input type="number" min={0} max={2147483647} value={config.seed ?? 42}
+                    onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
+                  <input type="number" min={0} max={100} value={config.atRiskRate}
+                    onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Missing Submission %</label>
+                  <input type="number" min={0} max={100} value={config.missingRate}
+                    onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+                </div>
               </div>
             </div>
 
-            {/* Task Set — Class + Set dropdowns */}
-            <div className="space-y-3 pt-1 border-t border-[#F1F5F9]">
-              <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Task Set (optional — from real class)</p>
+            {/* Task Set */}
+            <div className="border-t border-[#F1F5F9] pt-5">
+              <p className="text-xs font-bold text-[#0F172A] mb-3">Task Set (optional — from real class)</p>
               <div className="space-y-2">
                 <select
                   value={selectedClassId}
@@ -604,34 +645,34 @@ export default function MockLab() {
                     }
                     setSelectedClassId(val);
                   }}
-                  disabled={isRunning || classesLoading}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
+                  disabled={classesLoading}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
                 >
-                  <option value="">{classesLoading ? "Loading classes…" : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
+                  <option value="">{classesLoading ? "Loading classesâ€¦" : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
                   {classes.map(c => (
                     <option key={c.class_id} value={c.class_id}>
-                      {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
+                      {c.class_name} ({c.class_code}) Â· {c.academic_year}/{c.term}
                     </option>
                   ))}
                 </select>
                 <select
                   value={selectedSetId}
                   onChange={e => handleTaskSetSelect(e.target.value)}
-                  disabled={isRunning || !selectedClassId || taskSetsLoading}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] disabled:opacity-50 bg-white"
+                  disabled={!selectedClassId || taskSetsLoading}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
                 >
                   <option value="">
-                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets…" : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
+                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task setsâ€¦" : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
                   </option>
                   {taskSets.map(s => (
                     <option key={s.batch_id} value={s.batch_id}>
-                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} Â· {s.batch_name ?? s.batch_code ?? s.batch_id} Â· {s.task_count} task{s.task_count !== 1 ? "s" : ""}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Real Task Set summary (read-only) */}
+              {/* Real task set summary */}
               {selectedSetId && config.taskIds?.length ? (() => {
                 const found = taskSets.find(s => s.batch_id === selectedSetId);
                 if (!found) return null;
@@ -640,7 +681,7 @@ export default function MockLab() {
                   .filter(tt => (found.task_type_counts[tt] ?? 0) > 0)
                   .map(tt => ({ tt, count: found.task_type_counts[tt] }));
                 return (
-                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
+                  <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F37021] text-white tracking-wide uppercase">{familyLabel} Set</span>
                       <span className="text-xs text-emerald-700 font-semibold">{found.task_count} task{found.task_count !== 1 ? "s" : ""}</span>
@@ -661,543 +702,604 @@ export default function MockLab() {
                 );
               })() : null}
 
-              {/* Dummy mode context selectors (only shown when no real task set selected) */}
+              {/* Dummy selectors */}
               {!selectedSetId && (
-                <div className="space-y-3 pt-1">
+                <div className="mt-3 space-y-3">
                   <p className="text-[11px] text-[#64748B] italic">No real task set selected — using dummy tasks. Configure context below.</p>
-
-                  {/* Set Family */}
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Set Family</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {(["assignment", "lab", "exam"] as const).map(sf => (
-                        <button
-                          key={sf}
-                          type="button"
-                          disabled={isRunning}
-                          onClick={() => setDummySetFamily(sf)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${
-                            dummySetFamily === sf
-                              ? "bg-[#F37021] text-white border-[#F37021]"
-                              : "bg-white text-[#64748B] border-[#CBD5E1] hover:border-[#F37021]"
-                          }`}
-                        >
-                          {SET_FAMILY_LABEL[sf]}
+                  <div className="flex gap-6 flex-wrap">
+                    {/* Activity */}
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Activity</p>
+                      <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
+                        <button type="button" title={SET_FAMILY_LABEL["assignment"]}
+                          onClick={() => setDummySetFamily("assignment")}
+                          className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${dummySetFamily === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                            <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                            <rect x="4" y="3" width="16" height="18" rx="2"/>
+                          </svg>
                         </button>
-                      ))}
+                        <button type="button" title={SET_FAMILY_LABEL["lab"]}
+                          onClick={() => setDummySetFamily("lab")}
+                          className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${dummySetFamily === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                            <path d="M8 2h8"/><path d="M7 15h10"/>
+                          </svg>
+                        </button>
+                        <button type="button" title={SET_FAMILY_LABEL["exam"]}
+                          onClick={() => setDummySetFamily("exam")}
+                          className={`flex items-center justify-center px-3 py-2 transition-colors ${dummySetFamily === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                            <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Task Type */}
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Task Type (dummy tasks)</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {(THESIS_TASK_TYPE_ORDER as TaskType[]).map(tt => {
-                        const phase4 = isPhase4Supported(tt);
-                        const lm     = getLearningMode(tt);
-                        const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
-                        return (
-                          <button
-                            key={tt}
-                            type="button"
-                            disabled={isRunning || !phase4}
-                            title={!phase4 ? `${label} — Planned Phase 5` : label}
-                            onClick={() => phase4 && setDummyTaskType(tt)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                              !phase4
-                                ? "opacity-40 cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8] border-[#E2E8F0]"
-                                : dummyTaskType === tt
-                                  ? "bg-[#F37021] text-white border-[#F37021]"
-                                  : "bg-white text-[#64748B] border-[#CBD5E1] hover:border-[#F37021]"
-                            }`}
-                          >
-                            <TaskTypeIcon type={tt} className="w-3.5 h-3.5" />
-                            {label}
-                            {!phase4 && <span className="text-[9px] opacity-70 ml-0.5">Ph5</span>}
-                            {phase4 && lm === "text_based" && null}
-                          </button>
-                        );
-                      })}
+                    {/* Task Type */}
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Task Type</p>
+                      <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
+                        {(THESIS_TASK_TYPE_ORDER as TaskType[]).map((tt, i) => {
+                          const phase4 = isPhase4Supported(tt);
+                          const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
+                          return (
+                            <button
+                              key={tt}
+                              type="button"
+                              disabled={!phase4}
+                              title={!phase4 ? `${label} — Planned Phase 5` : label}
+                              onClick={() => phase4 && setDummyTaskType(tt)}
+                              className={`relative flex items-center justify-center px-3 py-2 ${i < THESIS_TASK_TYPE_ORDER.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${
+                                !phase4
+                                  ? "opacity-40 cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8]"
+                                  : dummyTaskType === tt
+                                    ? "bg-[#F37021] text-white"
+                                    : "text-[#64748B] hover:bg-[#FFF7ED]"
+                              }`}
+                            >
+                              <TaskTypeIcon type={tt} className="w-4 h-4" />
+                              {!phase4 && (
+                                <span className="absolute top-0.5 right-0.5 text-[7px] font-bold leading-none opacity-60">5</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-
           </div>
 
-        </div>
-
-        {/* Summary card — right 1/3 */}
-        <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 h-fit space-y-4 lg:sticky lg:top-4">
-          <h3 className="text-sm font-bold text-[#0F172A]">Current Configuration</h3>
-          <dl className="space-y-2.5 text-sm">
-            {((): [string, string][] => {
-              const totalTasks = config.taskIds?.length ?? config.nTasks;
-              const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
-              const runCalls   = config.nStudents * totalTasks * 3;
-              const subCalls   = nonMissing * totalTasks;
-              const totalCalls = runCalls + subCalls;
-              const estMin     = Math.ceil(totalCalls * 0.4 / 60);
-              void estMin;
-              const rows: [string, string][] = [
-                ["Mock Code",         config.batchCode],
-                ["Students",          String(config.nStudents)],
-              ];
-              const sfLabel = config.setFamily
-                ? (SET_FAMILY_LABEL[config.setFamily as SetFamily] ?? config.setFamily)
-                : "Assignment";
-              rows.push(["Set Family", sfLabel]);
-              if (config.taskIds?.length) {
-                rows.push(["Task Set", taskSets.find(s => s.batch_id === selectedSetId)?.batch_name ?? "—"]);
-                rows.push(["Tasks (real)", String(config.taskIds.length)]);
-              }
-              rows.push(["Sim Seed",           String(config.seed ?? 42)]);
-              rows.push(["Expected At-Risk",  `${config.atRiskRate}% (≈${Math.round(config.nStudents * config.atRiskRate / 100)})`]);
-              rows.push(["Expected Missing",  `${config.missingRate}% (≈${Math.round(config.nStudents * config.missingRate / 100)})`]);
-              return rows;
-            })().map(([k, v]) => (
-              <div key={k} className="flex flex-col gap-0.5">
-                <dt className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</dt>
-                <dd className="font-mono text-xs text-[#0F172A] break-all">{v}</dd>
-              </div>
-            ))}
-          </dl>
-
-          {/* Workload estimation */}
-          {(() => {
-            const totalTasks = config.taskIds?.length ?? config.nTasks;
-            const nonMissing = Math.round(config.nStudents * (1 - config.missingRate / 100));
-            const runCalls   = config.nStudents * totalTasks * 3;
-            const subCalls   = nonMissing * totalTasks;
-            const totalCalls = runCalls + subCalls;
-            const estSec     = Math.round(totalCalls * 0.4);
-            const estMin     = Math.floor(estSec / 60);
-            const estSecRem  = estSec % 60;
-            return (
-              <div className="border-t border-[#F1F5F9] pt-3 space-y-1.5">
-                <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide">Extract Workload Estimate</p>
-                <div className="grid grid-cols-2 gap-1 text-[11px]">
-                  <span className="text-[#64748B]">run-answer calls</span>
-                  <span className="font-mono font-semibold text-[#0F172A] text-right">{runCalls.toLocaleString()}</span>
-                  <span className="text-[#64748B]">submit-answer calls</span>
-                  <span className="font-mono font-semibold text-[#0F172A] text-right">{subCalls.toLocaleString()}</span>
-                  <span className="text-[#64748B] font-semibold">total API calls</span>
-                  <span className="font-mono font-bold text-[#F37021] text-right">{totalCalls.toLocaleString()}</span>
-                  <span className="text-[#64748B]">est. duration</span>
-                  <span className="font-mono font-semibold text-[#0F172A] text-right">~{estMin}m {estSecRem}s</span>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-
-      {/* ── Pipeline Workflow ── */}
-      <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-5">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="text-sm font-bold text-[#0F172A]">Pipeline Workflow</h3>
-          <div className="flex gap-2">
-            {isRunning ? (
-              <button
-                onClick={stopPipeline}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-                </svg>
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={() => runStep("run-all")}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
-                </svg>
-                Run Full Mock Pipeline
-              </button>
-            )}
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-between shrink-0">
             <button
-              onClick={() => runStep("reset")}
+              onClick={() => { void runStep("reset"); }}
               disabled={isRunning}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
             >
               {running === "reset" ? <Spinner /> : (
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
               )}
-              {running === "reset" ? "Resetting…" : "Mock Reset"}
+              {running === "reset" ? "Resettingâ€¦" : "Mock Reset"}
             </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-[#64748B] hover:text-[#0F172A] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
+              >
+                Apply
+              </button>
+            </div>
           </div>
-        </div>
-
-        {/* Vertical pipeline */}
-        <div className="space-y-1">
-          {PIPELINE_STEPS.map((stepId, idx) => {
-            const meta = STEP_META[stepId];
-            const status = stepStatus[stepId] ?? "waiting";
-            const isThisRunning = running === stepId || (running === "run-all" && status === "running");
-
-            const statusStyle = {
-              waiting:   "border-[#E2E8F0] bg-[#F8FAFC]",
-              running:   "border-[#FED7AA] bg-[#FFF7ED]",
-              completed: "border-emerald-200 bg-emerald-50",
-              failed:    "border-red-200 bg-red-50",
-              aborted:   "border-orange-200 bg-orange-50",
-            }[status];
-
-            const iconStyle = {
-              waiting:   "bg-[#F1F5F9] text-[#94A3B8]",
-              running:   "bg-[#FED7AA] text-[#F37021]",
-              completed: "bg-emerald-100 text-emerald-600",
-              failed:    "bg-red-100 text-red-500",
-              aborted:   "bg-orange-100 text-orange-500",
-            }[status];
-
-            const labelStyle = {
-              waiting:   "text-[#94A3B8]",
-              running:   "text-[#C2410C]",
-              completed: "text-emerald-700",
-              failed:    "text-red-600",
-              aborted:   "text-orange-600",
-            }[status];
-
-            return (
-              <div key={stepId}>
-                <button
-                  onClick={() => runStep(stepId)}
-                  disabled={isRunning}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left disabled:cursor-not-allowed ${statusStyle} ${!isRunning ? "hover:border-[#F37021]" : ""}`}
-                >
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconStyle}`}>
-                    {isThisRunning ? <Spinner /> : meta.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold ${labelStyle}`}>{meta.label}</p>
-                    <p className="text-[11px] text-[#94A3B8] truncate">{meta.desc}</p>
-                  </div>
-                  <div className="shrink-0">
-                    {status === "waiting" && <span className="text-[10px] font-semibold text-[#CBD5E1] uppercase tracking-wide">Waiting</span>}
-                    {status === "running" && <span className="text-[10px] font-semibold text-[#F37021] uppercase tracking-wide">Running</span>}
-                    {status === "completed" && (
-                      <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
-                    )}
-                    {status === "failed" && (
-                      <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    )}
-                    {status === "aborted" && <span className="text-[10px] font-semibold text-orange-500 uppercase tracking-wide">Aborted</span>}
-                  </div>
-                </button>
-                {idx < PIPELINE_STEPS.length - 1 && (
-                  <div className="ml-7 w-0.5 h-3 bg-[#E2E8F0]" />
-                )}
-              </div>
-            );
-          })}
         </div>
       </div>
+    )}
 
-      {/* ── Progress ── */}
-      {(isRunning || pipelineProgress > 0) && (
-        <div className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-[#0F172A]">Pipeline Progress</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-[#64748B]">
-              <span>{pipelinePct}% complete</span>
-              <span>{pipelineProgress}/{PIPELINE_STEPS.length} steps</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[#F37021] transition-all duration-500"
-                style={{ width: `${pipelinePct}%` }}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-[#FFF7ED] rounded-xl px-3 py-2.5 space-y-0.5">
-              <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Current Step</p>
-              <p className="text-sm font-bold text-[#C2410C]">{running ? STEP_META[running]?.label ?? running : "—"}</p>
-            </div>
-            <div className="bg-[#FFF7ED] rounded-xl px-3 py-2.5 space-y-0.5">
-              <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Elapsed</p>
-              <p className="text-sm font-bold text-[#0F172A]">{fmtElapsed(elapsed)}</p>
-            </div>
-            <div className="bg-[#FFF7ED] rounded-xl px-3 py-2.5 space-y-0.5">
-              <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Completed</p>
-              <p className="text-sm font-bold text-emerald-600">{completedSteps.length} steps</p>
-            </div>
-            <div className="bg-[#FFF7ED] rounded-xl px-3 py-2.5 space-y-0.5">
-              <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Errors</p>
-              <p className={`text-sm font-bold ${errorCount > 0 ? "text-red-600" : "text-[#0F172A]"}`}>{errorCount}</p>
-            </div>
-          </div>
-
-          {/* Live Extract Progress */}
-          {liveProgress && (
-            <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-[#0F172A]">Extract Live Progress</p>
-                {isRunning && hangSeconds !== null && hangSeconds > 30 && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-[10px] font-bold text-amber-700">
-                    ⚠ No progress for {hangSeconds}s — possible hang
-                  </span>
-                )}
+    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        PIPELINE MODAL — Workflow + Progress + Outcome
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    {showPipelineModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[#FED7AA] shrink-0">
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className="text-base font-bold text-[#0F172A]">Pipeline Workflow</h2>
+                <p className="text-xs text-[#64748B] font-mono mt-0.5">{config.batchCode}</p>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-[11px]">
-                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
-                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Student</p>
-                  <p className="font-mono font-bold text-[#0F172A]">{liveProgress.student}</p>
-                </div>
-                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
-                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Task</p>
-                  <p className="font-mono font-bold text-[#0F172A]">{liveProgress.task}</p>
-                </div>
-                <div className="bg-[#F8FAFC] rounded-xl px-3 py-2 space-y-0.5">
-                  <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">Operation</p>
-                  <p className="font-mono font-bold text-[#0F172A] truncate">{liveProgress.op}</p>
-                </div>
-              </div>
-              {liveProgress.totalCalls > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[11px] text-[#64748B]">
-                    <span>{liveProgress.completedCalls} / {liveProgress.totalCalls} API calls</span>
-                    <span>ETA ≈ {Math.floor(liveProgress.etaSec / 60)}m {liveProgress.etaSec % 60}s</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[#F37021] transition-all duration-300"
-                      style={{ width: `${Math.round(liveProgress.completedCalls / liveProgress.totalCalls * 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-[#94A3B8] text-right">
-                    {Math.round(liveProgress.completedCalls / liveProgress.totalCalls * 100)}% — elapsed {fmtElapsed(Math.floor(liveProgress.elapsedMs / 1000))}
-                  </p>
-                </div>
+              {isRunning && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 border border-amber-200 text-[11px] font-bold text-amber-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Running
+                </span>
+              )}
+              {!isRunning && pipelineProgress > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 border border-emerald-200 text-[11px] font-bold text-emerald-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {pipelinePct}% complete
+                </span>
               )}
             </div>
-          )}
-
-          {/* Final Stats (after extract completes) */}
-          {finalStats && !isRunning && (
-            <div className="border-t border-[#F1F5F9] pt-4 space-y-2">
-              <p className="text-xs font-bold text-[#0F172A]">Extract Performance Report</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                {[
-                  ["Total Requests",   String(finalStats.totalRequests)],
-                  ["Total Duration",   `${finalStats.totalDurationSec}s`],
-                  ["p50 Latency",      `${finalStats.p50Ms}ms`],
-                  ["p95 Latency",      `${finalStats.p95Ms}ms`],
-                  ["Slowest",          `${finalStats.slowestMs}ms`],
-                  ["Slowest Endpoint", finalStats.slowestEndpoint.split(":")[0]],
-                ].map(([k, v]) => (
-                  <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 space-y-0.5">
-                    <p className="text-[#94A3B8] font-semibold uppercase tracking-wide">{k}</p>
-                    <p className="font-mono font-bold text-[#0F172A] truncate">{v}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Outcome Tabs ── */}
-      {(outcome || logs.length > 0) && (
-        <div className="bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex border-b border-[#FED7AA] overflow-x-auto">
-            {(["summary", "metrics", "charts", "dataset", "reports", "logs"] as OutcomeTab[]).map(tab => (
+            <div className="flex items-center gap-2">
+              {isRunning ? (
+                <button
+                  onClick={stopPipeline}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                  </svg>
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={() => void runStep("run-all")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                  </svg>
+                  {pipelineProgress > 0 ? "Re-run" : "Run All"}
+                </button>
+              )}
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 text-xs font-semibold capitalize whitespace-nowrap transition-colors border-b-2 ${
-                  activeTab === tab
-                    ? "border-[#F37021] text-[#F37021] bg-[#FFF7ED]"
-                    : "border-transparent text-[#64748B] hover:text-[#0F172A]"
-                }`}
+                onClick={() => setShowPipelineModal(false)}
+                disabled={isRunning}
+                className="text-[#94A3B8] hover:text-[#0F172A] transition-colors disabled:opacity-30"
+                title={isRunning ? "Stop the pipeline before closing" : "Close"}
               >
-                {tab}
-                {tab === "logs" && logs.length > 0 && (
-                  <span className="ml-1.5 bg-[#FED7AA] text-[#C2410C] text-[10px] font-bold px-1.5 py-0.5 rounded-full">{logs.length}</span>
-                )}
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
               </button>
-            ))}
+            </div>
           </div>
 
-          <div className="p-5">
-            {/* Summary tab */}
-            {activeTab === "summary" && (
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-[#0F172A]">Pipeline Summary</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {([
-                    { label: "Pipeline Status", value: isRunning ? "Running" : pipelineProgress > 0 ? "Completed" : "Not started", ok: !isRunning && pipelineProgress > 0 },
-                    { label: "Dataset Ready",   value: stepStatus["data"]     === "completed" ? "Yes" : "No", ok: stepStatus["data"]     === "completed" },
-                    { label: "Training Ready",  value: stepStatus["train"]    === "completed" ? "Yes" : "No", ok: stepStatus["train"]    === "completed" },
-                    { label: "Eval Ready",      value: stepStatus["evaluate"] === "completed" ? "Yes" : "No", ok: stepStatus["evaluate"] === "completed" },
-                    { label: "Report Ready",    value: outcome ? "Yes" : "No", ok: !!outcome },
-                    { label: "Samples",         value: outcome ? String(outcome.dataset.samples) : "—", ok: null },
-                  ] as { label: string; value: string; ok: boolean | null }[]).map(({ label, value, ok }) => (
-                    <div key={label} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2.5 space-y-0.5">
-                      <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{label}</p>
-                      <p className={`text-sm font-bold ${ok === true ? "text-emerald-600" : ok === false ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>{value}</p>
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+            {/* Status cards row */}
+            <div className="grid grid-cols-5 gap-2">
+              {topStatus.map(({ label, status }) => (
+                <div key={label} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2.5 space-y-1 text-center">
+                  <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide leading-tight">{label}</p>
+                  <StatusPill status={status} />
+                </div>
+              ))}
+            </div>
+
+            {/* Pipeline steps */}
+            <div className="space-y-1">
+              {PIPELINE_STEPS.map((stepId, idx) => {
+                const meta = STEP_META[stepId];
+                const status = stepStatus[stepId] ?? "waiting";
+                const isThisRunning = running === stepId || (running === "run-all" && status === "running");
+
+                const statusStyle = {
+                  waiting:   "border-[#E2E8F0] bg-[#F8FAFC]",
+                  running:   "border-[#FED7AA] bg-[#FFF7ED]",
+                  completed: "border-emerald-200 bg-emerald-50",
+                  failed:    "border-red-200 bg-red-50",
+                  aborted:   "border-orange-200 bg-orange-50",
+                }[status];
+
+                const iconStyle = {
+                  waiting:   "bg-[#F1F5F9] text-[#94A3B8]",
+                  running:   "bg-[#FED7AA] text-[#F37021]",
+                  completed: "bg-emerald-100 text-emerald-600",
+                  failed:    "bg-red-100 text-red-500",
+                  aborted:   "bg-orange-100 text-orange-500",
+                }[status];
+
+                const labelStyle = {
+                  waiting:   "text-[#94A3B8]",
+                  running:   "text-[#C2410C]",
+                  completed: "text-emerald-700",
+                  failed:    "text-red-600",
+                  aborted:   "text-orange-600",
+                }[status];
+
+                return (
+                  <div key={stepId}>
+                    <button
+                      onClick={() => void runStep(stepId)}
+                      disabled={isRunning}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left disabled:cursor-not-allowed ${statusStyle} ${!isRunning ? "hover:border-[#F37021]" : ""}`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconStyle}`}>
+                        {isThisRunning ? <Spinner /> : meta.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold ${labelStyle}`}>{meta.label}</p>
+                        <p className="text-[11px] text-[#94A3B8] truncate">{meta.desc}</p>
+                      </div>
+                      <div className="shrink-0">
+                        {status === "waiting" && <span className="text-[10px] font-semibold text-[#CBD5E1] uppercase tracking-wide">Waiting</span>}
+                        {status === "running" && <span className="text-[10px] font-semibold text-[#F37021] uppercase tracking-wide">Running</span>}
+                        {status === "completed" && (
+                          <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                        )}
+                        {status === "failed" && (
+                          <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {status === "aborted" && <span className="text-[10px] font-semibold text-orange-500 uppercase tracking-wide">Aborted</span>}
+                      </div>
+                    </button>
+                    {idx < PIPELINE_STEPS.length - 1 && (
+                      <div className="ml-7 w-0.5 h-3 bg-[#E2E8F0]" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Progress section */}
+            {(isRunning || pipelineProgress > 0) && (
+              <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-[#64748B]">
+                    <span>{pipelinePct}% complete</span>
+                    <span>{pipelineProgress}/{PIPELINE_STEPS.length} steps</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
+                    <div className="h-full rounded-full bg-[#F37021] transition-all duration-500" style={{ width: `${pipelinePct}%` }} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { label: "Current Step", value: running ? STEP_META[running]?.label ?? running : "—", color: "text-[#C2410C]" },
+                    { label: "Elapsed",      value: fmtElapsed(elapsed),                                  color: "text-[#0F172A]" },
+                    { label: "Completed",    value: `${completedSteps.length} steps`,                     color: "text-emerald-600" },
+                    { label: "Errors",       value: String(errorCount),                                   color: errorCount > 0 ? "text-red-600" : "text-[#0F172A]" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="bg-[#FFF7ED] rounded-xl px-3 py-2 space-y-0.5">
+                      <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">{label}</p>
+                      <p className={`text-xs font-bold ${color}`}>{value}</p>
                     </div>
                   ))}
                 </div>
-                {outcome && (
-                  <div className="grid grid-cols-3 gap-3">
-                    {(["pii", "leakage", "splitIntegrity"] as const).map(k => (
-                      <div key={k} className={`rounded-xl px-3 py-2.5 border text-center ${outcome.checks[k] === "pass" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                        <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k === "splitIntegrity" ? "Split Integrity" : k.toUpperCase()}</p>
-                        <p className={`text-sm font-bold mt-0.5 ${outcome.checks[k] === "pass" ? "text-emerald-600" : "text-red-600"}`}>
-                          {outcome.checks[k] === "pass" ? "✓ Pass" : "✗ Fail"}
-                        </p>
+
+                {/* Live Extract Progress */}
+                {liveProgress && (
+                  <div className="border border-[#FED7AA] rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-[#0F172A]">Extract Live Progress</p>
+                      {isRunning && hangSeconds !== null && hangSeconds > 30 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-[10px] font-bold text-amber-700">
+                          âš  No progress for {hangSeconds}s
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                      {[
+                        { label: "Student",   value: liveProgress.student },
+                        { label: "Task",      value: liveProgress.task },
+                        { label: "Operation", value: liveProgress.op },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-[#F8FAFC] rounded-xl px-2 py-1.5 space-y-0.5">
+                          <p className="text-[#94A3B8] font-semibold uppercase tracking-wide text-[9px]">{label}</p>
+                          <p className="font-mono font-bold text-[#0F172A] truncate text-xs">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {liveProgress.totalCalls > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] text-[#64748B]">
+                          <span>{liveProgress.completedCalls} / {liveProgress.totalCalls} API calls</span>
+                          <span>ETA â‰ˆ {Math.floor(liveProgress.etaSec / 60)}m {liveProgress.etaSec % 60}s</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                          <div className="h-full rounded-full bg-[#F37021] transition-all duration-300"
+                            style={{ width: `${Math.round(liveProgress.completedCalls / liveProgress.totalCalls * 100)}%` }} />
+                        </div>
                       </div>
-                    ))}
+                    )}
+                  </div>
+                )}
+
+                {/* Final Stats */}
+                {finalStats && !isRunning && (
+                  <div className="border-t border-[#F1F5F9] pt-3 space-y-2">
+                    <p className="text-xs font-bold text-[#0F172A]">Extract Performance</p>
+                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                      {[
+                        ["Total Requests",   String(finalStats.totalRequests)],
+                        ["Duration",         `${finalStats.totalDurationSec}s`],
+                        ["p50",              `${finalStats.p50Ms}ms`],
+                        ["p95",              `${finalStats.p95Ms}ms`],
+                        ["Slowest",          `${finalStats.slowestMs}ms`],
+                        ["Endpoint",         finalStats.slowestEndpoint.split(":")[0]],
+                      ].map(([k, v]) => (
+                        <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1.5 space-y-0.5">
+                          <p className="text-[#94A3B8] font-semibold uppercase tracking-wide text-[9px]">{k}</p>
+                          <p className="font-mono font-bold text-[#0F172A] truncate text-xs">{v}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Metrics tab */}
-            {activeTab === "metrics" && (
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-[#0F172A]">Evaluation Metrics</h4>
-                {outcome ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    {([
-                      { key: "majorityBaseline",   label: "Majority Baseline",   aucColor: "#94A3B8", f1Color: "#CBD5E1" },
-                      { key: "logisticRegression", label: "Logistic Regression", aucColor: "#F37021", f1Color: "#FB923C" },
-                      { key: "randomForest",       label: "Random Forest",       aucColor: "#0EA5E9", f1Color: "#38BDF8" },
-                    ] as const).map(({ key, label, aucColor, f1Color }) => (
-                      <div key={key} className="space-y-3">
-                        <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">{label}</p>
-                        <MetricBar label="AUC-ROC" value={outcome.metrics[key].auc} color={aucColor} />
-                        <MetricBar label="F1"      value={outcome.metrics[key].f1}  color={f1Color} />
+            {/* Outcome Tabs */}
+            {(outcome || logs.length > 0) && (
+              <div className="border border-[#FED7AA] rounded-2xl overflow-hidden">
+                <div className="flex border-b border-[#FED7AA] overflow-x-auto">
+                  {(["summary", "metrics", "charts", "dataset", "reports", "logs"] as OutcomeTab[]).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-4 py-2.5 text-xs font-semibold capitalize whitespace-nowrap transition-colors border-b-2 ${
+                        activeTab === tab
+                          ? "border-[#F37021] text-[#F37021] bg-[#FFF7ED]"
+                          : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+                      }`}
+                    >
+                      {tab}
+                      {tab === "logs" && logs.length > 0 && (
+                        <span className="ml-1.5 bg-[#FED7AA] text-[#C2410C] text-[10px] font-bold px-1.5 py-0.5 rounded-full">{logs.length}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="p-4">
+                  {/* Summary */}
+                  {activeTab === "summary" && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {([
+                          { label: "Pipeline Status", value: isRunning ? "Running" : pipelineProgress > 0 ? "Completed" : "Not started", ok: !isRunning && pipelineProgress > 0 },
+                          { label: "Dataset Ready",   value: stepStatus["data"]     === "completed" ? "Yes" : "No", ok: stepStatus["data"]     === "completed" },
+                          { label: "Training Ready",  value: stepStatus["train"]    === "completed" ? "Yes" : "No", ok: stepStatus["train"]    === "completed" },
+                          { label: "Eval Ready",      value: stepStatus["evaluate"] === "completed" ? "Yes" : "No", ok: stepStatus["evaluate"] === "completed" },
+                          { label: "Report Ready",    value: outcome ? "Yes" : "No", ok: !!outcome },
+                          { label: "Samples",         value: outcome ? String(outcome.dataset.samples) : "—", ok: null },
+                        ] as { label: string; value: string; ok: boolean | null }[]).map(({ label, value, ok }) => (
+                          <div key={label} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 space-y-0.5">
+                            <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">{label}</p>
+                            <p className={`text-sm font-bold ${ok === true ? "text-emerald-600" : ok === false ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>{value}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[#94A3B8]">Run Mock Outcome to load metrics.</p>
-                )}
-              </div>
-            )}
-
-            {/* Charts tab */}
-            {activeTab === "charts" && (
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-[#0F172A]">Charts</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {([
-                    { key: "confusionMatrix",  label: "Confusion Matrix" },
-                    { key: "rocCurve",         label: "ROC Curve" },
-                    { key: "featureImportance",label: "Feature Importance" },
-                  ] as const).map(({ key, label }) =>
-                    outcome?.charts[key] ? (
-                      <div key={key} className="border border-[#E2E8F0] rounded-2xl p-3">
-                        <p className="text-[11px] font-semibold text-[#64748B] mb-2">{label}</p>
-                        <img src={outcome.charts[key]} alt={label} className="w-full rounded-xl" />
-                      </div>
-                    ) : (
-                      <ChartPlaceholder key={key} label={label} />
-                    )
+                      {outcome && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["pii", "leakage", "splitIntegrity"] as const).map(k => (
+                            <div key={k} className={`rounded-xl px-3 py-2 border text-center ${outcome.checks[k] === "pass" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                              <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k === "splitIntegrity" ? "Split" : k.toUpperCase()}</p>
+                              <p className={`text-sm font-bold mt-0.5 ${outcome.checks[k] === "pass" ? "text-emerald-600" : "text-red-600"}`}>
+                                {outcome.checks[k] === "pass" ? "✓ Pass" : "✗ Fail"}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
-                </div>
-              </div>
-            )}
-
-            {/* Dataset tab */}
-            {activeTab === "dataset" && (
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-[#0F172A]">Dataset Info</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {([
-                    ["Batch Code",    outcome?.batchCode ?? config.batchCode],
-                    ["Students",      outcome ? String(outcome.dataset.students)    : String(config.nStudents)],
-                    ["Tasks",         outcome ? String(outcome.dataset.tasks)       : String(config.taskIds?.length ?? config.nTasks)],
-                    ["Samples",       outcome ? String(outcome.dataset.samples)     : "—"],
-                    ["Train",         outcome ? String(outcome.dataset.trainSamples): "—"],
-                    ["Test",          outcome ? String(outcome.dataset.testSamples) : "—"],
-                    ["Sessions",      outcome ? String(outcome.dataset.sessions)    : "—"],
-                    ["Attempts",      outcome ? String(outcome.dataset.attempts)    : "—"],
-                    ["Submissions",   outcome ? String(outcome.dataset.submissions) : "—"],
-                    ["At-Risk Rate",  `${config.atRiskRate}%`],
-                    ["Missing Rate",  `${config.missingRate}%`],
-                    ["Split Method",  "GroupShuffleSplit"],
-                    ["Group Key",     "academy_member_id"],
-                    ["PII",           "Anonymised"],
-                  ] as [string, string][]).map(([k, v]) => (
-                    <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2.5 space-y-0.5">
-                      <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</p>
-                      <p className="text-sm font-mono font-bold text-[#0F172A]">{v}</p>
+                  {/* Metrics */}
+                  {activeTab === "metrics" && (
+                    <div className="space-y-3">
+                      {outcome ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {([
+                            { key: "majorityBaseline",   label: "Majority Baseline",   aucColor: "#94A3B8", f1Color: "#CBD5E1" },
+                            { key: "logisticRegression", label: "Logistic Regression", aucColor: "#F37021", f1Color: "#FB923C" },
+                            { key: "randomForest",       label: "Random Forest",       aucColor: "#0EA5E9", f1Color: "#38BDF8" },
+                          ] as const).map(({ key, label, aucColor, f1Color }) => (
+                            <div key={key} className="space-y-2">
+                              <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9]">{label}</p>
+                              <MetricBar label="AUC-ROC" value={outcome.metrics[key].auc} color={aucColor} />
+                              <MetricBar label="F1"      value={outcome.metrics[key].f1}  color={f1Color} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-sm text-[#94A3B8]">Run Mock Outcome to load metrics.</p>}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Reports tab */}
-            {activeTab === "reports" && (
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-[#0F172A]">Reports</h4>
-                {outcome ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {([
-                      { key: "metadata",   label: "Metadata JSON",   desc: outcome.reports.metadata   ?? "notebooks/models/metadata_*.json" },
-                      { key: "evaluation", label: "Evaluation Report",desc: outcome.reports.evaluation ?? "Not generated" },
-                      { key: "log",        label: "Pipeline Log",     desc: "Full SSE stream from this session", onClick: () => setActiveTab("logs") },
-                    ] as { key: string; label: string; desc: string; onClick?: () => void }[]).map(({ key, label, desc, onClick }) => (
-                      <div key={key} className="border border-[#E2E8F0] rounded-2xl p-4 space-y-2">
-                        <p className="text-sm font-bold text-[#0F172A]">{label}</p>
-                        <p className="text-xs text-[#64748B] font-mono break-all">{desc}</p>
-                        {onClick && (
-                          <button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#FED7AA] text-[#C2410C] hover:border-[#F37021] transition-colors">
-                            View Logs
-                          </button>
+                  )}
+                  {/* Charts */}
+                  {activeTab === "charts" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {([
+                        { key: "confusionMatrix",   label: "Confusion Matrix" },
+                        { key: "rocCurve",          label: "ROC Curve" },
+                        { key: "featureImportance", label: "Feature Importance" },
+                      ] as const).map(({ key, label }) =>
+                        outcome?.charts[key] ? (
+                          <div key={key} className="border border-[#E2E8F0] rounded-xl p-3">
+                            <p className="text-[11px] font-semibold text-[#64748B] mb-2">{label}</p>
+                            <img src={outcome.charts[key]} alt={label} className="w-full rounded-xl" />
+                          </div>
+                        ) : <ChartPlaceholder key={key} label={label} />
+                      )}
+                    </div>
+                  )}
+                  {/* Dataset */}
+                  {activeTab === "dataset" && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {([
+                        ["Batch Code",    outcome?.batchCode ?? config.batchCode],
+                        ["Students",      outcome ? String(outcome.dataset.students)    : String(config.nStudents)],
+                        ["Tasks",         outcome ? String(outcome.dataset.tasks)       : String(config.taskIds?.length ?? config.nTasks)],
+                        ["Samples",       outcome ? String(outcome.dataset.samples)     : "—"],
+                        ["Train",         outcome ? String(outcome.dataset.trainSamples): "—"],
+                        ["Test",          outcome ? String(outcome.dataset.testSamples) : "—"],
+                        ["Sessions",      outcome ? String(outcome.dataset.sessions)    : "—"],
+                        ["Attempts",      outcome ? String(outcome.dataset.attempts)    : "—"],
+                        ["Submissions",   outcome ? String(outcome.dataset.submissions) : "—"],
+                        ["At-Risk Rate",  `${config.atRiskRate}%`],
+                        ["Missing Rate",  `${config.missingRate}%`],
+                        ["Split Method",  "GroupShuffleSplit"],
+                      ] as [string, string][]).map(([k, v]) => (
+                        <div key={k} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 space-y-0.5">
+                          <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k}</p>
+                          <p className="text-xs font-mono font-bold text-[#0F172A]">{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Reports */}
+                  {activeTab === "reports" && (
+                    <div className="space-y-3">
+                      {outcome ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {([
+                            { key: "metadata",   label: "Metadata JSON",    desc: outcome.reports.metadata   ?? "notebooks/models/metadata_*.json" },
+                            { key: "evaluation", label: "Evaluation Report", desc: outcome.reports.evaluation ?? "Not generated" },
+                            { key: "log",        label: "Pipeline Log",      desc: "Full SSE stream from this session", onClick: () => setActiveTab("logs") },
+                          ] as { key: string; label: string; desc: string; onClick?: () => void }[]).map(({ key, label, desc, onClick }) => (
+                            <div key={key} className="border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+                              <p className="text-sm font-bold text-[#0F172A]">{label}</p>
+                              <p className="text-xs text-[#64748B] font-mono break-all">{desc}</p>
+                              {onClick && (
+                                <button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#FED7AA] text-[#C2410C] hover:border-[#F37021] transition-colors">
+                                  View Logs
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-sm text-[#94A3B8]">Run the full pipeline to generate reports.</p>}
+                    </div>
+                  )}
+                  {/* Logs */}
+                  {activeTab === "logs" && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-[#0F172A]">Pipeline Log</p>
+                        {logs.length > 0 && (
+                          <button onClick={() => setLogs([])} className="text-[11px] text-[#94A3B8] hover:text-red-500 transition-colors">Clear</button>
                         )}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[#94A3B8]">Run the full pipeline to generate reports.</p>
-                )}
-              </div>
-            )}
-
-            {/* Logs tab */}
-            {activeTab === "logs" && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-[#0F172A]">Pipeline Log</h4>
-                  {logs.length > 0 && (
-                    <button onClick={() => setLogs([])} className="text-[11px] text-[#94A3B8] hover:text-red-500 transition-colors">Clear</button>
+                      {logs.length > 0 ? (
+                        <div className="bg-[#0F172A] rounded-xl px-4 py-3 h-56 overflow-y-auto font-mono text-xs text-[#94A3B8] space-y-0.5">
+                          {logs.map((line, i) => (
+                            <div key={i} className={line.startsWith("âŒ") ? "text-red-400" : line.startsWith("âœ…") ? "text-green-400" : line.startsWith("â”€â”€") ? "text-[#F37021] font-semibold" : undefined}>
+                              {line}
+                            </div>
+                          ))}
+                          <div ref={logEndRef} />
+                        </div>
+                      ) : <p className="text-sm text-[#94A3B8]">No log output yet.</p>}
+                    </div>
                   )}
                 </div>
-                {logs.length > 0 ? (
-                  <div className="bg-[#0F172A] rounded-xl px-4 py-3 h-64 overflow-y-auto font-mono text-xs text-[#94A3B8] space-y-0.5">
-                    {logs.map((line, i) => (
-                      <div key={i} className={line.startsWith("❌") ? "text-red-400" : line.startsWith("✅") ? "text-green-400" : line.startsWith("──") ? "text-[#F37021] font-semibold" : undefined}>
-                        {line}
-                      </div>
-                    ))}
-                    <div ref={logEndRef} />
-                  </div>
-                ) : (
-                  <p className="text-sm text-[#94A3B8]">No log output yet. Run a pipeline step to see logs here.</p>
-                )}
               </div>
             )}
           </div>
         </div>
-      )}
+      </div>
+    )}
+
+    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        MAIN PAGE — Compact config row + action buttons
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    <section className="space-y-5">
+      {/* â”€â”€ Compact config row â”€â”€ */}
+      <div className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        {/* Mock code */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Mock</span>
+          <span className="font-mono text-xs font-bold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-0.5 rounded-lg">{config.batchCode}</span>
+        </div>
+        <span className="w-px h-4 bg-[#E2E8F0]" />
+        {/* Students */}
+        <div className="flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-[#94A3B8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+          <span className="text-xs font-bold text-[#0F172A]">{config.nStudents}</span>
+          <span className="text-[10px] text-[#94A3B8]">students</span>
+        </div>
+        <span className="w-px h-4 bg-[#E2E8F0]" />
+        {/* Activity icon */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Activity</span>
+          <span className="inline-flex items-center justify-center text-[#F37021]" title={currentActivity ? SET_FAMILY_LABEL[currentActivity] : "Assignment"}>
+            {currentActivity ? SET_FAMILY_ICON[currentActivity] : SET_FAMILY_ICON["assignment"]}
+          </span>
+        </div>
+        <span className="w-px h-4 bg-[#E2E8F0]" />
+        {/* Task type icon */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Task</span>
+          <span className="inline-flex items-center justify-center text-[#F37021]">
+            {currentTaskType
+              ? <TaskTypeIcon type={currentTaskType} className="w-4 h-4" />
+              : <TaskTypeIcon type="sql_text" className="w-4 h-4" />}
+          </span>
+        </div>
+        <span className="w-px h-4 bg-[#E2E8F0]" />
+        {/* At-risk / Missing */}
+        <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
+          <span>At-risk <strong className="text-[#0F172A]">{config.atRiskRate}%</strong></span>
+          <span>Â·</span>
+          <span>Missing <strong className="text-[#0F172A]">{config.missingRate}%</strong></span>
+        </div>
+        {/* Spacer */}
+        <div className="flex-1" />
+        {/* Edit Config button */}
+        <button
+          onClick={() => setShowCreateModal(true)}
+          disabled={isRunning}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-[#FED7AA] text-[#C2410C] bg-white hover:bg-[#FFF7ED] transition-colors disabled:opacity-40"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+          </svg>
+          Edit Config
+        </button>
+        {/* Run Pipeline button */}
+        <button
+          onClick={handleRunPipeline}
+          disabled={isRunning}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors disabled:opacity-50"
+        >
+          {isRunning ? (
+            <>
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              Runningâ€¦
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+              </svg>
+              Run Pipeline
+            </>
+          )}
+        </button>
+        {/* View Results button (after pipeline ran) */}
+        {pipelineProgress > 0 && !isRunning && (
+          <button
+            onClick={() => setShowPipelineModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-[#FED7AA] text-[#F37021] bg-white hover:bg-[#FFF7ED] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+            </svg>
+            View Results
+          </button>
+        )}
+      </div>
     </section>
+    </>
   );
 }
 
