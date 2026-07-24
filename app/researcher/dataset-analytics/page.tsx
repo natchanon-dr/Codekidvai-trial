@@ -124,6 +124,8 @@ type PipelineRun = {
   analysis_steps: AnalysisStep[] | null;
   started_at: string | null;
   completed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_requested: boolean;
   error_summary: string | null;
   initiated_by: string | null;
   created_at: string;
@@ -1201,12 +1203,12 @@ function CancelRunConfirmModal({
         onCancelled(); // parent clears pendingCancelRun + increments refreshKey
       } else {
         const j = await res.json().catch(() => ({})) as { error?: string };
-        setError(j.error ?? "Failed to cancel run.");
+        setError(j.error ?? "Failed to request cancellation.");
         setSubmitting(false);
         // Keep focus inside dialog — focus stays on "Cancel Run" (last active element)
       }
     } catch {
-      setError("Network error. The run was not cancelled.");
+      setError("Network error. The cancellation request failed.");
       setSubmitting(false);
     }
   }
@@ -1245,7 +1247,7 @@ function CancelRunConfirmModal({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            <p className="text-xs text-red-700">This run will be <strong>permanently cancelled</strong> and cannot be restarted. A new run must be created.</p>
+            <p className="text-xs text-red-700">A cancellation will be <strong>requested</strong>. The run will stop safely and cannot be restarted. A new run must be created.</p>
           </div>
 
           {/* Run details */}
@@ -1298,7 +1300,7 @@ function CancelRunConfirmModal({
             aria-busy={submitting}
             className="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
           >
-            {submitting ? "Cancelling…" : "Cancel Run"}
+            {submitting ? "Requesting…" : "Cancel Run"}
           </button>
         </div>
       </div>
@@ -1373,8 +1375,8 @@ function RunHistoryModal({
   function handleCancelled() {
     setPendingCancelRun(null);
     setRefreshKey((k) => k + 1);
-    // After successful cancel the run's status becomes "cancelled", so its Cancel
-    // button is removed from the list. Always use the fallback (Refresh button).
+    // After a cancellation request the run shows "Cancelling…" and its Cancel
+    // button is hidden. Always use the fallback (Refresh button).
     returnFocus(false);
   }
 
@@ -1419,14 +1421,20 @@ function RunHistoryModal({
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[10px] text-[#64748B]">{run.id.slice(0, 8)}…</span>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_COLORS[run.status] ?? "text-[#64748B] bg-[#F8FAFC]"}`}>
-                      {run.status}
-                    </span>
+                    {run.cancellation_requested && ["pending", "running"].includes(run.status) ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold text-amber-700 bg-amber-50">
+                        Cancelling…
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_COLORS[run.status] ?? "text-[#64748B] bg-[#F8FAFC]"}`}>
+                        {run.status}
+                      </span>
+                    )}
                     <span className="text-[10px] text-[#94A3B8] italic">{run.run_type.replace("_", " ")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[#94A3B8]">{new Date(run.created_at).toLocaleString()}</span>
-                    {["pending", "running"].includes(run.status) && (
+                    {["pending", "running"].includes(run.status) && !run.cancellation_requested && (
                       <button
                         onClick={(e) => {
                           initiatingButtonRef.current = e.currentTarget;
