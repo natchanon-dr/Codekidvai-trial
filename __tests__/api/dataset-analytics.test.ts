@@ -708,7 +708,7 @@ describe("GET /api/researcher/dataset-analytics", () => {
 
 // ── Runs route tests (points 49–60) ──────────────────────────────────────────
 
-import { GET as RunsGET, POST as RunsPOST } from "@/app/api/researcher/dataset-analytics/[id]/runs/route";
+import { GET as RunsGET, POST as RunsPOST, PATCH as RunsPATCH } from "@/app/api/researcher/dataset-analytics/[id]/runs/route";
 
 type RunsApiBody = {
   dataset_id?: string;
@@ -1169,6 +1169,209 @@ describe("Accessibility & regression — dataset-analytics API contract", () => 
     expect(ids).not.toContain("pipeline-runs");
     expect(ids).toHaveLength(1);
     expect(ids[0]).toBe("phase4_pilot");
+  });
+
+});
+
+// ── PATCH cancel run tests (points 71–81) ────────────────────────────────────
+
+function makePatchRequest(runId: string | null): import("next/server").NextRequest {
+  const url = new URL("http://localhost/api/researcher/dataset-analytics/ds1/runs");
+  if (runId) url.searchParams.set("run_id", runId);
+  return {
+    headers: { get: () => "Bearer test-token" },
+    nextUrl: { searchParams: url.searchParams },
+    json: async () => ({}),
+  } as unknown as import("next/server").NextRequest;
+}
+
+// PATCH handler does NOT call fetchDatasetActive.
+// It calls: (1) from("mst_pipeline_runs").select().eq().eq().maybeSingle()  → run lookup
+//           (2) from("mst_pipeline_runs").update().eq().select().single()     → update
+function mockPatchSupabase(
+  runRow: Record<string, unknown> | null,   // returned by run lookup maybeSingle
+  updatedRow: Record<string, unknown> | null,
+  updateError?: string,
+) {
+  mockFrom.mockImplementation(() => {
+    const thenable = {
+      select: vi.fn(() => thenable),
+      eq: vi.fn(() => thenable),
+      is: vi.fn(() => thenable),
+      update: vi.fn(() => thenable),
+      maybeSingle: vi.fn(async () => ({ data: runRow, error: null })),
+      single: vi.fn(async () => ({
+        data: updatedRow,
+        error: updateError ? { message: updateError, code: "" } : null,
+      })),
+    };
+    return thenable;
+  });
+}
+
+describe("PATCH /api/researcher/dataset-analytics/[id]/runs — cancel run", () => {
+
+  beforeEach(() => {
+    mockFrom.mockClear();
+    mockRpc.mockClear();
+    vi.mocked(requireAdminOrResearcher).mockResolvedValue({
+      user_id: "u1",
+      profile_id: "p1",
+      participant_code: "PC001",
+      role: "researcher",
+      consent_accepted: true,
+    });
+  });
+
+  // ── 71. Auth required ────────────────────────────────────────────────────
+
+  it("71: PATCH → 401 when auth throws", async () => {
+    vi.mocked(requireAdminOrResearcher).mockRejectedValueOnce(new Error("Unauthorized"));
+    const res = await RunsPATCH(makePatchRequest("run-1"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _status: number };
+    expect(res._status).toBe(401);
+  });
+
+  // ── 72. Missing run_id query param → 400 ─────────────────────────────────
+
+  it("72: PATCH without run_id → 400", async () => {
+    const res = await RunsPATCH(makePatchRequest(null), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(400);
+    expect(typeof res._body.error).toBe("string");
+  });
+
+  // ── 73. Run not found or not owned by dataset → 404 ─────────────────────
+  // (PATCH has no separate dataset check — ownership is enforced by eq("dataset_id", id))
+
+  it("73: PATCH → 404 when run not found (or belongs to different dataset)", async () => {
+    mockPatchSupabase(null, null);
+    const res = await RunsPATCH(makePatchRequest("run-missing"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(404);
+    expect(typeof res._body.error).toBe("string");
+  });
+
+  // ── 74. Cancel a pending run → 200 with status=cancelled ─────────────────
+
+  it("74: PATCH pending run → 200 with status cancelled", async () => {
+    const updatedRow = {
+      id: "run-1", dataset_id: "ds1", run_type: "full_pipeline", status: "cancelled",
+      analysis_steps: null, started_at: null, completed_at: null,
+      error_summary: null, initiated_by: null, configuration: null,
+      result_version: null, created_at: new Date().toISOString(),
+    };
+    mockPatchSupabase(
+      { id: "run-1", dataset_id: "ds1", status: "pending" },
+      updatedRow,
+    );
+    const res = await RunsPATCH(makePatchRequest("run-1"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(200);
+    expect(res._body.run?.status).toBe("cancelled");
+  });
+
+  // ── 75. Cancel a running run → 200 with status=cancelled ─────────────────
+
+  it("75: PATCH running run → 200 with status cancelled", async () => {
+    const updatedRow = {
+      id: "run-2", dataset_id: "ds1", run_type: "full_pipeline", status: "cancelled",
+      analysis_steps: null, started_at: new Date().toISOString(), completed_at: null,
+      error_summary: null, initiated_by: null, configuration: null,
+      result_version: null, created_at: new Date().toISOString(),
+    };
+    mockPatchSupabase(
+      { id: "run-2", dataset_id: "ds1", status: "running" },
+      updatedRow,
+    );
+    const res = await RunsPATCH(makePatchRequest("run-2"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(200);
+    expect(res._body.run?.status).toBe("cancelled");
+  });
+
+  // ── 76. Cannot cancel a completed run → 422 ──────────────────────────────
+
+  it("76: PATCH completed run → 422 (cannot cancel)", async () => {
+    mockPatchSupabase({ id: "run-3", dataset_id: "ds1", status: "completed" }, null);
+    const res = await RunsPATCH(makePatchRequest("run-3"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(422);
+    expect(typeof res._body.error).toBe("string");
+    expect(res._body.error).toMatch(/cancel/i);
+  });
+
+  // ── 77. Cannot cancel a failed run → 422 ─────────────────────────────────
+
+  it("77: PATCH failed run → 422 (cannot cancel)", async () => {
+    mockPatchSupabase({ id: "run-4", dataset_id: "ds1", status: "failed" }, null);
+    const res = await RunsPATCH(makePatchRequest("run-4"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(422);
+    expect(res._body.error).toMatch(/cancel/i);
+  });
+
+  // ── 78. Cannot cancel an already-cancelled run → 422 ─────────────────────
+
+  it("78: PATCH already-cancelled run → 422 (cannot cancel)", async () => {
+    mockPatchSupabase({ id: "run-5", dataset_id: "ds1", status: "cancelled" }, null);
+    const res = await RunsPATCH(makePatchRequest("run-5"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(422);
+    expect(res._body.error).toMatch(/cancel/i);
+  });
+
+  // ── 79. DB update failure → 500 ──────────────────────────────────────────
+
+  it("79: PATCH → 500 when DB update fails", async () => {
+    mockPatchSupabase(
+      { id: "run-6", dataset_id: "ds1", status: "pending" },
+      null,
+      "connection refused",
+    );
+    const res = await RunsPATCH(makePatchRequest("run-6"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(500);
+    expect(typeof res._body.error).toBe("string");
+  });
+
+  // ── 80. Response run matches cancelled status shape ───────────────────────
+
+  it("80: successful PATCH response includes full run shape with id, status, run_type", async () => {
+    const now = new Date().toISOString();
+    const updatedRow = {
+      id: "run-7", dataset_id: "ds1", run_type: "full_pipeline", status: "cancelled",
+      analysis_steps: [], started_at: null, completed_at: null,
+      error_summary: null, initiated_by: null, configuration: null,
+      result_version: null, created_at: now,
+    };
+    mockPatchSupabase(
+      { id: "run-7", dataset_id: "ds1", status: "pending" },
+      updatedRow,
+    );
+    const res = await RunsPATCH(makePatchRequest("run-7"), { params: Promise.resolve({ id: "ds1" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(200);
+    expect(res._body.run?.id).toBe("run-7");
+    expect(res._body.run?.status).toBe("cancelled");
+    expect(res._body.run?.run_type).toBe("full_pipeline");
+  });
+
+  // ── 81. Confirming sends exactly one PATCH with correct run_id ────────────
+  // (API contract: run_id in query param must match the cancelled run)
+
+  it("81: PATCH run_id in URL query param is scoped to the dataset id route param", async () => {
+    const updatedRow = {
+      id: "run-abc", dataset_id: "ds-xyz", run_type: "full_pipeline", status: "cancelled",
+      analysis_steps: null, started_at: null, completed_at: null,
+      error_summary: null, initiated_by: null, configuration: null,
+      result_version: null, created_at: new Date().toISOString(),
+    };
+    // Simulate: the run fetch for ds-xyz/run-abc returns the run (ownership validated by DB eq)
+    mockPatchSupabase(
+      { id: "run-abc", dataset_id: "ds-xyz", status: "pending" },
+      updatedRow,
+    );
+    const url = new URL("http://localhost/api/researcher/dataset-analytics/ds-xyz/runs");
+    url.searchParams.set("run_id", "run-abc");
+    const req = {
+      headers: { get: () => "Bearer test-token" },
+      nextUrl: { searchParams: url.searchParams },
+      json: async () => ({}),
+    } as unknown as import("next/server").NextRequest;
+    const res = await RunsPATCH(req, { params: Promise.resolve({ id: "ds-xyz" }) }) as unknown as { _body: RunsApiBody; _status: number };
+    expect(res._status).toBe(200);
+    expect(res._body.run?.id).toBe("run-abc");
   });
 
 });

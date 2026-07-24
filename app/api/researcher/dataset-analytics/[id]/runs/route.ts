@@ -210,3 +210,56 @@ export async function POST(
     { status: 201 },
   );
 }
+
+// ---------------------------------------------------------------------------
+// PATCH /:id/runs?run_id=<uuid> — cancel a pending run
+// ---------------------------------------------------------------------------
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    await requireAdminOrResearcher(request);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const runId = request.nextUrl.searchParams.get("run_id");
+  if (!runId) {
+    return NextResponse.json({ error: "run_id query param is required." }, { status: 400 });
+  }
+
+  // Verify the run belongs to this dataset and is cancellable
+  const { data: run, error: fetchErr } = await supabaseAdmin
+    .from("mst_pipeline_runs")
+    .select("id, dataset_id, status")
+    .eq("id", runId)
+    .eq("dataset_id", id)
+    .maybeSingle();
+
+  if (fetchErr || !run) {
+    return NextResponse.json({ error: "Run not found." }, { status: 404 });
+  }
+
+  if (!["pending", "running"].includes(String(run.status))) {
+    return NextResponse.json(
+      { error: `Cannot cancel a run with status '${String(run.status)}'.` },
+      { status: 422 },
+    );
+  }
+
+  const { data: updated, error: updateErr } = await supabaseAdmin
+    .from("mst_pipeline_runs")
+    .update({ status: "cancelled" })
+    .eq("id", runId)
+    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, error_summary, initiated_by, configuration, result_version, created_at")
+    .single();
+
+  if (updateErr) {
+    return NextResponse.json({ error: "Failed to cancel run." }, { status: 500 });
+  }
+
+  return NextResponse.json({ run: rowToRun(updated as unknown as Record<string, unknown>) });
+}

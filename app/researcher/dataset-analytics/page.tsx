@@ -71,6 +71,8 @@ type DatasetRecord = {
   task_type: string;
   class_id: string | null;
   task_id: string | null;
+  class_name: string | null;
+  task_set_name: string | null;
   active: boolean;
   usage_status: "used" | "not_used";
   session_count: number;
@@ -985,6 +987,7 @@ function RunConfirmModal({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingRunId, setExistingRunId] = useState<string | null>(null);
 
   const isInactive = !dataset.active;
 
@@ -992,6 +995,7 @@ function RunConfirmModal({
     if (isInactive) return;
     setSubmitting(true);
     setError(null);
+    setExistingRunId(null);
     try {
       const res = await fetch(`/api/researcher/dataset-analytics/${dataset.id}/runs`, {
         method: "POST",
@@ -1001,6 +1005,7 @@ function RunConfirmModal({
       const j = await res.json() as { run?: { id: string }; error?: string; existing_run_id?: string };
       if (!res.ok) {
         setError(j.error ?? "Failed to start pipeline run.");
+        if (j.existing_run_id) setExistingRunId(j.existing_run_id);
         setSubmitting(false);
         return;
       }
@@ -1013,15 +1018,16 @@ function RunConfirmModal({
 
   return (
     <ModalOverlay onClose={onClose} title="Run Full Pipeline">
-      <div className="px-6 py-5 space-y-5">
+      <div className="px-6 py-5 space-y-4">
         {/* Dataset details */}
-        <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-4 py-3 space-y-1.5">
+        <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Dataset</span>
-            <span className="font-mono text-xs font-semibold text-[#0F172A]">{dataset.code}</span>
+            <span className="font-mono text-xs font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-0.5 rounded-lg">{dataset.code}</span>
           </div>
           <p className="text-xs text-[#0F172A] font-medium">{dataset.name}</p>
-          <div className="grid grid-cols-3 gap-x-2 pt-1">
+          {/* Batch · Activity · Task Type */}
+          <div className="grid grid-cols-3 gap-x-2 pt-0.5">
             <div>
               <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Batch</p>
               <p className="text-xs text-[#475569] capitalize">{dataset.batch_type}</p>
@@ -1031,57 +1037,78 @@ function RunConfirmModal({
               <p className="text-xs text-[#475569] capitalize">{SET_FAMILY_LABEL[dataset.set_family as "assignment" | "lab" | "exam"] ?? dataset.set_family}</p>
             </div>
             <div>
-              <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Task</p>
-              <p className="text-xs text-[#475569]">{DATASET_TASK_LABEL[dataset.task_type] ?? dataset.task_type}</p>
+              <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Task Type</p>
+              <p className="text-xs text-[#475569]">{DATASET_TASK_LABEL[dataset.task_type] ?? (dataset.task_type || "EX (All)")}</p>
             </div>
+          </div>
+          {/* Class · Task Set */}
+          <div className="grid grid-cols-2 gap-x-2 pt-0.5 border-t border-[#F1F5F9]">
+            <div className="pt-1.5">
+              <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Class</p>
+              <p className="text-xs text-[#475569]">{dataset.class_name ?? dataset.class_id ?? <span className="italic text-[#94A3B8]">—</span>}</p>
+            </div>
+            <div className="pt-1.5">
+              <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Task Set</p>
+              <p className="text-xs text-[#475569]">{dataset.task_set_name ?? dataset.task_id ?? <span className="italic text-[#94A3B8]">—</span>}</p>
+            </div>
+          </div>
+          {/* Version info — truthful */}
+          <div className="pt-0.5 border-t border-[#F1F5F9]">
+            <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide pt-1.5">Dataset Version</p>
+            <p className="text-[10px] text-[#94A3B8] italic">Not tracked — version tracking requires backend pipeline integration.</p>
           </div>
         </div>
 
         {/* Readiness check */}
         {isInactive && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-            This dataset is inactive. Activate it before running the full pipeline.
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 font-medium">
+            ⚠ This dataset is inactive. Activate it before running the full pipeline.
           </div>
         )}
+
+        {/* Dependency status */}
+        <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2">
+          <p className="text-[10px] font-semibold text-[#475569] mb-1.5 uppercase tracking-wide">Dependency Status</p>
+          <p className="text-[10px] text-[#94A3B8]">
+            Backend execution engine: <span className="text-amber-600 font-semibold">NOT CONNECTED</span> — run records will be created with status <span className="font-mono">pending</span> but analyses will not execute until the pipeline worker is deployed.
+          </p>
+        </div>
 
         {/* Analyses that will run */}
         <div>
           <p className="text-xs font-semibold text-[#475569] mb-2">Analyses to run:</p>
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {PIPELINE_ANALYSES.map((a) => (
-              <div key={a.key} className="flex items-center gap-2">
-                <span className={`inline-block w-2 h-2 rounded-full ${isInactive ? "bg-[#E2E8F0]" : "bg-[#F37021]"}`} />
+              <div key={a.key} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5">
+                <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${isInactive ? "bg-[#E2E8F0]" : "bg-amber-400"}`} />
                 <span className="text-xs text-[#475569]">{a.label}</span>
+                <span className="ml-auto text-[9px] text-amber-600 font-semibold">PENDING</span>
               </div>
             ))}
           </div>
+          <p className="text-[9px] text-[#94A3B8] mt-1.5">All analyses will be queued as pending — execution requires the pipeline worker.</p>
         </div>
-
-        <p className="text-[10px] text-[#94A3B8]">
-          This will create a run record. Pipeline execution requires additional backend tooling not yet connected.
-        </p>
 
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
             {error}
+            {existingRunId && (
+              <p className="mt-1 text-[10px]">
+                Existing run ID: <span className="font-mono">{existingRunId.slice(0, 8)}…</span> — open <strong>Run History</strong> to view or cancel it.
+              </p>
+            )}
           </div>
         )}
 
         <div className="flex justify-end gap-3 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-[#475569] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] transition-colors"
-          >
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-[#475569] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] transition-colors">
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => { void handleConfirm(); }}
+          <button type="button" onClick={() => { void handleConfirm(); }}
             disabled={submitting || isInactive}
             aria-label="Confirm full pipeline run"
-            className="px-4 py-2 text-xs font-semibold text-white bg-[#F37021] rounded-lg hover:bg-[#D45F10] disabled:opacity-50 transition-colors"
-          >
+            className="px-4 py-2 text-xs font-semibold text-white bg-[#F37021] rounded-lg hover:bg-[#D45F10] disabled:opacity-50 transition-colors">
             {submitting ? "Starting…" : "Confirm Run"}
           </button>
         </div>
@@ -1100,6 +1127,153 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "text-[#64748B] bg-[#F8FAFC]",
 };
 
+// ─── Cancel confirmation dialog ──────────────────────────────────────────────
+
+function CancelRunConfirmModal({
+  run,
+  datasetCode,
+  datasetName,
+  datasetId,
+  token,
+  onDismiss,
+  onCancelled,
+}: {
+  run: PipelineRun;
+  datasetCode: string;
+  datasetName: string;
+  datasetId: string;
+  token: string;
+  onDismiss: () => void;
+  onCancelled: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Escape key dismisses (not cancels) when not submitting
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Escape" && !submitting) onDismiss();
+    }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [submitting, onDismiss]);
+
+  async function handleConfirmCancel() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/researcher/dataset-analytics/${datasetId}/runs?run_id=${run.id}`,
+        { method: "PATCH", headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (res.ok) {
+        onCancelled(); // caller increments refreshKey and closes this modal
+      } else {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        setError(j.error ?? "Failed to cancel run.");
+        setSubmitting(false);
+      }
+    } catch {
+      setError("Network error. The run was not cancelled.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="cancel-run-title"
+      aria-describedby="cancel-run-desc"
+      onClick={(e) => { if (!submitting && e.target === e.currentTarget) onDismiss(); }}
+    >
+      <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-2xl w-full max-w-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+          <h2 id="cancel-run-title" className="font-semibold text-[#0F172A] text-sm">Cancel Pipeline Run?</h2>
+          <button
+            onClick={onDismiss}
+            disabled={submitting}
+            aria-label="Keep run, close dialog"
+            className="text-[#94A3B8] hover:text-[#0F172A] disabled:opacity-40 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div id="cancel-run-desc" className="px-5 py-4 space-y-3">
+          {/* Warning banner */}
+          <div className="flex gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="text-xs text-red-700">This run will be <strong>permanently cancelled</strong> and cannot be restarted. A new run must be created.</p>
+          </div>
+
+          {/* Run details */}
+          <dl className="space-y-1.5 text-xs">
+            <div className="flex justify-between gap-2">
+              <dt className="text-[#64748B]">Dataset</dt>
+              <dd className="text-[#0F172A] font-mono text-right break-all">{datasetCode}</dd>
+            </div>
+            {datasetName && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-[#64748B]">Name</dt>
+                <dd className="text-[#0F172A] text-right break-all">{datasetName}</dd>
+              </div>
+            )}
+            <div className="flex justify-between gap-2">
+              <dt className="text-[#64748B]">Run ID</dt>
+              <dd className="font-mono text-[#0F172A] text-right break-all">{run.id.slice(0, 8)}…</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-[#64748B]">Status</dt>
+              <dd>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_COLORS[run.status] ?? ""}`}>
+                  {run.status}
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#F1F5F9]">
+          <button
+            onClick={onDismiss}
+            disabled={submitting}
+            className="px-4 py-2 text-xs font-medium text-[#475569] bg-white border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40 transition-colors"
+          >
+            Keep Running
+          </button>
+          <button
+            onClick={() => { void handleConfirmCancel(); }}
+            disabled={submitting}
+            aria-busy={submitting}
+            className="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Cancelling…" : "Cancel Run"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Run history modal ────────────────────────────────────────────────────────
+
 function RunHistoryModal({
   dataset,
   onClose,
@@ -1112,6 +1286,8 @@ function RunHistoryModal({
   const [runs, setRuns] = useState<PipelineRun[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingCancelRun, setPendingCancelRun] = useState<PipelineRun | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1136,34 +1312,65 @@ function RunHistoryModal({
     }
     void load();
     return () => { cancelled = true; };
-  }, [dataset.id, token]);
+  }, [dataset.id, token, refreshKey]);
 
   return (
-    <ModalOverlay onClose={onClose} title={`Run History — ${dataset.code}`}>
-      <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
-        {loading ? (
-          <p className="text-sm text-[#94A3B8] text-center py-4">Loading…</p>
-        ) : error ? (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</div>
-        ) : !runs || runs.length === 0 ? (
-          <div className="text-center py-8 text-sm text-[#94A3B8]">
-            No runs yet for this dataset.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {runs.map((run) => (
+    <>
+      {/* Confirmation dialog — rendered above RunHistoryModal (z-[60]) */}
+      {pendingCancelRun && (
+        <CancelRunConfirmModal
+          run={pendingCancelRun}
+          datasetCode={dataset.code}
+          datasetName={dataset.name}
+          datasetId={dataset.id}
+          token={token}
+          onDismiss={() => setPendingCancelRun(null)}
+          onCancelled={() => {
+            setPendingCancelRun(null);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      <ModalOverlay onClose={onClose} title={`Run History — ${dataset.code}`}>
+        <div className="px-6 pt-4 pb-2 flex items-center justify-between border-b border-[#F1F5F9]">
+          <p className="text-[10px] text-[#94A3B8]">{runs ? `${runs.length} run${runs.length !== 1 ? "s" : ""}` : ""}</p>
+          <button onClick={() => setRefreshKey((k) => k + 1)} disabled={loading}
+            className="flex items-center gap-1 text-[10px] text-[#F37021] hover:underline disabled:opacity-50">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.56"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+        <div className="px-6 py-4 space-y-3 max-h-[55vh] overflow-y-auto">
+          {error && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700" role="alert">{error}</div>}
+          {loading ? (
+            <p className="text-sm text-[#94A3B8] text-center py-4">Loading…</p>
+          ) : !runs || runs.length === 0 ? (
+            <div className="text-center py-8 text-sm text-[#94A3B8]">No runs yet for this dataset.</div>
+          ) : (
+            runs.map((run) => (
               <div key={run.id} className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 space-y-2">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[10px] text-[#64748B]">{run.id.slice(0, 8)}…</span>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_COLORS[run.status] ?? "text-[#64748B] bg-[#F8FAFC]"}`}>
                       {run.status}
                     </span>
-                    <span className="text-[10px] text-[#94A3B8] italic">{run.run_type}</span>
+                    <span className="text-[10px] text-[#94A3B8] italic">{run.run_type.replace("_", " ")}</span>
                   </div>
-                  <span className="text-[10px] text-[#94A3B8]">
-                    {new Date(run.created_at).toLocaleString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#94A3B8]">{new Date(run.created_at).toLocaleString()}</span>
+                    {["pending", "running"].includes(run.status) && (
+                      <button
+                        onClick={() => setPendingCancelRun(run)}
+                        aria-label={`Cancel run ${run.id.slice(0, 8)}`}
+                        className="text-[9px] text-red-500 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-50 transition-colors">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {run.analysis_steps && run.analysis_steps.length > 0 && (
                   <div className="grid grid-cols-2 gap-1">
@@ -1177,16 +1384,14 @@ function RunHistoryModal({
                   </div>
                 )}
                 {run.error_summary && (
-                  <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1">
-                    {run.error_summary}
-                  </p>
+                  <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1">{run.error_summary}</p>
                 )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </ModalOverlay>
+            ))
+          )}
+        </div>
+      </ModalOverlay>
+    </>
   );
 }
 

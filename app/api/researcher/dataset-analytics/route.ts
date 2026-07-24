@@ -113,7 +113,9 @@ type DatasetRecord = {
   set_family: string;
   task_type: string;
   class_id: string | null;
+  class_name: string | null;
   task_id: string | null;
+  task_set_name: string | null;
   active: boolean;
   usage_status: "used" | "not_used";
   session_count: number;
@@ -346,9 +348,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Bulk-fetch class names
+    const classNameMap = new Map<string, string>();
+    if (classIds.length > 0) {
+      const { data: classes } = await supabaseAdmin
+        .from("tb_classes")
+        .select("class_id, class_name")
+        .in("class_id", classIds);
+      for (const c of classes ?? []) classNameMap.set(String(c.class_id), String(c.class_name));
+    }
+
+    // Bulk-fetch task set names (mst_experiment_batches)
+    const taskSetIds = [...new Set(rawDatasets.map((r) => r.task_set_id as string | null).filter(Boolean))] as string[];
+    const taskSetNameMap = new Map<string, string>();
+    if (taskSetIds.length > 0) {
+      const { data: batches } = await supabaseAdmin
+        .from("mst_experiment_batches")
+        .select("id, batch_name")
+        .in("id", taskSetIds);
+      for (const b of batches ?? []) taskSetNameMap.set(String(b.id), String(b.batch_name));
+    }
+
     datasetList = rawDatasets
       .map((row) => {
         const cid = row.class_id ? String(row.class_id) : null;
+        const tid = row.task_set_id ? String(row.task_set_id) : null;
         const stats = cid ? (classStats.get(cid) ?? { session_count: 0, learner_count: 0 }) : { session_count: 0, learner_count: 0 };
         return {
           id: String(row.id),
@@ -358,7 +382,9 @@ export async function GET(request: NextRequest) {
           set_family: String(row.set_family),
           task_type: String(row.task_type),
           class_id: cid,
-          task_id: row.task_set_id ? String(row.task_set_id) : null,
+          class_name: cid ? (classNameMap.get(cid) ?? null) : null,
+          task_id: tid,
+          task_set_name: tid ? (taskSetNameMap.get(tid) ?? null) : null,
           active: Boolean(row.active),
           usage_status: resolveUsageStatus(String(row.id)),
           session_count: stats.session_count,
@@ -551,21 +577,23 @@ export async function POST(request: NextRequest) {
   }
 
   const record: DatasetRecord = {
-    id:           String(inserted.id),
-    code:         String(inserted.code),
-    name:         String(inserted.name),
-    batch_type:   String(inserted.batch_type),
-    set_family:   String(inserted.set_family),
-    task_type:    inserted.task_type ? String(inserted.task_type) : "",
-    class_id:     inserted.class_id ? String(inserted.class_id) : null,
-    task_id:      inserted.task_set_id ? String(inserted.task_set_id) : null,
-    active:       Boolean(inserted.active),
-    usage_status: "not_used",
+    id:            String(inserted.id),
+    code:          String(inserted.code),
+    name:          String(inserted.name),
+    batch_type:    String(inserted.batch_type),
+    set_family:    String(inserted.set_family),
+    task_type:     inserted.task_type ? String(inserted.task_type) : "",
+    class_id:      inserted.class_id ? String(inserted.class_id) : null,
+    class_name:    null,
+    task_id:       inserted.task_set_id ? String(inserted.task_set_id) : null,
+    task_set_name: null,
+    active:        Boolean(inserted.active),
+    usage_status:  "not_used",
     session_count: 0,
     learner_count: 0,
-    created_at:   String(inserted.created_at),
-    updated_at:   String(inserted.updated_at),
-    archived_at:  null,
+    created_at:    String(inserted.created_at),
+    updated_at:    String(inserted.updated_at),
+    archived_at:   null,
   };
 
   return NextResponse.json({ dataset: record }, { status: 201 });
