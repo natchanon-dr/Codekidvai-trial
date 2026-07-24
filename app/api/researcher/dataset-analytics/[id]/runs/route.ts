@@ -42,6 +42,9 @@ function rowToRun(row: Record<string, unknown>): PipelineRun {
     configuration: (row.configuration ?? null) as Record<string, unknown> | null,
     result_version: row.result_version ? String(row.result_version) : null,
     created_at: String(row.created_at),
+    attempt_count: Number(row.attempt_count ?? 0),
+    max_attempts: Number(row.max_attempts ?? 3),
+    idempotency_key: row.idempotency_key ? String(row.idempotency_key) : null,
   };
 }
 
@@ -81,7 +84,7 @@ export async function GET(
   const { data: runs, error } = await supabaseAdmin
     .from("mst_pipeline_runs")
     .select(
-      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at",
+      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at, attempt_count, max_attempts, idempotency_key",
     )
     .eq("dataset_id", id)
     .order("created_at", { ascending: false });
@@ -188,6 +191,16 @@ export async function POST(
   const configuration = (raw.configuration as Record<string, unknown> | undefined) ?? null;
   const initiatedBy = (raw.initiated_by as string | undefined) ?? null;
 
+  // Idempotency key: client may send via body or X-Idempotency-Key header.
+  // When present, the DB UNIQUE constraint prevents duplicate runs on retries.
+  const rawIdempotencyKey =
+    (raw.idempotency_key as string | undefined) ??
+    (request.headers.get("x-idempotency-key") || undefined);
+  const idempotencyKey = rawIdempotencyKey?.slice(0, 255) ?? null;
+
+  const FULL_SELECT =
+    "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at, attempt_count, max_attempts, idempotency_key";
+
   const { data: inserted, error: insertError } = await supabaseAdmin
     .from("mst_pipeline_runs")
     .insert({
@@ -197,13 +210,30 @@ export async function POST(
       analysis_steps: runType === "full_pipeline" ? analysisSteps : null,
       configuration: configuration ?? null,
       initiated_by: initiatedBy ?? null,
+      idempotency_key: idempotencyKey,
     })
-    .select(
-      "id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at",
-    )
+    .select(FULL_SELECT)
     .single();
 
   if (insertError) {
+    // Postgres unique violation on idempotency_key (error code 23505):
+    // a run with this key already exists — return it idempotently.
+    if (insertError.code === "23505" && idempotencyKey) {
+      const { data: existing } = await supabaseAdmin
+        .from("mst_pipeline_runs")
+        .select(FULL_SELECT)
+        .eq("idempotency_key", idempotencyKey)
+        .eq("dataset_id", id)
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json(
+          { run: rowToRun(existing as unknown as Record<string, unknown>) },
+          { status: 200 },
+        );
+      }
+    }
+
     return NextResponse.json({ error: "Failed to create pipeline run." }, { status: 500 });
   }
 
@@ -268,7 +298,7 @@ export async function PATCH(
     .eq("dataset_id", id)
     .in("status", ["pending", "running"])
     .eq("cancellation_requested", false)
-    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at")
+    .select("id, dataset_id, run_type, status, analysis_steps, started_at, completed_at, cancelled_at, cancellation_requested, error_summary, initiated_by, configuration, result_version, created_at, attempt_count, max_attempts, idempotency_key")
     .maybeSingle();
 
   if (updateErr) {

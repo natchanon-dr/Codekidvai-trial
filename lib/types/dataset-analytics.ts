@@ -107,6 +107,12 @@ export type PipelineRun = {
   configuration: Record<string, unknown> | null;
   result_version: string | null;
   created_at: string;
+  /** Incremented on each claim attempt; exposed for retry-status display. */
+  attempt_count: number;
+  /** Maximum claim attempts before permanent failure. */
+  max_attempts: number;
+  /** Client-controlled deduplication key; null when not provided. */
+  idempotency_key: string | null;
 };
 
 // ---------------------------------------------------------------------------
