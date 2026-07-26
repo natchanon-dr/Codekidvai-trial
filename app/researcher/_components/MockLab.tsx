@@ -246,6 +246,7 @@ export default function MockLab() {
   const logEndRef          = useRef<HTMLDivElement>(null);
   const abortRef           = useRef<AbortController | null>(null);
   const pipelineStepRef    = useRef<MockStep>("data");
+  const pendingSetIdRef    = useRef<string>("");
 
   // configs table state
   const [configs, setConfigs]               = useState<MockConfigRecord[]>([]);
@@ -329,7 +330,26 @@ export default function MockLab() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then(r => r.json())
-        .then((d: { sets?: TaskSetOption[] }) => setTaskSets((d.sets ?? []).filter((s: TaskSetOption) => s.task_count > 0)))
+        .then((d: { sets?: TaskSetOption[] }) => {
+          const sets = (d.sets ?? []).filter((s: TaskSetOption) => s.task_count > 0);
+          setTaskSets(sets);
+          const pendingId = pendingSetIdRef.current;
+          if (pendingId) {
+            pendingSetIdRef.current = "";
+            const found = sets.find(s => s.batch_id === pendingId);
+            if (found) {
+              setSelectedSetId(found.batch_id);
+              setConfig(prev => ({
+                ...prev,
+                taskIds: found.task_ids,
+                taskSetId: found.batch_id,
+                nTasks: found.task_count,
+                setFamily: found.family as SetFamily,
+                taskTypeCounts: found.task_type_counts,
+              }));
+            }
+          }
+        })
         .catch(() => setTaskSets([]))
         .finally(() => setTaskSetsLoading(false));
     });
@@ -399,6 +419,48 @@ export default function MockLab() {
         taskTypeCounts: { [dummyTaskType]: 3 },
       }));
     }
+  }
+
+  async function openModalWithConfig(cfg: MockConfigRecord) {
+    const firstTaskType = (Object.keys(cfg.task_type_counts)[0] ?? "sql_text") as TaskType;
+    setDummySetFamily(cfg.set_family as SetFamily);
+    setDummyTaskType(firstTaskType);
+    setConfig(prev => ({
+      ...prev,
+      batchCode: `MOCK_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_001`,
+      nStudents:   cfg.n_students,
+      nTasks:      Object.values(cfg.task_type_counts)[0] ?? 3,
+      atRiskRate:  cfg.at_risk_rate,
+      missingRate: cfg.missing_rate,
+      seed:        cfg.seed,
+      setFamily:   cfg.set_family as SetFamily,
+      taskTypeCounts: cfg.task_type_counts,
+      taskIds:    cfg.task_ids.length > 0 ? cfg.task_ids : undefined,
+      taskSetId:  cfg.task_set_id ?? undefined,
+    }));
+    setConfigError(null);
+
+    if (cfg.task_set_id) {
+      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      try {
+        const res  = await fetch(`/api/researcher/batch-class?batch_id=${cfg.task_set_id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json() as { class_id?: string | null };
+        if (data.class_id) {
+          pendingSetIdRef.current = cfg.task_set_id;
+          setSelectedClassId(data.class_id);
+        } else {
+          setSelectedClassId(""); setSelectedSetId(""); setTaskSets([]);
+        }
+      } catch {
+        setSelectedClassId(""); setSelectedSetId(""); setTaskSets([]);
+      }
+    } else {
+      setSelectedClassId(""); setSelectedSetId(""); setTaskSets([]);
+    }
+
+    setShowCreateModal(true);
   }
 
   function validateBatchCode(code: string): string | null {
@@ -1695,34 +1757,13 @@ export default function MockLab() {
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#FED7AA] text-[#F37021] hover:bg-[#FFF7ED] transition-colors">
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                       </button>
-                      <button onClick={() => { setShowCreateModal(true); }} title="Edit"
+                      <button onClick={() => { void openModalWithConfig(cfg); }} title="Edit"
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                           <path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
                         </svg>
                       </button>
-                      <button onClick={() => {
-                        const firstTaskType = Object.keys(cfg.task_type_counts)[0] ?? "sql_text";
-                        setDummySetFamily(cfg.set_family as SetFamily);
-                        setDummyTaskType(firstTaskType as TaskType);
-                        setConfig(prev => ({
-                          ...prev,
-                          batchCode: `MOCK_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_001`,
-                          nStudents:  cfg.n_students,
-                          nTasks:     Object.values(cfg.task_type_counts)[0] ?? 3,
-                          atRiskRate: cfg.at_risk_rate,
-                          missingRate: cfg.missing_rate,
-                          seed:       cfg.seed,
-                          setFamily:  cfg.set_family as SetFamily,
-                          taskTypeCounts: cfg.task_type_counts,
-                          taskIds:    cfg.task_ids.length > 0 ? cfg.task_ids : undefined,
-                          taskSetId:  cfg.task_set_id ?? undefined,
-                        }));
-                        setSelectedClassId("");
-                        setSelectedSetId(cfg.task_set_id ?? "");
-                        setConfigError(null);
-                        setShowCreateModal(true);
-                      }} title="Duplicate"
+                      <button onClick={() => { void openModalWithConfig(cfg); }} title="Duplicate"
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                           <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
