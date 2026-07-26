@@ -256,7 +256,6 @@ export default function MockLab() {
   const [filterStatus, setFilterStatus]     = useState<"all"|"active"|"inactive">("all");
   const [filterUsage, setFilterUsage]       = useState<"all"|"used"|"unused">("all");
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
-  const [copiedId, setCopiedId]             = useState<string | null>(null);
 
   // client-side filtered view of configs
   const filteredConfigs = configs.filter(cfg => {
@@ -1703,30 +1702,31 @@ export default function MockLab() {
                         </svg>
                       </button>
                       <button onClick={() => {
-                        const text = cfg.code;
-                        const doCopy = () => { setCopiedId(cfg.id); setTimeout(() => setCopiedId(null), 2500); };
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(text).then(doCopy).catch(() => {
-                            const el = document.createElement("textarea");
-                            el.value = text; el.style.position = "fixed"; el.style.opacity = "0";
-                            document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
-                            doCopy();
-                          });
-                        } else {
-                          const el = document.createElement("textarea");
-                          el.value = text; el.style.position = "fixed"; el.style.opacity = "0";
-                          document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
-                          doCopy();
-                        }
-                      }} title="Copy code"
-                        className={`flex items-center justify-center w-7 h-7 rounded-lg border transition-colors ${copiedId === cfg.id ? "border-emerald-400 text-emerald-500 bg-emerald-50" : "border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021]"}`}>
-                        {copiedId === cfg.id ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M5 13l4 4L19 7"/></svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                          </svg>
-                        )}
+                        const firstTaskType = Object.keys(cfg.task_type_counts)[0] ?? "sql_text";
+                        setDummySetFamily(cfg.set_family as SetFamily);
+                        setDummyTaskType(firstTaskType as TaskType);
+                        setConfig(prev => ({
+                          ...prev,
+                          batchCode: `MOCK_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_001`,
+                          nStudents:  cfg.n_students,
+                          nTasks:     Object.values(cfg.task_type_counts)[0] ?? 3,
+                          atRiskRate: cfg.at_risk_rate,
+                          missingRate: cfg.missing_rate,
+                          seed:       cfg.seed,
+                          setFamily:  cfg.set_family as SetFamily,
+                          taskTypeCounts: cfg.task_type_counts,
+                          taskIds:    cfg.task_ids.length > 0 ? cfg.task_ids : undefined,
+                          taskSetId:  cfg.task_set_id ?? undefined,
+                        }));
+                        setSelectedClassId("");
+                        setSelectedSetId(cfg.task_set_id ?? "");
+                        setConfigError(null);
+                        setShowCreateModal(true);
+                      }} title="Duplicate"
+                        className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                          <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
                       </button>
                       <button onClick={() => { void handleDelete(cfg.id); }} title="Delete"
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
@@ -1748,14 +1748,7 @@ export default function MockLab() {
       )}
     </section>
 
-    {/* ── Copy toast ── */}
-    {copiedId && (
-      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#1E293B] text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg pointer-events-none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-emerald-400 shrink-0"><path d="M5 13l4 4L19 7"/></svg>
-        Copied: <span className="font-mono text-[#F37021]">{configs.find(c => c.id === copiedId)?.code ?? ""}</span>
-      </div>
-    )}
-    </>
+</>
   );
 }
 
