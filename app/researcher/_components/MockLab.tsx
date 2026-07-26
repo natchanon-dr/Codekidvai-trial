@@ -873,9 +873,10 @@ export default function MockLab() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[#64748B]">Submission (%)</label>
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm font-mono text-[#0F172A]">
-                    {100 - (config.missingRate ?? 7)}%
-                  </div>
+                  <input type="number" min={0} max={100}
+                    value={100 - (config.missingRate ?? 7)}
+                    onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, 100 - +e.target.value)))}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
                 </div>
               </div>
             </div>
