@@ -729,8 +729,8 @@ export default function MockLab() {
             </button>
           </div>
 
-          {/* Body — scrollable */}
-          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          {/* Body */}
+          <div className="px-6 py-5 space-y-5">
 
             {/* Error banner */}
             {configError && (
@@ -739,22 +739,17 @@ export default function MockLab() {
               </div>
             )}
 
-            {/* 1. Code Preview */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#64748B]">
-                Code Preview{" "}
-                <span className="font-normal text-[#94A3B8]">(assigned on save)</span>
-              </label>
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2">
-                {mockCodePreview ? (
-                  <span className="font-mono text-sm tracking-widest text-[#0F172A]">{mockCodePreview}</span>
-                ) : (
-                  <span className="text-[#94A3B8] italic text-xs">Select Activity · Task Type</span>
-                )}
-              </div>
+            {/* Code Preview */}
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 text-center">
+              {mockCodePreview ? (
+                <span className="font-mono text-lg tracking-widest text-[#0F172A] font-bold">{mockCodePreview}</span>
+              ) : (
+                <span className="text-[#94A3B8] italic text-sm">Select Activity · Task Type</span>
+              )}
+              <p className="text-[10px] text-[#94A3B8] mt-1">code assigned on save</p>
             </div>
 
-            {/* 2. Mock Name */}
+            {/* Mock Name */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-[#64748B]">Mock Name</label>
               <input
@@ -766,7 +761,7 @@ export default function MockLab() {
               />
             </div>
 
-            {/* 3. Type badge + Activity Type + Task Type (3-column flex) */}
+            {/* Type badge + Activity Type + Task Type */}
             <div className="flex gap-4 flex-wrap">
               {/* Column A — Mock Type badge (non-interactive) */}
               <div className="space-y-1.5">
@@ -865,7 +860,8 @@ export default function MockLab() {
               </div>
             </div>
 
-            {/* 4. Simulation Parameters */}
+
+            {/* Simulation Parameters */}
             <div className="space-y-2 border-t border-[#F1F5F9] pt-4">
               <p className="text-xs font-bold text-[#0F172A]">Simulation Parameters</p>
               <div className="grid grid-cols-2 gap-3">
@@ -884,27 +880,9 @@ export default function MockLab() {
               </div>
             </div>
 
-            {/* 5. Students */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#64748B]">
-                Students
-                {selectedClassId && <span className="ml-1 font-normal text-[#94A3B8]">(from class)</span>}
-                {!selectedClassId && <span className="ml-1 font-normal text-[#94A3B8]">(5–200)</span>}
-              </label>
-              {selectedClassId ? (
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm font-mono text-[#0F172A]">
-                  {config.nStudents}
-                </div>
-              ) : (
-                <input type="number" min={5} max={200} value={config.nStudents}
-                  onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
-              )}
-            </div>
-
-            {/* 6. Link to Real Class (optional) */}
+            {/* Link to Real Class (optional) — auto-fills student count */}
             <div className="border-t border-[#F1F5F9] pt-4 space-y-2">
-              <p className="text-xs font-bold text-[#0F172A]">Link to Real Class (optional)</p>
+              <p className="text-xs font-bold text-[#0F172A]">Link to Real Class <span className="font-normal text-[#94A3B8]">(optional)</span></p>
               <select
                 value={selectedClassId}
                 onChange={e => {
@@ -935,7 +913,7 @@ export default function MockLab() {
                 <option value="">{classesLoading ? "Loading classes..." : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
                 {classes.map(c => (
                   <option key={c.class_id} value={c.class_id}>
-                    {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
+                    {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term} · {c.student_count} students
                   </option>
                 ))}
               </select>
@@ -954,38 +932,7 @@ export default function MockLab() {
                   </option>
                 ))}
               </select>
-
-              {/* Real task set summary */}
-              {selectedSetId && config.taskIds?.length ? (() => {
-                const found = taskSets.find(s => s.batch_id === selectedSetId);
-                if (!found) return null;
-                const familyLabel = SET_FAMILY_LABEL[found.family as SetFamily] ?? found.family;
-                const ttEntries = TASK_TYPE_ORDER
-                  .filter(tt => (found.task_type_counts[tt] ?? 0) > 0)
-                  .map(tt => ({ tt, count: found.task_type_counts[tt] }));
-                return (
-                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F37021] text-white tracking-wide uppercase">{familyLabel} Set</span>
-                      <span className="text-xs text-emerald-700 font-semibold">{found.task_count} task{found.task_count !== 1 ? "s" : ""}</span>
-                      <span className="text-[10px] text-emerald-600 capitalize">{found.learning_mode.replace("_", "-")}</span>
-                    </div>
-                    {ttEntries.length > 0 && (
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {ttEntries.map(({ tt, count }) => (
-                          <span key={tt} className="flex items-center gap-1 text-[11px] text-emerald-800">
-                            <TaskTypeIcon type={tt} className="w-3.5 h-3.5" />
-                            {TASK_TYPE_LABEL[tt] ?? tt} x {count}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-[10px] text-emerald-600 italic">Set Family and Task Types are preserved from the source class set.</p>
-                  </div>
-                );
-              })() : null}
             </div>
-
 
           </div>
 
