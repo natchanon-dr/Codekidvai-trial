@@ -205,6 +205,8 @@ export default function MockLab() {
     atRiskRate: 35,
     missingRate: 7,
     seed: 42,
+    setFamily: "assignment",
+    taskTypeCounts: { sql_text: 3 },
     apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
   });
   const [configError, setConfigError] = useState<string | null>(null);
@@ -250,7 +252,22 @@ export default function MockLab() {
   const [loading, setLoading]               = useState(true);
   const [filterActivity, setFilterActivity] = useState<string>("all");
   const [filterTaskType, setFilterTaskType] = useState<string>("all");
+  const [searchQuery, setSearchQuery]       = useState<string>("");
+  const [filterStatus, setFilterStatus]     = useState<"all"|"active"|"inactive">("all");
+  const [filterUsage, setFilterUsage]       = useState<"all"|"used"|"unused">("all");
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
+  const [copiedId, setCopiedId]             = useState<string | null>(null);
+
+  // client-side filtered view of configs
+  const filteredConfigs = configs.filter(cfg => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q && !cfg.code.toLowerCase().includes(q) && !(cfg.name ?? "").toLowerCase().includes(q)) return false;
+    if (filterStatus === "active" && !cfg.active) return false;
+    if (filterStatus === "inactive" && cfg.active) return false;
+    if (filterUsage === "used" && cfg.run_count === 0) return false;
+    if (filterUsage === "unused" && cfg.run_count > 0) return false;
+    return true;
+  });
 
   // elapsed timer + hang detector
   useEffect(() => {
@@ -330,6 +347,26 @@ export default function MockLab() {
       }));
     });
   }, [dummySetFamily, dummyTaskType, selectedSetId]);
+
+  // Reset task set selection when Activity Type or Task Type filter changes
+  useEffect(() => {
+    if (!selectedSetId) return;
+    const found = taskSets.find(s => s.batch_id === selectedSetId);
+    if (!found) return;
+    const familyMatch = found.family === dummySetFamily;
+    const taskTypeMatch = Object.keys(found.task_type_counts).includes(dummyTaskType);
+    if (!familyMatch || !taskTypeMatch) {
+      setSelectedSetId("");
+      setConfig(prev => ({
+        ...prev,
+        taskIds: undefined,
+        taskSetId: undefined,
+        nTasks: 3,
+        setFamily: dummySetFamily,
+        taskTypeCounts: { [dummyTaskType]: 3 },
+      }));
+    }
+  }, [dummySetFamily, dummyTaskType, selectedSetId, taskSets]);
 
   const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev.slice(-800), msg]);
@@ -919,21 +956,35 @@ export default function MockLab() {
                   </option>
                 ))}
               </select>
-              <select
-                value={selectedSetId}
-                onChange={e => handleTaskSetSelect(e.target.value)}
-                disabled={!selectedClassId || taskSetsLoading}
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
-              >
-                <option value="">
-                  {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets..." : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
-                </option>
-                {taskSets.map(s => (
-                  <option key={s.batch_id} value={s.batch_id}>
-                    {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
-                  </option>
-                ))}
-              </select>
+              {(() => {
+                const filteredTaskSets = taskSets.filter(s =>
+                  s.family === dummySetFamily &&
+                  Object.keys(s.task_type_counts).includes(dummyTaskType)
+                );
+                return (
+                  <select
+                    value={selectedSetId}
+                    onChange={e => handleTaskSetSelect(e.target.value)}
+                    disabled={!selectedClassId || taskSetsLoading}
+                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
+                  >
+                    <option value="">
+                      {!selectedClassId
+                        ? "— Select class first —"
+                        : taskSetsLoading
+                        ? "Loading task sets..."
+                        : filteredTaskSets.length === 0
+                        ? "No matching task sets"
+                        : "— Select task set —"}
+                    </option>
+                    {filteredTaskSets.map(s => (
+                      <option key={s.batch_id} value={s.batch_id}>
+                        {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
             </div>
 
           </div>
@@ -942,6 +993,8 @@ export default function MockLab() {
           <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-end gap-2 shrink-0">
             <button
               onClick={() => {
+                setDummySetFamily("assignment");
+                setDummyTaskType("sql_text");
                 setConfig(prev => ({
                   ...prev,
                   batchCode: "",
@@ -949,11 +1002,9 @@ export default function MockLab() {
                   atRiskRate: 35,
                   missingRate: 7,
                   seed: 42,
-                  setFamily: undefined,
-                  taskTypeCounts: {},
+                  setFamily: "assignment",
+                  taskTypeCounts: { sql_text: 3 },
                 }));
-                setDummySetFamily("assignment");
-                setDummyTaskType("sql_text");
                 setConfigError(null);
               }}
               className="p-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
@@ -969,8 +1020,7 @@ export default function MockLab() {
               title="Save Mock"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3v4H7V3M12 12v6m-3-3h6" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </button>
           </div>
@@ -1402,6 +1452,8 @@ export default function MockLab() {
         <div />
         <button
           onClick={() => {
+            setDummySetFamily("assignment");
+            setDummyTaskType("sql_text");
             setConfig({
               batchCode: `MOCK_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_001`,
               nStudents: 10,
@@ -1409,6 +1461,8 @@ export default function MockLab() {
               atRiskRate: 35,
               missingRate: 7,
               seed: 42,
+              setFamily: "assignment",
+              taskTypeCounts: { sql_text: 3 },
               apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
             });
             setConfigError(null);
@@ -1427,124 +1481,270 @@ export default function MockLab() {
       </div>
 
       {/* ── Filter bar ── */}
-      <div className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-wrap items-center gap-3">
-        {/* Activity filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mr-1">Activity</span>
-          <div className="rounded-xl border border-[#FED7AA] overflow-hidden bg-white flex items-center">
-            {(["all", "assignment", "lab", "exam"] as const).map((v, i) => (
-              <button key={v} onClick={() => setFilterActivity(v)}
-                className={`flex items-center justify-center px-3 py-2 transition-colors text-xs font-semibold
-                  ${filterActivity === v ? "bg-[#F37021] text-white" : "text-[#94A3B8] hover:bg-[#FFF7ED]"}
-                  ${i > 0 ? "border-l border-[#FED7AA]" : ""}`}>
-                {v === "all" ? "All" : v === "assignment" ? <AssignmentIcon /> : v === "lab" ? <LabIcon /> : <ExamIcon />}
-              </button>
-            ))}
+      <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 overflow-x-auto">
+      <div className="flex items-end gap-4 min-w-max">
+        {/* Search */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[#64748B] font-medium">Search</label>
+          <div className="relative">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <input type="search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Code or name…" aria-label="Search mock configs"
+              className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44" />
           </div>
         </div>
-        {/* Task type filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mr-1">Task</span>
-          <div className="rounded-xl border border-[#FED7AA] overflow-hidden bg-white flex items-center">
-            <button onClick={() => setFilterTaskType("all")}
-              className={`flex items-center justify-center px-3 py-2 text-xs font-semibold transition-colors
-                ${filterTaskType === "all" ? "bg-[#F37021] text-white" : "text-[#94A3B8] hover:bg-[#FFF7ED]"}`}>
+
+        {/* Activity */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[#64748B] font-medium">Activity</label>
+          <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+            <button type="button" title="All activities" onClick={() => setFilterActivity("all")}
+              className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${filterActivity === "all" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
               All
             </button>
-            {(THESIS_TASK_TYPE_ORDER as TaskType[]).map(tt => (
-              <button key={tt} onClick={() => setFilterTaskType(tt)}
-                className={`flex items-center justify-center px-2.5 py-2 border-l border-[#FED7AA] transition-colors
-                  ${filterTaskType === tt ? "bg-[#F37021] text-white" : isPhase4Supported(tt) ? "text-[#64748B] hover:bg-[#FFF7ED]" : "text-[#CBD5E1] cursor-not-allowed"}`}
-                disabled={!isPhase4Supported(tt)}>
+            <button type="button" title="Assignment" onClick={() => setFilterActivity("assignment")}
+              className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${filterActivity === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                <rect x="4" y="3" width="16" height="18" rx="2"/>
+              </svg>
+            </button>
+            <button type="button" title="Lab" onClick={() => setFilterActivity("lab")}
+              className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${filterActivity === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                <path d="M8 2h8"/><path d="M7 15h10"/>
+              </svg>
+            </button>
+            <button type="button" title="Exam" onClick={() => setFilterActivity("exam")}
+              className={`flex items-center justify-center px-3 py-2.5 transition-colors ${filterActivity === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Task */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[#64748B] font-medium">Task</label>
+          <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+            <button type="button" title="All task types" onClick={() => setFilterTaskType("all")}
+              className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${filterTaskType === "all" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              All
+            </button>
+            {(THESIS_TASK_TYPE_ORDER as TaskType[]).map((tt, i) => (
+              <button key={tt} type="button" title={tt} onClick={() => setFilterTaskType(tt)}
+                disabled={!isPhase4Supported(tt)}
+                className={`flex items-center justify-center px-3 py-2.5 ${i < THESIS_TASK_TYPE_ORDER.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${filterTaskType === tt ? "bg-[#F37021] text-white" : isPhase4Supported(tt) ? "text-[#64748B] hover:bg-[#FFF7ED]" : "text-[#CBD5E1] cursor-not-allowed"}`}>
                 <TaskTypeIcon type={tt} className="w-4 h-4" />
               </button>
             ))}
           </div>
         </div>
+
+        {/* Usage */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[#64748B] font-medium">Usage</label>
+          <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+            <button type="button" title="All" onClick={() => setFilterUsage("all")}
+              className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${filterUsage === "all" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              All
+            </button>
+            <button type="button" title="Used" onClick={() => setFilterUsage("used")}
+              className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${filterUsage === "used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </button>
+            <button type="button" title="Unused" onClick={() => setFilterUsage("unused")}
+              className={`flex items-center justify-center px-3 py-2.5 transition-colors ${filterUsage === "unused" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><circle cx="12" cy="12" r="9"/></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Status */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[#64748B] font-medium">Status</label>
+          <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+            <button type="button" title="All" onClick={() => setFilterStatus("all")}
+              className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${filterStatus === "all" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              All
+            </button>
+            <button type="button" title="Active" onClick={() => setFilterStatus("active")}
+              className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${filterStatus === "active" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <span className={`w-2 h-2 rounded-full ${filterStatus === "active" ? "bg-white" : "bg-emerald-500"}`} />
+            </button>
+            <button type="button" title="Inactive" onClick={() => setFilterStatus("inactive")}
+              className={`flex items-center justify-center px-3 py-2.5 transition-colors ${filterStatus === "inactive" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <span className={`w-2 h-2 rounded-full ${filterStatus === "inactive" ? "bg-white" : "bg-[#CBD5E1]"}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Clear All */}
+        {(searchQuery || filterActivity !== "all" || filterTaskType !== "all" || filterUsage !== "all" || filterStatus !== "all") && (
+          <button type="button" onClick={() => { setSearchQuery(""); setFilterActivity("all"); setFilterTaskType("all"); setFilterUsage("all"); setFilterStatus("all"); }}
+            className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
+            Clear All
+          </button>
+        )}
       </div>
+      </section>
 
       {/* ── Table ── */}
       <div className="bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
-        {/* Table header */}
-        <div className="grid grid-cols-[140px_1fr_80px_80px_80px_80px_80px_60px_60px_100px] gap-0 border-b border-[#FED7AA] px-4 py-3">
-          {["CODE","NAME","ACTIVITY","TASK TYPE","STUDENTS","AT-RISK","MISSING","RUNS","ACTIVE","ACTIONS"].map(h => (
-            <span key={h} className="text-[10px] font-bold text-[#F37021] uppercase tracking-wide">{h}</span>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[780px]">
+            <thead>
+              <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                {[
+                  { label: "Code",       align: "left"   },
+                  { label: "Name",       align: "left"   },
+                  { label: "Activity",   align: "center" },
+                  { label: "Task Type",  align: "center" },
+                  { label: "Learners",   align: "center" },
+                  { label: "At-Risk",    align: "center" },
+                  { label: "Submission", align: "center" },
+                  { label: "Runs",       align: "center" },
+                  { label: "Usage",      align: "center" },
+                  { label: "Active",     align: "center" },
+                  { label: "Actions",    align: "center" },
+                ].map(({ label, align }) => (
+                  <th key={label} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={11} className="p-8 text-center text-sm text-[#94A3B8]">Loading...</td></tr>
+              ) : filteredConfigs.length === 0 ? (
+                <tr><td colSpan={11} className="p-12 text-center">
+                  <p className="text-sm font-semibold text-[#64748B]">{configs.length === 0 ? "No mock configs yet." : "No results match your filters."}</p>
+                  <p className="text-xs text-[#94A3B8] mt-1">{configs.length === 0 ? "Click + Create Mock to get started." : "Try adjusting your search or filters."}</p>
+                </td></tr>
+              ) : filteredConfigs.map(cfg => (
+                <tr key={cfg.id} className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors">
+                  {/* Code */}
+                  <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+                    <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">{cfg.code}</span>
+                  </td>
+                  {/* Name */}
+                  <td className="px-3 py-3.5 align-middle min-w-[140px]">
+                    <span className="text-xs text-[#0F172A] font-medium leading-snug">{cfg.name || cfg.code}</span>
+                  </td>
+                  {/* Activity */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <span className="inline-flex items-center justify-center text-[#64748B]">{SET_FAMILY_ICON[cfg.set_family] ?? null}</span>
+                  </td>
+                  {/* Task Type */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    {Object.keys(cfg.task_type_counts)[0]
+                      ? <span className="inline-flex items-center justify-center text-[#64748B]"><TaskTypeIcon type={Object.keys(cfg.task_type_counts)[0] as TaskType} className="w-4 h-4" /></span>
+                      : <span className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>}
+                  </td>
+                  {/* Students */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">{cfg.n_students}</span>
+                  </td>
+                  {/* At-Risk */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">{cfg.at_risk_rate}%</span>
+                  </td>
+                  {/* Submission */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">{100 - cfg.missing_rate}%</span>
+                  </td>
+                  {/* Runs */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <span className="inline-flex flex-col items-center gap-0.5">
+                      <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">{cfg.run_count}</span>
+                      {cfg.last_run_status && (
+                        <span className={`text-[9px] font-bold uppercase ${cfg.last_run_status === "completed" ? "text-emerald-500" : cfg.last_run_status === "failed" ? "text-red-400" : "text-amber-500"}`}>{cfg.last_run_status}</span>
+                      )}
+                    </span>
+                  </td>
+                  {/* Usage */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    {cfg.run_count > 0 ? (
+                      <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                      </span>
+                    ) : (
+                      <span title="Not Used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><circle cx="12" cy="12" r="9"/></svg>
+                      </span>
+                    )}
+                  </td>
+                  {/* Active */}
+                  <td className="px-2 py-3.5 whitespace-nowrap text-center align-middle">
+                    <button onClick={() => { void handleToggleActive(cfg.id, cfg.active); }}
+                      aria-label={cfg.active ? "Deactivate" : "Activate"}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${cfg.active ? "bg-[#F37021]" : "bg-[#E2E8F0]"}`}>
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cfg.active ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                    </button>
+                  </td>
+                  {/* Actions */}
+                  <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+                    <div className="inline-flex items-center gap-1">
+                      <button onClick={() => handleRunPipeline(cfg.id)} title="Run Pipeline"
+                        className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#FED7AA] text-[#F37021] hover:bg-[#FFF7ED] transition-colors">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      </button>
+                      <button onClick={() => { setShowCreateModal(true); }} title="Edit"
+                        className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                          <path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
+                        </svg>
+                      </button>
+                      <button onClick={() => {
+                        const text = cfg.code;
+                        const doCopy = () => { setCopiedId(cfg.id); setTimeout(() => setCopiedId(null), 1500); };
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(text).then(doCopy).catch(() => {
+                            const el = document.createElement("textarea");
+                            el.value = text; el.style.position = "fixed"; el.style.opacity = "0";
+                            document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+                            doCopy();
+                          });
+                        } else {
+                          const el = document.createElement("textarea");
+                          el.value = text; el.style.position = "fixed"; el.style.opacity = "0";
+                          document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+                          doCopy();
+                        }
+                      }} title="Copy code"
+                        className={`flex items-center justify-center w-7 h-7 rounded-lg border transition-colors ${copiedId === cfg.id ? "border-emerald-400 text-emerald-500 bg-emerald-50" : "border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021]"}`}>
+                        {copiedId === cfg.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M5 13l4 4L19 7"/></svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                            <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                          </svg>
+                        )}
+                      </button>
+                      <button onClick={() => { void handleDelete(cfg.id); }} title="Delete"
+                        className="flex items-center justify-center w-7 h-7 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                          <path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {/* Rows */}
-        {loading ? (
-          <div className="p-8 text-center text-sm text-[#94A3B8]">Loading...</div>
-        ) : configs.length === 0 ? (
-          <div className="p-12 text-center space-y-2">
-            <p className="text-sm font-semibold text-[#64748B]">No mock configs yet.</p>
-            <p className="text-xs text-[#94A3B8]">Click + Create Mock to get started.</p>
-          </div>
-        ) : configs.map(cfg => (
-          <div key={cfg.id} className="grid grid-cols-[140px_1fr_80px_80px_80px_80px_80px_60px_60px_100px] gap-0 border-b border-[#F1F5F9] px-4 py-3 items-center hover:bg-[#FFF7ED]/40">
-            {/* CODE */}
-            <span className="inline-flex">
-              <span className="px-2 py-0.5 rounded-lg bg-[#FFF7ED] border border-[#FED7AA] text-[11px] font-mono font-bold text-[#F37021] truncate max-w-[130px]">{cfg.code}</span>
-            </span>
-            {/* NAME */}
-            <span className="text-sm text-[#0F172A] truncate pr-2">{cfg.name || cfg.code}</span>
-            {/* ACTIVITY icon */}
-            <span className="flex justify-center">{SET_FAMILY_ICON[cfg.set_family] ?? null}</span>
-            {/* TASK TYPE icon */}
-            <span className="flex justify-center">
-              {Object.keys(cfg.task_type_counts)[0]
-                ? <TaskTypeIcon type={Object.keys(cfg.task_type_counts)[0] as TaskType} className="w-4 h-4 text-[#64748B]" />
-                : <span className="text-xs text-[#CBD5E1]">-</span>}
-            </span>
-            {/* STUDENTS */}
-            <span className="text-sm text-center text-[#0F172A]">{cfg.n_students}</span>
-            {/* AT-RISK */}
-            <span className="text-sm text-center text-[#0F172A]">{cfg.at_risk_rate}%</span>
-            {/* MISSING */}
-            <span className="text-sm text-center text-[#0F172A]">{cfg.missing_rate}%</span>
-            {/* RUNS count + last status */}
-            <span className="flex flex-col items-center gap-0.5">
-              <span className="text-sm font-semibold text-[#0F172A]">{cfg.run_count}</span>
-              {cfg.last_run_status && (
-                <span className={`text-[9px] font-bold uppercase ${cfg.last_run_status === "completed" ? "text-emerald-500" : cfg.last_run_status === "failed" ? "text-red-400" : "text-amber-500"}`}>
-                  {cfg.last_run_status}
-                </span>
-              )}
-            </span>
-            {/* ACTIVE toggle */}
-            <span className="flex justify-center">
-              <button onClick={() => { void handleToggleActive(cfg.id, cfg.active); }}
-                className={`relative w-9 h-5 rounded-full transition-colors ${cfg.active ? "bg-[#F37021]" : "bg-[#CBD5E1]"}`}>
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cfg.active ? "translate-x-4" : "translate-x-0.5"}`} />
-              </button>
-            </span>
-            {/* ACTIONS */}
-            <span className="flex items-center gap-1 justify-end">
-              <button onClick={() => handleRunPipeline(cfg.id)}
-                title="Run Pipeline"
-                className="p-1.5 rounded-lg text-[#F37021] hover:bg-[#FFF7ED] border border-transparent hover:border-[#FED7AA] transition-colors">
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              </button>
-              <button onClick={() => { setShowCreateModal(true); /* TODO: populate edit from cfg */ }}
-                title="Edit"
-                className="p-1.5 rounded-lg text-[#64748B] hover:bg-[#F1F5F9] border border-transparent hover:border-[#E2E8F0] transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
-                </svg>
-              </button>
-              <button onClick={() => { void handleDelete(cfg.id); }}
-                title="Delete"
-                className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                </svg>
-              </button>
-            </span>
-          </div>
-        ))}
       </div>
       {/* Row count */}
       {!loading && configs.length > 0 && (
-        <p className="text-xs text-[#94A3B8] px-1">{configs.length} mock config{configs.length !== 1 ? "s" : ""} shown</p>
+        <p className="text-xs text-[#94A3B8] px-1">{filteredConfigs.length} of {configs.length} mock config{configs.length !== 1 ? "s" : ""} shown</p>
       )}
     </section>
     </>
