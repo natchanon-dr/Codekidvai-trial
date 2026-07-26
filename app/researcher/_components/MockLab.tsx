@@ -267,10 +267,14 @@ export default function MockLab() {
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
     try {
+      const { data: { session: listSession } } = await supabase.auth.getSession();
+      const listToken = listSession?.access_token ?? "";
       const params = new URLSearchParams();
       if (filterActivity !== "all") params.set("set_family", filterActivity);
       if (filterTaskType !== "all") params.set("task_type", filterTaskType);
-      const res = await fetch(`/api/researcher/mock-lab?${params}`);
+      const res = await fetch(`/api/researcher/mock-lab?${params}`, {
+        headers: listToken ? { Authorization: `Bearer ${listToken}` } : {},
+      });
       if (res.ok) {
         const json = await res.json() as { configs?: MockConfigRecord[] };
         setConfigs(json.configs ?? []);
@@ -536,21 +540,53 @@ export default function MockLab() {
   }
 
   async function handleCreateMock() {
-    const taskTypeCounts: Record<string, number> = {};
-    if (config.taskTypeCounts) Object.assign(taskTypeCounts, config.taskTypeCounts);
+    setConfigError(null);
 
+    // Validate activity type
+    if (!config.setFamily) {
+      setConfigError("Please select an activity type.");
+      return;
+    }
+    const isExamFamilyVal = config.setFamily === "exam";
+
+    // Validate task type (not required for exam)
+    if (!isExamFamilyVal && Object.keys(config.taskTypeCounts ?? {}).length === 0) {
+      setConfigError("Please select a task type.");
+      return;
+    }
+
+    // Validate seed
+    if (config.seed !== undefined && (!Number.isInteger(config.seed) || config.seed < 0)) {
+      setConfigError("Simulation seed must be a non-negative integer.");
+      return;
+    }
+
+    // Validate rates
+    if (config.atRiskRate < 0 || config.atRiskRate > 100) {
+      setConfigError("At-Risk rate must be between 0 and 100.");
+      return;
+    }
+    if (config.missingRate < 0 || config.missingRate > 100) {
+      setConfigError("Missing submission rate must be between 0 and 100.");
+      return;
+    }
+
+    const { data: { session: createSession } } = await supabase.auth.getSession();
+    const createToken = createSession?.access_token ?? "";
     const res = await fetch("/api/researcher/mock-lab", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(createToken ? { Authorization: `Bearer ${createToken}` } : {}),
+      },
       body: JSON.stringify({
-        code: config.batchCode,
-        name: config.batchCode,
+        name: config.batchCode || undefined,
         n_students: config.nStudents,
         at_risk_rate: config.atRiskRate,
         missing_rate: config.missingRate,
         seed: config.seed ?? 42,
-        set_family: config.setFamily ?? "assignment",
-        task_type_counts: taskTypeCounts,
+        set_family: config.setFamily,
+        task_type_counts: config.taskTypeCounts ?? {},
         task_set_id: config.taskSetId ?? null,
         task_ids: config.taskIds ?? [],
       }),
@@ -561,20 +597,35 @@ export default function MockLab() {
       await fetchConfigs();
     } else {
       const json = await res.json() as { error?: string };
-      setConfigError(json.error ?? "Failed to create mock config");
+      const errMsg = json.error ?? "Failed to create mock config";
+      if (res.status === 409) {
+        setConfigError("Code for this Activity + Task combination is full (max 9999). Choose a different combination.");
+      } else {
+        setConfigError(errMsg);
+      }
     }
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this mock config and all its run history?")) return;
-    await fetch(`/api/researcher/mock-lab/${id}`, { method: "DELETE" });
+    const { data: { session: delSession } } = await supabase.auth.getSession();
+    const delToken = delSession?.access_token ?? "";
+    await fetch(`/api/researcher/mock-lab/${id}`, {
+      method: "DELETE",
+      headers: delToken ? { Authorization: `Bearer ${delToken}` } : {},
+    });
     await fetchConfigs();
   }
 
   async function handleToggleActive(id: string, current: boolean) {
+    const { data: { session: toggleSession } } = await supabase.auth.getSession();
+    const toggleToken = toggleSession?.access_token ?? "";
     await fetch(`/api/researcher/mock-lab/${id}/active`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(toggleToken ? { Authorization: `Bearer ${toggleToken}` } : {}),
+      },
       body: JSON.stringify({ active: !current }),
     });
     await fetchConfigs();
@@ -643,19 +694,29 @@ export default function MockLab() {
   return (
     <>
     {/* ══════════════════════════════════════════════════════════════════════════
-        CREATE MOCK MODAL — Batch Configuration form
+        CREATE MOCK MODAL — Dataset Analytics layout
     ══════════════════════════════════════════════════════════════════════════ */}
-    {showCreateModal && (
+    {showCreateModal && (() => {
+      // Compute code preview from current form state
+      const PREVIEW_ACTIVITY_CODE: Record<string, string> = { assignment: "A", lab: "L", exam: "E" };
+      const PREVIEW_TASK_TYPE_CODE: Record<string, string> = { sql_text: "QT", sql_block: "QB", stored_procedure: "SP", er_diagram: "ER" };
+      const mockActivityCode = config.setFamily ? PREVIEW_ACTIVITY_CODE[config.setFamily] : null;
+      const previewFirstTaskType = Object.keys(config.taskTypeCounts ?? {})[0] ?? "";
+      const isExamFamily = config.setFamily === "exam";
+      const mockTaskCode = isExamFamily ? "EX" : (previewFirstTaskType ? PREVIEW_TASK_TYPE_CODE[previewFirstTaskType] : null);
+      const mockCodePreview = (mockActivityCode && mockTaskCode) ? `M${mockActivityCode}${mockTaskCode}####` : null;
+
+      return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
         onClick={(e) => { if (e.target === e.currentTarget && !isRunning) setShowCreateModal(false); }}
       >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-[#FED7AA] shrink-0">
             <div>
               <h2 className="text-base font-bold text-[#0F172A]">Create Mock</h2>
-              <p className="text-xs text-[#64748B] mt-0.5">Configure batch parameters for the simulated pipeline</p>
+              <p className="text-xs text-[#64748B] mt-0.5">Configure a mock simulation dataset</p>
             </div>
             <button
               onClick={() => setShowCreateModal(false)}
@@ -668,97 +729,221 @@ export default function MockLab() {
           </div>
 
           {/* Body — scrollable */}
-          <div className="overflow-y-auto flex-1 p-6 space-y-5">
-            {/* Numeric params */}
-            <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-3">Batch Parameters</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Mock Code</label>
-                  <input
-                    type="text"
-                    value={config.batchCode}
-                    onChange={e => updateConfig("batchCode", e.target.value)}
-                    placeholder="MOCK_20260714_001"
-                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021]"
-                  />
-                  {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+
+            {/* Error banner */}
+            {configError && (
+              <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5">
+                <p className="text-xs text-red-600 font-semibold">{configError}</p>
+              </div>
+            )}
+
+            {/* 1. Code Preview */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#64748B]">
+                Code Preview{" "}
+                <span className="font-normal text-[#94A3B8]">(assigned on save)</span>
+              </label>
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2">
+                {mockCodePreview ? (
+                  <span className="font-mono text-sm tracking-widest text-[#0F172A]">{mockCodePreview}</span>
+                ) : (
+                  <span className="text-[#94A3B8] italic text-xs">Select Activity · Task Type</span>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Mock Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#64748B]">Mock Name</label>
+              <input
+                type="text"
+                value={config.batchCode}
+                onChange={e => updateConfig("batchCode", e.target.value)}
+                placeholder="e.g. Pilot Simulation Jan 2026"
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]"
+              />
+            </div>
+
+            {/* 3. Type badge + Activity Type + Task Type (3-column flex) */}
+            <div className="flex gap-4 flex-wrap">
+              {/* Column A — Mock Type badge (non-interactive) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#64748B]">Type</label>
+                <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFF7ED] border-2 border-[#F37021] text-[#F37021]">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                  </svg>
+                  <span className="text-xs font-bold">Mock</span>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5-200)</label>
-                  <input type="number" min={5} max={200} value={config.nStudents}
-                    onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+              </div>
+
+              {/* Column B — Activity Type */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#64748B]">Activity Type *</label>
+                <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
+                  <button type="button" title={SET_FAMILY_LABEL["assignment"]}
+                    onClick={() => { setDummySetFamily("assignment"); updateConfig("setFamily", "assignment"); updateConfig("taskTypeCounts", { [dummyTaskType]: config.taskIds?.length ?? config.nTasks }); }}
+                    className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${(config.setFamily ?? dummySetFamily) === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                      <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                      <rect x="4" y="3" width="16" height="18" rx="2"/>
+                    </svg>
+                  </button>
+                  <button type="button" title={SET_FAMILY_LABEL["lab"]}
+                    onClick={() => { setDummySetFamily("lab"); updateConfig("setFamily", "lab"); updateConfig("taskTypeCounts", { [dummyTaskType]: config.taskIds?.length ?? config.nTasks }); }}
+                    className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${(config.setFamily ?? dummySetFamily) === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                      <path d="M8 2h8"/><path d="M7 15h10"/>
+                    </svg>
+                  </button>
+                  <button type="button" title={SET_FAMILY_LABEL["exam"]}
+                    onClick={() => { setDummySetFamily("exam"); updateConfig("setFamily", "exam"); updateConfig("taskTypeCounts", {}); }}
+                    className={`flex items-center justify-center px-3 py-2 transition-colors ${(config.setFamily ?? dummySetFamily) === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                      <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                    </svg>
+                  </button>
                 </div>
+                {!config.setFamily && (
+                  <p className="text-xs text-red-500">Select an activity type</p>
+                )}
+              </div>
+
+              {/* Column C — Task Type */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#64748B]">
+                  Task Type{isExamFamily ? "" : " *"}
+                </label>
+                {isExamFamily ? (
+                  <div className="inline-flex items-center px-3 py-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-mono text-[#94A3B8]">
+                    EX = All
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
+                      {(THESIS_TASK_TYPE_ORDER as TaskType[]).map((tt, i) => {
+                        const phase4 = isPhase4Supported(tt);
+                        const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
+                        const isSelected = dummyTaskType === tt && Object.keys(config.taskTypeCounts ?? {}).includes(tt);
+                        return (
+                          <button
+                            key={tt}
+                            type="button"
+                            disabled={!phase4}
+                            title={!phase4 ? `${label} — Planned Phase 5` : label}
+                            onClick={() => {
+                              if (!phase4) return;
+                              setDummyTaskType(tt);
+                              updateConfig("taskTypeCounts", { [tt]: config.taskIds?.length ?? config.nTasks });
+                            }}
+                            className={`relative flex items-center justify-center px-3 py-2 ${i < THESIS_TASK_TYPE_ORDER.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${
+                              !phase4
+                                ? "opacity-40 cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8]"
+                                : isSelected
+                                  ? "bg-[#F37021] text-white"
+                                  : "text-[#64748B] hover:bg-[#FFF7ED]"
+                            }`}
+                          >
+                            <TaskTypeIcon type={tt} className="w-4 h-4" />
+                            {!phase4 && (
+                              <span className="absolute top-0.5 right-0.5 text-[7px] font-bold leading-none opacity-60">5</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {!isExamFamily && Object.keys(config.taskTypeCounts ?? {}).length === 0 && (
+                      <p className="text-xs text-red-500">Select a task type</p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Simulation Parameters */}
+            <div className="space-y-2 border-t border-[#F1F5F9] pt-4">
+              <p className="text-xs font-bold text-[#0F172A]">Simulation Parameters</p>
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Sim Seed</label>
+                  <label className="text-xs font-semibold text-[#64748B]">Simulation Seed</label>
                   <input type="number" min={0} max={2147483647} value={config.seed ?? 42}
                     onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
                     className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">At-Risk Rate %</label>
+                  <label className="text-xs font-semibold text-[#64748B]">At-Risk (%)</label>
                   <input type="number" min={0} max={100} value={config.atRiskRate}
                     onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
                     className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Missing Submission %</label>
-                  <input type="number" min={0} max={100} value={config.missingRate}
-                    onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
-                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+                  <label className="text-xs font-semibold text-[#64748B]">Submission (%)</label>
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm font-mono text-[#0F172A]">
+                    {100 - (config.missingRate ?? 7)}%
+                  </div>
+                  <p className="text-[10px] text-[#94A3B8]">= 100 − Missing ({config.missingRate ?? 7}%)</p>
                 </div>
               </div>
             </div>
 
-            {/* Task Set */}
-            <div className="border-t border-[#F1F5F9] pt-5">
-              <p className="text-xs font-bold text-[#0F172A] mb-3">Task Set (optional — from real class)</p>
-              <div className="space-y-2">
-                <select
-                  value={selectedClassId}
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (!val) {
-                      setTaskSets([]);
-                      setSelectedSetId("");
-                      setConfig(prev => ({
-                        ...prev,
-                        taskIds: undefined,
-                        taskSetId: undefined,
-                        nTasks: 3,
-                        setFamily: dummySetFamily,
-                        taskTypeCounts: { [dummyTaskType]: 3 },
-                      }));
-                    }
-                    setSelectedClassId(val);
-                  }}
-                  disabled={classesLoading}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
-                >
-                  <option value="">{classesLoading ? "Loading classes..." : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
-                  {classes.map(c => (
-                    <option key={c.class_id} value={c.class_id}>
-                      {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={selectedSetId}
-                  onChange={e => handleTaskSetSelect(e.target.value)}
-                  disabled={!selectedClassId || taskSetsLoading}
-                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
-                >
-                  <option value="">
-                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets..." : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
+            {/* 5. Students */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#64748B]">Students (5–200)</label>
+              <input type="number" min={5} max={200} value={config.nStudents}
+                onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+            </div>
+
+            {/* 6. Link to Real Class (optional) */}
+            <div className="border-t border-[#F1F5F9] pt-4 space-y-2">
+              <p className="text-xs font-bold text-[#0F172A]">Link to Real Class (optional)</p>
+              <select
+                value={selectedClassId}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (!val) {
+                    setTaskSets([]);
+                    setSelectedSetId("");
+                    setConfig(prev => ({
+                      ...prev,
+                      taskIds: undefined,
+                      taskSetId: undefined,
+                      nTasks: 3,
+                      setFamily: dummySetFamily,
+                      taskTypeCounts: { [dummyTaskType]: 3 },
+                    }));
+                  }
+                  setSelectedClassId(val);
+                }}
+                disabled={classesLoading}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
+              >
+                <option value="">{classesLoading ? "Loading classes..." : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
+                {classes.map(c => (
+                  <option key={c.class_id} value={c.class_id}>
+                    {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
                   </option>
-                  {taskSets.map(s => (
-                    <option key={s.batch_id} value={s.batch_id}>
-                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                ))}
+              </select>
+              <select
+                value={selectedSetId}
+                onChange={e => handleTaskSetSelect(e.target.value)}
+                disabled={!selectedClassId || taskSetsLoading}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
+              >
+                <option value="">
+                  {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets..." : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
+                </option>
+                {taskSets.map(s => (
+                  <option key={s.batch_id} value={s.batch_id}>
+                    {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
 
               {/* Real task set summary */}
               {selectedSetId && config.taskIds?.length ? (() => {
@@ -769,7 +954,7 @@ export default function MockLab() {
                   .filter(tt => (found.task_type_counts[tt] ?? 0) > 0)
                   .map(tt => ({ tt, count: found.task_type_counts[tt] }));
                 return (
-                  <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F37021] text-white tracking-wide uppercase">{familyLabel} Set</span>
                       <span className="text-xs text-emerald-700 font-semibold">{found.task_count} task{found.task_count !== 1 ? "s" : ""}</span>
@@ -789,112 +974,59 @@ export default function MockLab() {
                   </div>
                 );
               })() : null}
-
-              {/* Dummy selectors */}
-              {!selectedSetId && (
-                <div className="mt-3 space-y-3">
-                  <p className="text-[11px] text-[#64748B] italic">No real task set selected — using dummy tasks. Configure context below.</p>
-                  <div className="flex gap-6 flex-wrap">
-                    {/* Activity */}
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Activity</p>
-                      <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
-                        <button type="button" title={SET_FAMILY_LABEL["assignment"]}
-                          onClick={() => setDummySetFamily("assignment")}
-                          className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${dummySetFamily === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                            <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
-                            <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
-                            <rect x="4" y="3" width="16" height="18" rx="2"/>
-                          </svg>
-                        </button>
-                        <button type="button" title={SET_FAMILY_LABEL["lab"]}
-                          onClick={() => setDummySetFamily("lab")}
-                          className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${dummySetFamily === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                            <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
-                            <path d="M8 2h8"/><path d="M7 15h10"/>
-                          </svg>
-                        </button>
-                        <button type="button" title={SET_FAMILY_LABEL["exam"]}
-                          onClick={() => setDummySetFamily("exam")}
-                          className={`flex items-center justify-center px-3 py-2 transition-colors ${dummySetFamily === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
-                            <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    {/* Task Type */}
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wide">Task Type</p>
-                      <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
-                        {(THESIS_TASK_TYPE_ORDER as TaskType[]).map((tt, i) => {
-                          const phase4 = isPhase4Supported(tt);
-                          const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
-                          return (
-                            <button
-                              key={tt}
-                              type="button"
-                              disabled={!phase4}
-                              title={!phase4 ? `${label} — Planned Phase 5` : label}
-                              onClick={() => phase4 && setDummyTaskType(tt)}
-                              className={`relative flex items-center justify-center px-3 py-2 ${i < THESIS_TASK_TYPE_ORDER.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${
-                                !phase4
-                                  ? "opacity-40 cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8]"
-                                  : dummyTaskType === tt
-                                    ? "bg-[#F37021] text-white"
-                                    : "text-[#64748B] hover:bg-[#FFF7ED]"
-                              }`}
-                            >
-                              <TaskTypeIcon type={tt} className="w-4 h-4" />
-                              {!phase4 && (
-                                <span className="absolute top-0.5 right-0.5 text-[7px] font-bold leading-none opacity-60">5</span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* 7. Missing Submission % (secondary) */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#64748B]">Missing Submission (%)</label>
+              <input type="number" min={0} max={100} value={config.missingRate}
+                onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+              <p className="text-[10px] text-[#94A3B8]">Submission % above updates automatically when this changes.</p>
+            </div>
+
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-between shrink-0">
+          <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-end gap-2 shrink-0">
             <button
-              onClick={() => { void runStep("reset"); }}
-              disabled={isRunning}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+              onClick={() => {
+                setConfig(prev => ({
+                  ...prev,
+                  batchCode: "",
+                  nStudents: 10,
+                  atRiskRate: 35,
+                  missingRate: 7,
+                  seed: 42,
+                  setFamily: undefined,
+                  taskTypeCounts: {},
+                }));
+                setDummySetFamily("assignment");
+                setDummyTaskType("sql_text");
+                setConfigError(null);
+              }}
+              className="p-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+              title="Reset"
             >
-              {running === "reset" ? <Spinner /> : (
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-              )}
-              {running === "reset" ? "Resetting..." : "Mock Reset"}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
             </button>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-[#64748B] hover:text-[#0F172A] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { void handleCreateMock(); }}
-                className="px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
-              >
-                Save Mock
-              </button>
-            </div>
+            <button
+              onClick={() => { void handleCreateMock(); }}
+              className="p-2.5 rounded-xl bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
+              title="Save Mock"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3v4H7V3M12 12v6m-3-3h6" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
-    )}
+      );
+    })()}
 
     {/* ══════════════════════════════════════════════════════════════════════════
         PIPELINE MODAL — Workflow + Progress + Outcome
