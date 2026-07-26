@@ -1704,7 +1704,7 @@ export default function MockLab() {
                       </button>
                       <button onClick={() => {
                         const text = cfg.code;
-                        const doCopy = () => { setCopiedId(cfg.id); setTimeout(() => setCopiedId(null), 1500); };
+                        const doCopy = () => { setCopiedId(cfg.id); setTimeout(() => setCopiedId(null), 2500); };
                         if (navigator.clipboard) {
                           navigator.clipboard.writeText(text).then(doCopy).catch(() => {
                             const el = document.createElement("textarea");
@@ -1747,6 +1747,14 @@ export default function MockLab() {
         <p className="text-xs text-[#94A3B8] px-1">{filteredConfigs.length} of {configs.length} mock config{configs.length !== 1 ? "s" : ""} shown</p>
       )}
     </section>
+
+    {/* ── Copy toast ── */}
+    {copiedId && (
+      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#1E293B] text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg pointer-events-none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-emerald-400 shrink-0"><path d="M5 13l4 4L19 7"/></svg>
+        Copied: <span className="font-mono text-[#F37021]">{configs.find(c => c.id === copiedId)?.code ?? ""}</span>
+      </div>
+    )}
     </>
   );
 }
