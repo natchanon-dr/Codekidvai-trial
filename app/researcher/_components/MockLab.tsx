@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
@@ -16,8 +16,9 @@ import {
   type SetFamily,
   type TaskType,
 } from "@/lib/research-context";
+import type { MockConfigRecord } from "@/app/api/researcher/mock-lab/route";
 
-// â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── types ─────────────────────────────────────────────────────────────────────
 interface ClassOption {
   class_id: string;
   class_code: string;
@@ -94,7 +95,7 @@ const STEP_META: Record<string, { label: string; desc: string; icon: React.React
   },
   train: {
     label: "Mock Train",
-    desc: "Run NB01–NB03: feature engineering and model training",
+    desc: "Run NB01-NB03: feature engineering and model training",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
@@ -121,7 +122,7 @@ const STEP_META: Record<string, { label: string; desc: string; icon: React.React
   },
 };
 
-// â”€â”€ small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── small helpers ─────────────────────────────────────────────────────────────
 function MetricBar({ label, value, color }: { label: string; value: number | null | undefined; color: string }) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
@@ -141,7 +142,7 @@ function ConfusionMatrix({ matrix }: { matrix: number[][] }) {
   const labels = ["Not at-risk", "At-risk"];
   return (
     <div>
-      <p className="text-xs font-semibold text-[#64748B] mb-2">Confusion Matrix (predicted â†’ actual)</p>
+      <p className="text-xs font-semibold text-[#64748B] mb-2">Confusion Matrix (predicted → actual)</p>
       <table className="text-xs border-collapse">
         <thead>
           <tr>
@@ -190,10 +191,10 @@ function Spinner({ size = "sm" }: { size?: "sm" | "md" }) {
   );
 }
 
-// â”€â”€ helpers (module-level — safe to call anywhere) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── helpers (module-level — safe to call anywhere) ────────────────────────────
 function getTimestamp(): number { return Date.now(); }
 
-// â”€â”€ main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── main component ────────────────────────────────────────────────────────────
 export default function MockLab() {
   // config
   const [config, setConfig] = useState<MockConfig>({
@@ -243,6 +244,13 @@ export default function MockLab() {
   const abortRef           = useRef<AbortController | null>(null);
   const pipelineStepRef    = useRef<MockStep>("data");
 
+  // configs table state
+  const [configs, setConfigs]               = useState<MockConfigRecord[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [filterActivity, setFilterActivity] = useState<string>("all");
+  const [filterTaskType, setFilterTaskType] = useState<string>("all");
+  const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
+
   // elapsed timer + hang detector
   useEffect(() => {
     if (!startTime) return;
@@ -255,6 +263,25 @@ export default function MockLab() {
     return () => clearInterval(iv);
   }, [startTime]);
 
+  // fetch configs from DB
+  const fetchConfigs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterActivity !== "all") params.set("set_family", filterActivity);
+      if (filterTaskType !== "all") params.set("task_type", filterTaskType);
+      const res = await fetch(`/api/researcher/mock-lab?${params}`);
+      if (res.ok) {
+        const json = await res.json() as { configs?: MockConfigRecord[] };
+        setConfigs(json.configs ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [filterActivity, filterTaskType]);
+
+  useEffect(() => { void fetchConfigs(); }, [fetchConfigs]);
+
   // fetch class list on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -263,7 +290,7 @@ export default function MockLab() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then(r => r.json())
-        .then(d => setClasses(d.classes ?? []))
+        .then((d: { classes?: ClassOption[] }) => setClasses(d.classes ?? []))
         .catch(() => setClasses([]))
         .finally(() => setClassesLoading(false));
     });
@@ -281,15 +308,15 @@ export default function MockLab() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then(r => r.json())
-        .then(d => setTaskSets((d.sets ?? []).filter((s: TaskSetOption) => s.task_count > 0)))
+        .then((d: { sets?: TaskSetOption[] }) => setTaskSets((d.sets ?? []).filter((s: TaskSetOption) => s.task_count > 0)))
         .catch(() => setTaskSets([]))
         .finally(() => setTaskSetsLoading(false));
     });
   }, [selectedClassId]);
 
-  // Sync dummy selectors â†’ config when no real task set is active
+  // Sync dummy selectors -> config when no real task set is active
   useEffect(() => {
-    if (selectedSetId) return; // real set overrides dummy selectors
+    if (selectedSetId) return;
     queueMicrotask(() => {
       setConfig(prev => ({
         ...prev,
@@ -360,7 +387,7 @@ export default function MockLab() {
     } else {
       setStepStatus(prev => ({ ...prev, [step]: "running" }));
     }
-    addLog(`â”€â”€ Starting: ${step} â”€â”€`);
+    addLog(`-- Starting: ${step} --`);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -404,30 +431,25 @@ export default function MockLab() {
           if (!dataMatch) continue;
           const eventType = eventMatch?.[1] ?? "log";
           try {
-            const payload = JSON.parse(dataMatch[1]);
+            const payload = JSON.parse(dataMatch[1]) as Record<string, unknown>;
             if (eventType === "log") {
-              const msg = payload.msg ?? "";
-              // intercept machine-readable structured lines — don't show in log panel
+              const msg = (payload.msg as string) ?? "";
               if (msg.startsWith("[PROGRESS] ")) {
                 try {
-                  const p: LiveProgress = JSON.parse(msg.slice(11));
+                  const p = JSON.parse(msg.slice(11)) as LiveProgress;
                   setLiveProgress(p);
                   lastProgressAtRef.current = getTimestamp();
                 } catch { /* ignore */ }
                 continue;
               }
-              if (msg.startsWith("[WORKLOAD] ")) {
-                // already computed client-side; no state update needed
-                continue;
-              }
+              if (msg.startsWith("[WORKLOAD] ")) continue;
               if (msg.startsWith("[STATS] ")) {
-                try { setFinalStats(JSON.parse(msg.slice(8))); } catch { /* ignore */ }
+                try { setFinalStats(JSON.parse(msg.slice(8)) as FinalStats); } catch { /* ignore */ }
                 continue;
               }
               addLog(msg);
-              if (msg.includes("âŒ")) setErrorCount(c => c + 1);
-              // detect step transitions in run-all
-              const match = msg.match(/^â”€â”€ Step: (\w+)/);
+              if (msg.includes("❌")) setErrorCount(c => c + 1);
+              const match = msg.match(/^-- Step: (\w+)/);
               if (match) {
                 if (pipelineStepRef.current !== step) {
                   setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "completed" }));
@@ -438,7 +460,7 @@ export default function MockLab() {
               }
             }
             if (eventType === "error") {
-              addLog(`âŒ ${payload.msg}`);
+              addLog(`❌ ${payload.msg as string}`);
               setErrorCount(c => c + 1);
               setStepStatus(prev => ({ ...prev, [pipelineStepRef.current]: "failed" }));
             }
@@ -446,7 +468,7 @@ export default function MockLab() {
               const s = payload.step as string;
               if (s) setStepStatus(prev => ({ ...prev, [s]: payload.pct === 100 ? "completed" : "running" }));
             }
-            if (eventType === "outcome") parseOutcome(payload);
+            if (eventType === "outcome") parseOutcome(payload as { report?: MockOutcome });
             if (eventType === "done") {
               const s = payload.step as string;
               const wasAborted: boolean = payload.aborted === true;
@@ -464,9 +486,8 @@ export default function MockLab() {
         }
       }
     } catch (err) {
-      // fetch aborted by Stop button — mark any still-running step as aborted
       if (err instanceof DOMException && err.name === "AbortError") {
-        addLog("â›” Stopped by user.");
+        addLog("⛔ Stopped by user.");
         setStepStatus(prev => {
           const next = { ...prev };
           for (const s of PIPELINE_STEPS) {
@@ -481,7 +502,9 @@ export default function MockLab() {
       setStartTime(null);
       setHangSeconds(null);
       lastProgressAtRef.current = null;
-      addLog("â”€â”€ Done â”€â”€");
+      addLog("-- Done --");
+      // Refresh table after pipeline completes
+      void fetchConfigs();
     }
   }
 
@@ -489,8 +512,19 @@ export default function MockLab() {
     abortRef.current?.abort();
   }
 
-  function handleRunPipeline() {
+  function handleRunPipeline(configId: string) {
+    setActiveConfigId(configId);
     setShowPipelineModal(true);
+    const cfg = configs.find(c => c.id === configId);
+    if (cfg) {
+      updateConfig("batchCode", cfg.code);
+      updateConfig("nStudents", cfg.n_students);
+      updateConfig("atRiskRate", cfg.at_risk_rate);
+      updateConfig("missingRate", cfg.missing_rate);
+      updateConfig("seed", cfg.seed);
+      updateConfig("setFamily", cfg.set_family as SetFamily);
+      updateConfig("taskTypeCounts", cfg.task_type_counts);
+    }
     void runStep("run-all");
   }
 
@@ -501,11 +535,55 @@ export default function MockLab() {
     }
   }
 
+  async function handleCreateMock() {
+    const taskTypeCounts: Record<string, number> = {};
+    if (config.taskTypeCounts) Object.assign(taskTypeCounts, config.taskTypeCounts);
+
+    const res = await fetch("/api/researcher/mock-lab", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: config.batchCode,
+        name: config.batchCode,
+        n_students: config.nStudents,
+        at_risk_rate: config.atRiskRate,
+        missing_rate: config.missingRate,
+        seed: config.seed ?? 42,
+        set_family: config.setFamily ?? "assignment",
+        task_type_counts: taskTypeCounts,
+        task_set_id: config.taskSetId ?? null,
+        task_ids: config.taskIds ?? [],
+      }),
+    });
+
+    if (res.ok) {
+      setShowCreateModal(false);
+      await fetchConfigs();
+    } else {
+      const json = await res.json() as { error?: string };
+      setConfigError(json.error ?? "Failed to create mock config");
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this mock config and all its run history?")) return;
+    await fetch(`/api/researcher/mock-lab/${id}`, { method: "DELETE" });
+    await fetchConfigs();
+  }
+
+  async function handleToggleActive(id: string, current: boolean) {
+    await fetch(`/api/researcher/mock-lab/${id}/active`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !current }),
+    });
+    await fetchConfigs();
+  }
+
   const isRunning = running !== null;
   const pipelineProgress = PIPELINE_STEPS.filter(s => stepStatus[s] === "completed").length;
   const pipelinePct = Math.round((pipelineProgress / PIPELINE_STEPS.length) * 100);
 
-  // status card logic
   const statusOf = (step: string): "green" | "yellow" | "red" | "idle" => {
     const s = stepStatus[step];
     if (!s || s === "waiting") return "idle";
@@ -526,37 +604,47 @@ export default function MockLab() {
 
   const fmtElapsed = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
 
-  // â”€â”€ icon helpers for compact row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const SET_FAMILY_ICON: Record<SetFamily, React.ReactNode> = {
+  // ── icon helpers ────────────────────────────────────────────────────────────
+  const SET_FAMILY_ICON: Record<string, React.ReactNode> = {
     assignment: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
-        <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
-        <rect x="4" y="3" width="16" height="18" rx="2"/>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 text-[#64748B]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
       </svg>
     ),
     lab: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
-        <path d="M8 2h8"/><path d="M7 15h10"/>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 text-[#64748B]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
       </svg>
     ),
     exam: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
-        <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 text-[#64748B]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
       </svg>
     ),
   };
 
-  const currentActivity = config.setFamily as SetFamily | undefined;
-  const currentTaskType = (Object.entries(config.taskTypeCounts ?? {})[0]?.[0]) as TaskType | undefined;
+  // ── inline activity icon buttons ────────────────────────────────────────────
+  const AssignmentIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  );
+  const LabIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+    </svg>
+  );
+  const ExamIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  );
 
   return (
     <>
-    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    {/* ══════════════════════════════════════════════════════════════════════════
         CREATE MOCK MODAL — Batch Configuration form
-    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    ══════════════════════════════════════════════════════════════════════════ */}
     {showCreateModal && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -597,7 +685,7 @@ export default function MockLab() {
                   {configError && <p className="text-xs text-red-600 mt-0.5">{configError}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5–200)</label>
+                  <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Students (5-200)</label>
                   <input type="number" min={5} max={200} value={config.nStudents}
                     onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
                     className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
@@ -648,10 +736,10 @@ export default function MockLab() {
                   disabled={classesLoading}
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
                 >
-                  <option value="">{classesLoading ? "Loading classesâ€¦" : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
+                  <option value="">{classesLoading ? "Loading classes..." : classes.length === 0 ? "No active classes found" : "— Select class —"}</option>
                   {classes.map(c => (
                     <option key={c.class_id} value={c.class_id}>
-                      {c.class_name} ({c.class_code}) Â· {c.academic_year}/{c.term}
+                      {c.class_name} ({c.class_code}) · {c.academic_year}/{c.term}
                     </option>
                   ))}
                 </select>
@@ -662,11 +750,11 @@ export default function MockLab() {
                   className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021] bg-white"
                 >
                   <option value="">
-                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task setsâ€¦" : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
+                    {!selectedClassId ? "— Select class first —" : taskSetsLoading ? "Loading task sets..." : taskSets.length === 0 ? "No task sets found" : "— Select task set —"}
                   </option>
                   {taskSets.map(s => (
                     <option key={s.batch_id} value={s.batch_id}>
-                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} Â· {s.batch_name ?? s.batch_code ?? s.batch_id} Â· {s.task_count} task{s.task_count !== 1 ? "s" : ""}
+                      {SET_FAMILY_LABEL[s.family as SetFamily] ?? s.family} · {s.batch_name ?? s.batch_code ?? s.batch_id} · {s.task_count} task{s.task_count !== 1 ? "s" : ""}
                     </option>
                   ))}
                 </select>
@@ -692,7 +780,7 @@ export default function MockLab() {
                         {ttEntries.map(({ tt, count }) => (
                           <span key={tt} className="flex items-center gap-1 text-[11px] text-emerald-800">
                             <TaskTypeIcon type={tt} className="w-3.5 h-3.5" />
-                            {TASK_TYPE_LABEL[tt] ?? tt} × {count}
+                            {TASK_TYPE_LABEL[tt] ?? tt} x {count}
                           </span>
                         ))}
                       </div>
@@ -787,7 +875,7 @@ export default function MockLab() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
               )}
-              {running === "reset" ? "Resettingâ€¦" : "Mock Reset"}
+              {running === "reset" ? "Resetting..." : "Mock Reset"}
             </button>
             <div className="flex gap-2">
               <button
@@ -797,10 +885,10 @@ export default function MockLab() {
                 Cancel
               </button>
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => { void handleCreateMock(); }}
                 className="px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
               >
-                Apply
+                Save Mock
               </button>
             </div>
           </div>
@@ -808,9 +896,9 @@ export default function MockLab() {
       </div>
     )}
 
-    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    {/* ══════════════════════════════════════════════════════════════════════════
         PIPELINE MODAL — Workflow + Progress + Outcome
-    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    ══════════════════════════════════════════════════════════════════════════ */}
     {showPipelineModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
@@ -984,7 +1072,7 @@ export default function MockLab() {
                       <p className="text-xs font-bold text-[#0F172A]">Extract Live Progress</p>
                       {isRunning && hangSeconds !== null && hangSeconds > 30 && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-[10px] font-bold text-amber-700">
-                          âš  No progress for {hangSeconds}s
+                          No progress for {hangSeconds}s
                         </span>
                       )}
                     </div>
@@ -1004,7 +1092,7 @@ export default function MockLab() {
                       <div className="space-y-1">
                         <div className="flex justify-between text-[11px] text-[#64748B]">
                           <span>{liveProgress.completedCalls} / {liveProgress.totalCalls} API calls</span>
-                          <span>ETA â‰ˆ {Math.floor(liveProgress.etaSec / 60)}m {liveProgress.etaSec % 60}s</span>
+                          <span>ETA ~ {Math.floor(liveProgress.etaSec / 60)}m {liveProgress.etaSec % 60}s</span>
                         </div>
                         <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
                           <div className="h-full rounded-full bg-[#F37021] transition-all duration-300"
@@ -1085,7 +1173,7 @@ export default function MockLab() {
                             <div key={k} className={`rounded-xl px-3 py-2 border text-center ${outcome.checks[k] === "pass" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
                               <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">{k === "splitIntegrity" ? "Split" : k.toUpperCase()}</p>
                               <p className={`text-sm font-bold mt-0.5 ${outcome.checks[k] === "pass" ? "text-emerald-600" : "text-red-600"}`}>
-                                {outcome.checks[k] === "pass" ? "✓ Pass" : "✗ Fail"}
+                                {outcome.checks[k] === "pass" ? "Pass" : "Fail"}
                               </p>
                             </div>
                           ))}
@@ -1190,7 +1278,7 @@ export default function MockLab() {
                       {logs.length > 0 ? (
                         <div className="bg-[#0F172A] rounded-xl px-4 py-3 h-56 overflow-y-auto font-mono text-xs text-[#94A3B8] space-y-0.5">
                           {logs.map((line, i) => (
-                            <div key={i} className={line.startsWith("âŒ") ? "text-red-400" : line.startsWith("âœ…") ? "text-green-400" : line.startsWith("â”€â”€") ? "text-[#F37021] font-semibold" : undefined}>
+                            <div key={i} className={line.startsWith("❌") ? "text-red-400" : line.startsWith("✅") ? "text-green-400" : line.startsWith("--") ? "text-[#F37021] font-semibold" : undefined}>
                               {line}
                             </div>
                           ))}
@@ -1207,97 +1295,159 @@ export default function MockLab() {
       </div>
     )}
 
-    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        MAIN PAGE — Compact config row + action buttons
-    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+    {/* ══════════════════════════════════════════════════════════════════════════
+        MAIN PAGE — Title row + filter bar + data table
+    ══════════════════════════════════════════════════════════════════════════ */}
     <section className="space-y-5">
-      {/* â”€â”€ Compact config row â”€â”€ */}
-      <div className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-wrap items-center gap-3">
-        {/* Mock code */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Mock</span>
-          <span className="font-mono text-xs font-bold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-0.5 rounded-lg">{config.batchCode}</span>
-        </div>
-        <span className="w-px h-4 bg-[#E2E8F0]" />
-        {/* Students */}
-        <div className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-[#94A3B8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-          </svg>
-          <span className="text-xs font-bold text-[#0F172A]">{config.nStudents}</span>
-          <span className="text-[10px] text-[#94A3B8]">students</span>
-        </div>
-        <span className="w-px h-4 bg-[#E2E8F0]" />
-        {/* Activity icon */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Activity</span>
-          <span className="inline-flex items-center justify-center text-[#F37021]" title={currentActivity ? SET_FAMILY_LABEL[currentActivity] : "Assignment"}>
-            {currentActivity ? SET_FAMILY_ICON[currentActivity] : SET_FAMILY_ICON["assignment"]}
-          </span>
-        </div>
-        <span className="w-px h-4 bg-[#E2E8F0]" />
-        {/* Task type icon */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide">Task</span>
-          <span className="inline-flex items-center justify-center text-[#F37021]">
-            {currentTaskType
-              ? <TaskTypeIcon type={currentTaskType} className="w-4 h-4" />
-              : <TaskTypeIcon type="sql_text" className="w-4 h-4" />}
-          </span>
-        </div>
-        <span className="w-px h-4 bg-[#E2E8F0]" />
-        {/* At-risk / Missing */}
-        <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
-          <span>At-risk <strong className="text-[#0F172A]">{config.atRiskRate}%</strong></span>
-          <span>Â·</span>
-          <span>Missing <strong className="text-[#0F172A]">{config.missingRate}%</strong></span>
-        </div>
-        {/* Spacer */}
-        <div className="flex-1" />
-        {/* Edit Config button */}
+      {/* ── Title row ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div />
         <button
-          onClick={() => setShowCreateModal(true)}
-          disabled={isRunning}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-[#FED7AA] text-[#C2410C] bg-white hover:bg-[#FFF7ED] transition-colors disabled:opacity-40"
+          onClick={() => {
+            setConfig({
+              batchCode: `MOCK_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_001`,
+              nStudents: 10,
+              nTasks: 3,
+              atRiskRate: 35,
+              missingRate: 7,
+              seed: 42,
+              apiBase: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
+            });
+            setConfigError(null);
+            setSelectedClassId("");
+            setSelectedSetId("");
+            setTaskSets([]);
+            setShowCreateModal(true);
+          }}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors shrink-0"
         >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Edit Config
+          + Create Mock
         </button>
-        {/* Run Pipeline button */}
-        <button
-          onClick={handleRunPipeline}
-          disabled={isRunning}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors disabled:opacity-50"
-        >
-          {isRunning ? (
-            <>
-              <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              Runningâ€¦
-            </>
-          ) : (
-            <>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
-              </svg>
-              Run Pipeline
-            </>
-          )}
-        </button>
-        {/* View Results button (after pipeline ran) */}
-        {pipelineProgress > 0 && !isRunning && (
-          <button
-            onClick={() => setShowPipelineModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-[#FED7AA] text-[#F37021] bg-white hover:bg-[#FFF7ED] transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-            </svg>
-            View Results
-          </button>
-        )}
       </div>
+
+      {/* ── Filter bar ── */}
+      <div className="bg-white border border-[#FED7AA] rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        {/* Activity filter */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mr-1">Activity</span>
+          <div className="rounded-xl border border-[#FED7AA] overflow-hidden bg-white flex items-center">
+            {(["all", "assignment", "lab", "exam"] as const).map((v, i) => (
+              <button key={v} onClick={() => setFilterActivity(v)}
+                className={`flex items-center justify-center px-3 py-2 transition-colors text-xs font-semibold
+                  ${filterActivity === v ? "bg-[#F37021] text-white" : "text-[#94A3B8] hover:bg-[#FFF7ED]"}
+                  ${i > 0 ? "border-l border-[#FED7AA]" : ""}`}>
+                {v === "all" ? "All" : v === "assignment" ? <AssignmentIcon /> : v === "lab" ? <LabIcon /> : <ExamIcon />}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Task type filter */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mr-1">Task</span>
+          <div className="rounded-xl border border-[#FED7AA] overflow-hidden bg-white flex items-center">
+            <button onClick={() => setFilterTaskType("all")}
+              className={`flex items-center justify-center px-3 py-2 text-xs font-semibold transition-colors
+                ${filterTaskType === "all" ? "bg-[#F37021] text-white" : "text-[#94A3B8] hover:bg-[#FFF7ED]"}`}>
+              All
+            </button>
+            {(THESIS_TASK_TYPE_ORDER as TaskType[]).map(tt => (
+              <button key={tt} onClick={() => setFilterTaskType(tt)}
+                className={`flex items-center justify-center px-2.5 py-2 border-l border-[#FED7AA] transition-colors
+                  ${filterTaskType === tt ? "bg-[#F37021] text-white" : isPhase4Supported(tt) ? "text-[#64748B] hover:bg-[#FFF7ED]" : "text-[#CBD5E1] cursor-not-allowed"}`}
+                disabled={!isPhase4Supported(tt)}>
+                <TaskTypeIcon type={tt} className="w-4 h-4" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Table ── */}
+      <div className="bg-white border border-[#FED7AA] rounded-2xl overflow-hidden">
+        {/* Table header */}
+        <div className="grid grid-cols-[140px_1fr_80px_80px_80px_80px_80px_60px_60px_100px] gap-0 border-b border-[#FED7AA] px-4 py-3">
+          {["CODE","NAME","ACTIVITY","TASK TYPE","STUDENTS","AT-RISK","MISSING","RUNS","ACTIVE","ACTIONS"].map(h => (
+            <span key={h} className="text-[10px] font-bold text-[#F37021] uppercase tracking-wide">{h}</span>
+          ))}
+        </div>
+        {/* Rows */}
+        {loading ? (
+          <div className="p-8 text-center text-sm text-[#94A3B8]">Loading...</div>
+        ) : configs.length === 0 ? (
+          <div className="p-12 text-center space-y-2">
+            <p className="text-sm font-semibold text-[#64748B]">No mock configs yet.</p>
+            <p className="text-xs text-[#94A3B8]">Click + Create Mock to get started.</p>
+          </div>
+        ) : configs.map(cfg => (
+          <div key={cfg.id} className="grid grid-cols-[140px_1fr_80px_80px_80px_80px_80px_60px_60px_100px] gap-0 border-b border-[#F1F5F9] px-4 py-3 items-center hover:bg-[#FFF7ED]/40">
+            {/* CODE */}
+            <span className="inline-flex">
+              <span className="px-2 py-0.5 rounded-lg bg-[#FFF7ED] border border-[#FED7AA] text-[11px] font-mono font-bold text-[#F37021] truncate max-w-[130px]">{cfg.code}</span>
+            </span>
+            {/* NAME */}
+            <span className="text-sm text-[#0F172A] truncate pr-2">{cfg.name || cfg.code}</span>
+            {/* ACTIVITY icon */}
+            <span className="flex justify-center">{SET_FAMILY_ICON[cfg.set_family] ?? null}</span>
+            {/* TASK TYPE icon */}
+            <span className="flex justify-center">
+              {Object.keys(cfg.task_type_counts)[0]
+                ? <TaskTypeIcon type={Object.keys(cfg.task_type_counts)[0] as TaskType} className="w-4 h-4 text-[#64748B]" />
+                : <span className="text-xs text-[#CBD5E1]">-</span>}
+            </span>
+            {/* STUDENTS */}
+            <span className="text-sm text-center text-[#0F172A]">{cfg.n_students}</span>
+            {/* AT-RISK */}
+            <span className="text-sm text-center text-[#0F172A]">{cfg.at_risk_rate}%</span>
+            {/* MISSING */}
+            <span className="text-sm text-center text-[#0F172A]">{cfg.missing_rate}%</span>
+            {/* RUNS count + last status */}
+            <span className="flex flex-col items-center gap-0.5">
+              <span className="text-sm font-semibold text-[#0F172A]">{cfg.run_count}</span>
+              {cfg.last_run_status && (
+                <span className={`text-[9px] font-bold uppercase ${cfg.last_run_status === "completed" ? "text-emerald-500" : cfg.last_run_status === "failed" ? "text-red-400" : "text-amber-500"}`}>
+                  {cfg.last_run_status}
+                </span>
+              )}
+            </span>
+            {/* ACTIVE toggle */}
+            <span className="flex justify-center">
+              <button onClick={() => { void handleToggleActive(cfg.id, cfg.active); }}
+                className={`relative w-9 h-5 rounded-full transition-colors ${cfg.active ? "bg-[#F37021]" : "bg-[#CBD5E1]"}`}>
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cfg.active ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+            </span>
+            {/* ACTIONS */}
+            <span className="flex items-center gap-1 justify-end">
+              <button onClick={() => handleRunPipeline(cfg.id)}
+                title="Run Pipeline"
+                className="p-1.5 rounded-lg text-[#F37021] hover:bg-[#FFF7ED] border border-transparent hover:border-[#FED7AA] transition-colors">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <button onClick={() => { setShowCreateModal(true); /* TODO: populate edit from cfg */ }}
+                title="Edit"
+                className="p-1.5 rounded-lg text-[#64748B] hover:bg-[#F1F5F9] border border-transparent hover:border-[#E2E8F0] transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
+                </svg>
+              </button>
+              <button onClick={() => { void handleDelete(cfg.id); }}
+                title="Delete"
+                className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+                </svg>
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* Row count */}
+      {!loading && configs.length > 0 && (
+        <p className="text-xs text-[#94A3B8] px-1">{configs.length} mock config{configs.length !== 1 ? "s" : ""} shown</p>
+      )}
     </section>
     </>
   );
