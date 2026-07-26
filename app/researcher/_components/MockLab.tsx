@@ -25,6 +25,7 @@ interface ClassOption {
   class_name: string;
   academic_year: string;
   term: string;
+  student_count: number;
 }
 
 interface TaskSetOption {
@@ -867,35 +868,30 @@ export default function MockLab() {
             {/* 4. Simulation Parameters */}
             <div className="space-y-2 border-t border-[#F1F5F9] pt-4">
               <p className="text-xs font-bold text-[#0F172A]">Simulation Parameters</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B]">Simulation Seed</label>
-                  <input type="number" min={0} max={2147483647} value={config.seed ?? 42}
-                    onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
-                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl font-mono focus:outline-none focus:border-[#F37021]" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B]">At-Risk (%)</label>
-                  <input type="number" min={0} max={100} value={config.atRiskRate}
-                    onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
-                    className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[#64748B]">Submission (%)</label>
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm font-mono text-[#0F172A]">
-                    {100 - (config.missingRate ?? 7)}%
-                  </div>
-                  <p className="text-[10px] text-[#94A3B8]">= 100 − Missing ({config.missingRate ?? 7}%)</p>
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#64748B]">At-Risk (%)</label>
+                <input type="number" min={0} max={100} value={config.atRiskRate}
+                  onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
               </div>
             </div>
 
             {/* 5. Students */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#64748B]">Students (5–200)</label>
-              <input type="number" min={5} max={200} value={config.nStudents}
-                onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+              <label className="text-xs font-semibold text-[#64748B]">
+                Students
+                {selectedClassId && <span className="ml-1 font-normal text-[#94A3B8]">(from class)</span>}
+                {!selectedClassId && <span className="ml-1 font-normal text-[#94A3B8]">(5–200)</span>}
+              </label>
+              {selectedClassId ? (
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm font-mono text-[#0F172A]">
+                  {config.nStudents}
+                </div>
+              ) : (
+                <input type="number" min={5} max={200} value={config.nStudents}
+                  onChange={e => updateConfig("nStudents", Math.max(5, Math.min(200, +e.target.value)))}
+                  className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
+              )}
             </div>
 
             {/* 6. Link to Real Class (optional) */}
@@ -913,9 +909,15 @@ export default function MockLab() {
                       taskIds: undefined,
                       taskSetId: undefined,
                       nTasks: 3,
+                      nStudents: 10,
                       setFamily: dummySetFamily,
                       taskTypeCounts: { [dummyTaskType]: 3 },
                     }));
+                  } else {
+                    const cls = classes.find(c => c.class_id === val);
+                    if (cls && cls.student_count > 0) {
+                      setConfig(prev => ({ ...prev, nStudents: cls.student_count }));
+                    }
                   }
                   setSelectedClassId(val);
                 }}
@@ -976,14 +978,6 @@ export default function MockLab() {
               })() : null}
             </div>
 
-            {/* 7. Missing Submission % (secondary) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#64748B]">Missing Submission (%)</label>
-              <input type="number" min={0} max={100} value={config.missingRate}
-                onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, +e.target.value)))}
-                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
-              <p className="text-[10px] text-[#94A3B8]">Submission % above updates automatically when this changes.</p>
-            </div>
 
           </div>
 
@@ -1091,6 +1085,21 @@ export default function MockLab() {
 
           {/* Scrollable body */}
           <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+            {/* Settings */}
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 flex items-center gap-4">
+              <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide shrink-0">Settings</span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-[#64748B] shrink-0">Simulation Seed</label>
+                <input
+                  type="number" min={0} max={2147483647}
+                  value={config.seed ?? 42}
+                  onChange={e => updateConfig("seed", Math.max(0, Math.min(2147483647, +e.target.value)))}
+                  disabled={isRunning}
+                  className="w-28 px-2 py-1 text-sm border border-[#CBD5E1] rounded-lg font-mono focus:outline-none focus:border-[#F37021] disabled:opacity-50 disabled:bg-[#F1F5F9]"
+                />
+              </div>
+            </div>
 
             {/* Status cards row */}
             <div className="grid grid-cols-5 gap-2">
@@ -1456,7 +1465,7 @@ export default function MockLab() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          + Create Mock
+          Create Mock
         </button>
       </div>
 
