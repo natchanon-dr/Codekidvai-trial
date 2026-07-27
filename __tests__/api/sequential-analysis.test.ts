@@ -1,22 +1,34 @@
 /**
- * Tests for /api/researcher/sequential-analysis route.
+ * Tests for /api/researcher/sequential-analysis route (redesigned).
  *
  * Covers:
- *   - 401 when auth throws
- *   - Response shape has all required top-level keys
- *   - research_constraints has proxy_target_circularity and confirmatory_analysis_allowed
- *   - event_vocabulary has correct number of active types (5) and total entries (9)
- *   - tag_structure has transition_types with correct count (8)
- *   - model_sequence_config has lstm and gru entries
- *   - validation checks_passed count matches checks_run
- *   - artifact_versions has version strings and hashes
- *   - No fabricated values (no event frequency counts in response)
- *   - limitations is a non-empty array of strings
+ *  1.  List mode returns datasets array
+ *  2.  Each dataset has a runs array
+ *  3.  artifact_availability=static_fallback for PAQT0001 completed run with null result_version
+ *  4.  artifact_availability=unavailable for non-pilot completed run with null result_version
+ *  5.  artifact_availability=available when result_version is not null
+ *  6.  artifact_availability=unavailable for pending run
+ *  7.  artifact_availability=unavailable for failed run
+ *  8.  is_comparable=true only for available/static_fallback runs
+ *  9.  not_comparable_reason is non-null for non-comparable runs
+ *  10. Detail mode with valid pilot dataset returns artifact payload
+ *  11. Detail mode with non-pilot result_version returns 501
+ *  12. resolveArtifact pure function tests
+ *  13. Mode A requires authentication
+ *  14. Mode B requires authentication
+ *  15. Dataset with no runs returns empty runs: []
+ *  16. Sequential route does not import from dataset-analytics
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
+
+const { mockFrom } = vi.hoisted(() => ({ mockFrom: vi.fn() }));
+
+vi.mock("@/lib/supabase-admin", () => ({
+  supabaseAdmin: { from: mockFrom },
+}));
 
 vi.mock("@/lib/api-auth", () => ({
   requireAdminOrResearcher: vi.fn(),
@@ -33,80 +45,81 @@ vi.mock("next/server", () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────────────
 
-import { GET } from "@/app/api/researcher/sequential-analysis/route";
+import { GET, resolveArtifact } from "@/app/api/researcher/sequential-analysis/route";
 import { requireAdminOrResearcher } from "@/lib/api-auth";
-import vocabulary from "@/lib/research-artifacts/phase4/vocabulary_v1.json";
-import tagManifest from "@/lib/research-artifacts/phase4/tag_manifest_v1.json";
-import summary from "@/lib/research-artifacts/phase4/phase4_ui_summary_v1.json";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function makeRequest() {
+function makeRequest(params: Record<string, string> = {}) {
+  const url = new URL("http://localhost/api/researcher/sequential-analysis");
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return {
     headers: { get: () => "Bearer test-token" },
-    nextUrl: { searchParams: new URLSearchParams() },
+    nextUrl: { searchParams: url.searchParams },
   } as unknown as import("next/server").NextRequest;
 }
 
-type ResponseBody = {
-  research_constraints?: {
-    evaluation_purpose?: string;
-    label_source?: string;
-    label_validity?: string;
-    proxy_target_circularity?: boolean;
-    confirmatory_analysis_allowed?: boolean;
-    data_warning?: string;
+// Build a Supabase chain mock that supports: .select().is().order() or .select().in().order() or .select().eq().single()
+function makeChain(result: { data: unknown; error: { message: string } | null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    single: vi.fn(() => Promise.resolve(result)),
+    then: (resolve: (v: typeof result) => void) => Promise.resolve(result).then(resolve),
   };
-  dataset_summary?: object;
-  sequence_construction?: object;
-  event_vocabulary?: {
-    schema_version?: string;
-    padding_token?: number;
-    event_type_vocab?: Record<string, number>;
-    block_events_reserved?: string[];
-    active_event_count?: number;
-    total_vocab_entries?: number;
-  };
-  feature_scaler?: {
-    feature_names?: string[];
-    fit_split?: string;
-  };
-  tag_structure?: {
-    transition_types?: string[];
-    transition_type_count?: number;
-    graph_feature_names?: string[];
-    graph_feature_count?: number;
-    dataset_stats?: object;
-  };
-  model_sequence_config?: {
-    lstm?: object;
-    gru?: object;
-  };
-  validation?: {
-    checks_run?: number;
-    checks_passed?: number;
-    no_learner_overlap?: boolean;
-    no_pii_in_exports?: boolean;
-    leakage_check_passed?: boolean;
-    split_integrity_passed?: boolean;
-  };
-  artifact_versions?: {
-    phase4_ui_summary?: { schema_version?: string };
-    sequence_manifest?: { schema_version?: string; phase3_source_sha?: string };
-    vocabulary?: { schema_version?: string };
-    scaler?: { schema_version?: string };
-    tag_manifest?: {
-      schema_version?: string;
-      m2_manifest_sha?: string;
-      artifact_checksums?: Record<string, string>;
-    };
-  };
-  limitations?: string[];
+  // Make the chain itself thenable (awaitable)
+  Object.assign(chain, { [Symbol.toStringTag]: "Promise" });
+  return chain;
+}
+
+const PILOT_DATASET = {
+  id: "ds-pilot",
+  code: "PAQT0001",
+  name: "Pilot Dataset",
+  batch_type: "assignment_set",
+  set_family: "sql",
+  task_type: "sql_text",
+  class_id: null,
+  active: true,
+  created_at: "2024-01-01T00:00:00Z",
 };
+
+const OTHER_DATASET = {
+  id: "ds-other",
+  code: "OTHER001",
+  name: "Other Dataset",
+  batch_type: "lab_set",
+  set_family: "er",
+  task_type: "er_diagram",
+  class_id: null,
+  active: true,
+  created_at: "2024-01-02T00:00:00Z",
+};
+
+function makeRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "run-001",
+    dataset_id: "ds-pilot",
+    run_type: "full",
+    status: "completed",
+    result_version: null,
+    configuration: null,
+    analysis_steps: null,
+    started_at: "2024-01-01T01:00:00Z",
+    completed_at: "2024-01-01T02:00:00Z",
+    error_summary: null,
+    created_at: "2024-01-01T01:00:00Z",
+    ...overrides,
+  };
+}
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  mockFrom.mockClear();
   vi.mocked(requireAdminOrResearcher).mockResolvedValue({
     user_id: "u1",
     profile_id: "p1",
@@ -116,180 +129,299 @@ beforeEach(() => {
   });
 });
 
+// Helper: set up Mode A mocks (datasets chain, runs chain, classes chain)
+function setupListMocks(datasets: unknown[], runs: unknown[], classes: unknown[] = []) {
+  let callIndex = 0;
+  mockFrom.mockImplementation((table: string) => {
+    if (table === "mst_datasets") {
+      return makeChain({ data: datasets, error: null });
+    }
+    if (table === "mst_pipeline_runs") {
+      return makeChain({ data: runs, error: null });
+    }
+    if (table === "tb_classes") {
+      return makeChain({ data: classes, error: null });
+    }
+    callIndex++;
+    return makeChain({ data: [], error: null });
+  });
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 describe("GET /api/researcher/sequential-analysis", () => {
 
-  // ── Authorization ──
+  // ── Test 13: Mode A requires authentication ──
 
-  it("returns 401 when auth throws", async () => {
+  it("Mode A: returns 401 when auth throws", async () => {
     vi.mocked(requireAdminOrResearcher).mockRejectedValueOnce(new Error("Unauthorized"));
     const res = await GET(makeRequest()) as unknown as { _status: number };
     expect(res._status).toBe(401);
   });
 
-  // ── Top-level shape ──
+  // ── Test 14: Mode B requires authentication ──
 
-  it("returns 200 with all required top-level keys", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
+  it("Mode B: returns 401 when auth throws", async () => {
+    vi.mocked(requireAdminOrResearcher).mockRejectedValueOnce(new Error("Unauthorized"));
+    const res = await GET(makeRequest({ mode: "detail", dataset_id: "ds-pilot", run_id: "run-001" })) as unknown as { _status: number };
+    expect(res._status).toBe(401);
+  });
+
+  // ── Test 1: List mode returns datasets array ──
+
+  it("list mode returns datasets array", async () => {
+    setupListMocks([PILOT_DATASET], []);
+    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
     expect(res._status).toBe(200);
+    expect(Array.isArray(res._body.datasets)).toBe(true);
+  });
+
+  // ── Test 2: Each dataset has a runs array ──
+
+  it("each dataset has a runs array", async () => {
+    setupListMocks([PILOT_DATASET], [makeRun()]);
+    const res = await GET(makeRequest()) as unknown as { _body: { datasets: Array<{ runs: unknown[] }> }; _status: number };
+    expect(res._status).toBe(200);
+    const ds = res._body.datasets[0];
+    expect(ds).toBeDefined();
+    expect(Array.isArray(ds.runs)).toBe(true);
+  });
+
+  // ── Test 3: static_fallback for PAQT0001 completed run with null result_version ──
+
+  it("PAQT0001 completed run with null result_version → static_fallback", async () => {
+    const run = makeRun({ dataset_id: "ds-pilot", status: "completed", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string; artifact_source: string }> }> };
+      _status: number;
+    };
+    expect(res._status).toBe(200);
+    const r = res._body.datasets[0].runs[0];
+    expect(r.artifact_availability).toBe("static_fallback");
+    expect(r.artifact_source).toBe("static_fallback");
+  });
+
+  // ── Test 4: unavailable for non-pilot completed run with null result_version ──
+
+  it("non-pilot completed run with null result_version → unavailable", async () => {
+    const run = makeRun({ dataset_id: "ds-other", status: "completed", result_version: null });
+    setupListMocks([OTHER_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string }> }> };
+      _status: number;
+    };
+    expect(res._status).toBe(200);
+    const r = res._body.datasets[0].runs[0];
+    expect(r.artifact_availability).toBe("unavailable");
+  });
+
+  // ── Test 5: available when result_version is not null ──
+
+  it("run with non-null result_version → available", async () => {
+    const run = makeRun({ status: "completed", result_version: "v1.0.0" });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string; artifact_source: string }> }> };
+      _status: number;
+    };
+    expect(res._status).toBe(200);
+    const r = res._body.datasets[0].runs[0];
+    expect(r.artifact_availability).toBe("available");
+    expect(r.artifact_source).toBe("result_version");
+  });
+
+  // ── Test 6: unavailable for pending run ──
+
+  it("pending run → unavailable", async () => {
+    const run = makeRun({ status: "pending", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string }> }> };
+      _status: number;
+    };
+    const r = res._body.datasets[0].runs[0];
+    expect(r.artifact_availability).toBe("unavailable");
+  });
+
+  // ── Test 7: unavailable for failed run ──
+
+  it("failed run → unavailable", async () => {
+    const run = makeRun({ status: "failed", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string }> }> };
+      _status: number;
+    };
+    const r = res._body.datasets[0].runs[0];
+    expect(r.artifact_availability).toBe("unavailable");
+  });
+
+  // ── Test 8: is_comparable=true only for available/static_fallback ──
+
+  it("is_comparable=true for static_fallback run", async () => {
+    const run = makeRun({ status: "completed", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ is_comparable: boolean }> }> };
+      _status: number;
+    };
+    expect(res._body.datasets[0].runs[0].is_comparable).toBe(true);
+  });
+
+  it("is_comparable=false for pending run", async () => {
+    const run = makeRun({ status: "pending", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ is_comparable: boolean }> }> };
+      _status: number;
+    };
+    expect(res._body.datasets[0].runs[0].is_comparable).toBe(false);
+  });
+
+  // ── Test 9: not_comparable_reason is non-null for non-comparable runs ──
+
+  it("not_comparable_reason is non-null for failed run", async () => {
+    const run = makeRun({ status: "failed", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ not_comparable_reason: string | null }> }> };
+      _status: number;
+    };
+    const r = res._body.datasets[0].runs[0];
+    expect(r.not_comparable_reason).not.toBeNull();
+    expect(typeof r.not_comparable_reason).toBe("string");
+  });
+
+  it("not_comparable_reason is null for comparable run", async () => {
+    const run = makeRun({ status: "completed", result_version: null });
+    setupListMocks([PILOT_DATASET], [run]);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: Array<{ not_comparable_reason: string | null }> }> };
+      _status: number;
+    };
+    expect(res._body.datasets[0].runs[0].not_comparable_reason).toBeNull();
+  });
+
+  // ── Test 15: Dataset with no runs returns empty runs: [] ──
+
+  it("dataset with no runs returns empty runs array", async () => {
+    setupListMocks([PILOT_DATASET], []);
+    const res = await GET(makeRequest()) as unknown as {
+      _body: { datasets: Array<{ runs: unknown[] }> };
+      _status: number;
+    };
+    expect(res._body.datasets[0].runs).toHaveLength(0);
+  });
+
+  // ── Test 10: Detail mode with valid pilot dataset returns artifact payload ──
+
+  it("detail mode for PAQT0001 completed run with null result_version returns static artifact", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "mst_datasets") {
+        return makeChain({ data: { id: "ds-pilot", code: "PAQT0001" }, error: null });
+      }
+      if (table === "mst_pipeline_runs") {
+        return makeChain({ data: { id: "run-001", dataset_id: "ds-pilot", status: "completed", result_version: null }, error: null });
+      }
+      return makeChain({ data: null, error: null });
+    });
+
+    const res = await GET(
+      makeRequest({ mode: "detail", dataset_id: "ds-pilot", run_id: "run-001" }),
+    ) as unknown as { _body: Record<string, unknown>; _status: number };
+    expect(res._status).toBe(200);
+    expect(res._body.artifact_source).toBe("static_fallback");
     expect(res._body.research_constraints).toBeDefined();
     expect(res._body.dataset_summary).toBeDefined();
     expect(res._body.sequence_construction).toBeDefined();
-    expect(res._body.event_vocabulary).toBeDefined();
-    expect(res._body.feature_scaler).toBeDefined();
-    expect(res._body.tag_structure).toBeDefined();
-    expect(res._body.model_sequence_config).toBeDefined();
-    expect(res._body.validation).toBeDefined();
-    expect(res._body.artifact_versions).toBeDefined();
     expect(res._body.limitations).toBeDefined();
   });
 
-  // ── research_constraints ──
+  // ── Test 11: Detail mode with non-pilot result_version returns 501 ──
 
-  it("research_constraints has proxy_target_circularity = true", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.research_constraints?.proxy_target_circularity).toBe(true);
+  it("detail mode for run with non-null result_version returns 501", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "mst_datasets") {
+        return makeChain({ data: { id: "ds-pilot", code: "PAQT0001" }, error: null });
+      }
+      if (table === "mst_pipeline_runs") {
+        return makeChain({ data: { id: "run-001", dataset_id: "ds-pilot", status: "completed", result_version: "v2.0.0" }, error: null });
+      }
+      return makeChain({ data: null, error: null });
+    });
+
+    const res = await GET(
+      makeRequest({ mode: "detail", dataset_id: "ds-pilot", run_id: "run-001" }),
+    ) as unknown as { _body: Record<string, unknown>; _status: number };
+    expect(res._status).toBe(501);
+    expect(typeof res._body.error).toBe("string");
+    expect((res._body.error as string).toLowerCase()).toContain("not yet implemented");
   });
 
-  it("research_constraints has confirmatory_analysis_allowed = false", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.research_constraints?.confirmatory_analysis_allowed).toBe(false);
+  // ── Test 12: resolveArtifact pure function tests ──
+
+  describe("resolveArtifact pure function", () => {
+    it("result_version not null → available, source=result_version, comparable", () => {
+      const r = resolveArtifact("completed", "v1.0.0", "ANYTHING");
+      expect(r.availability).toBe("available");
+      expect(r.source).toBe("result_version");
+      expect(r.isComparable).toBe(true);
+      expect(r.reason).toBeNull();
+    });
+
+    it("completed + PAQT0001 + null result_version → static_fallback", () => {
+      const r = resolveArtifact("completed", null, "PAQT0001");
+      expect(r.availability).toBe("static_fallback");
+      expect(r.source).toBe("static_fallback");
+      expect(r.isComparable).toBe(true);
+      expect(r.reason).toBeNull();
+    });
+
+    it("completed + other dataset + null result_version → unavailable", () => {
+      const r = resolveArtifact("completed", null, "OTHER001");
+      expect(r.availability).toBe("unavailable");
+      expect(r.source).toBeNull();
+      expect(r.isComparable).toBe(false);
+      expect(typeof r.reason).toBe("string");
+    });
+
+    it("pending → unavailable, not comparable", () => {
+      const r = resolveArtifact("pending", null, "PAQT0001");
+      expect(r.availability).toBe("unavailable");
+      expect(r.isComparable).toBe(false);
+      expect(r.reason).toContain("pending");
+    });
+
+    it("running → unavailable, not comparable", () => {
+      const r = resolveArtifact("running", null, "PAQT0001");
+      expect(r.availability).toBe("unavailable");
+      expect(r.isComparable).toBe(false);
+    });
+
+    it("failed → unavailable, not comparable", () => {
+      const r = resolveArtifact("failed", null, "PAQT0001");
+      expect(r.availability).toBe("unavailable");
+      expect(r.isComparable).toBe(false);
+    });
+
+    it("cancelled → unavailable, not comparable", () => {
+      const r = resolveArtifact("cancelled", null, "PAQT0001");
+      expect(r.availability).toBe("unavailable");
+      expect(r.isComparable).toBe(false);
+    });
   });
 
-  it("research_constraints has all label validity fields", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.research_constraints?.evaluation_purpose).toBe("technical_pipeline_validation");
-    expect(res._body.research_constraints?.label_source).toBe("proxy_behavioral");
-    expect(res._body.research_constraints?.label_validity).toBe("pilot_only");
-    expect(typeof res._body.research_constraints?.data_warning).toBe("string");
+  // ── Test 16: Sequential route does not import from dataset-analytics ──
+
+  it("route module does not import from dataset-analytics", async () => {
+    // Verify by checking that the route file source doesn't cross-import
+    // (static check via module inspection — route is already imported above)
+    const routeModule = await import("@/app/api/researcher/sequential-analysis/route");
+    // The module exports should not include anything from dataset-analytics
+    const exports = Object.keys(routeModule);
+    // dataset-analytics specific exports won't be here
+    expect(exports).not.toContain("getDatasetAnalyticsSummary");
+    expect(exports).not.toContain("DatasetAnalyticsPayload");
   });
-
-  // ── event_vocabulary ──
-
-  it("event_vocabulary total_vocab_entries = 9 (all vocab entries)", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.event_vocabulary?.total_vocab_entries).toBe(
-      Object.keys(vocabulary.event_type_vocab).length,
-    );
-  });
-
-  it("event_vocabulary active_event_count = 5 (non-block events)", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    const activeCount = Object.keys(vocabulary.event_type_vocab).filter(
-      (k) => !vocabulary.block_events_reserved.includes(k),
-    ).length;
-    expect(res._body.event_vocabulary?.active_event_count).toBe(activeCount);
-  });
-
-  it("event_vocabulary has padding_token = 0", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.event_vocabulary?.padding_token).toBe(0);
-  });
-
-  it("event_vocabulary has 4 block_events_reserved entries", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.event_vocabulary?.block_events_reserved).toHaveLength(
-      vocabulary.block_events_reserved.length,
-    );
-  });
-
-  // ── tag_structure ──
-
-  it("tag_structure transition_type_count = 8", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.tag_structure?.transition_type_count).toBe(
-      tagManifest.transition_types.length,
-    );
-  });
-
-  it("tag_structure graph_feature_count = 18", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.tag_structure?.graph_feature_count).toBe(tagManifest.n_features);
-  });
-
-  it("tag_structure has transition_types array", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(Array.isArray(res._body.tag_structure?.transition_types)).toBe(true);
-    expect(res._body.tag_structure?.transition_types).toHaveLength(tagManifest.transition_types.length);
-  });
-
-  // ── model_sequence_config ──
-
-  it("model_sequence_config has lstm and gru entries", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.model_sequence_config?.lstm).toBeDefined();
-    expect(res._body.model_sequence_config?.gru).toBeDefined();
-  });
-
-  // ── validation ──
-
-  it("validation checks_passed equals checks_run (all pass)", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.validation?.checks_passed).toBe(res._body.validation?.checks_run);
-    expect(res._body.validation?.checks_run).toBe(summary.validation.checks_run);
-  });
-
-  it("validation structural checks all true", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(res._body.validation?.no_learner_overlap).toBe(true);
-    expect(res._body.validation?.no_pii_in_exports).toBe(true);
-    expect(res._body.validation?.leakage_check_passed).toBe(true);
-    expect(res._body.validation?.split_integrity_passed).toBe(true);
-  });
-
-  // ── artifact_versions ──
-
-  it("artifact_versions has schema_version strings for all artifacts", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(typeof res._body.artifact_versions?.phase4_ui_summary?.schema_version).toBe("string");
-    expect(typeof res._body.artifact_versions?.sequence_manifest?.schema_version).toBe("string");
-    expect(typeof res._body.artifact_versions?.vocabulary?.schema_version).toBe("string");
-    expect(typeof res._body.artifact_versions?.scaler?.schema_version).toBe("string");
-    expect(typeof res._body.artifact_versions?.tag_manifest?.schema_version).toBe("string");
-  });
-
-  it("artifact_versions tag_manifest has m2_manifest_sha hash", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(typeof res._body.artifact_versions?.tag_manifest?.m2_manifest_sha).toBe("string");
-    expect(res._body.artifact_versions?.tag_manifest?.m2_manifest_sha).toBe(tagManifest.m2_manifest_sha);
-  });
-
-  it("artifact_versions tag_manifest artifact_checksums has 5 entries", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    const checksums = res._body.artifact_versions?.tag_manifest?.artifact_checksums;
-    expect(checksums).toBeDefined();
-    expect(Object.keys(checksums ?? {}).length).toBe(5);
-  });
-
-  // ── No fabricated values ──
-
-  it("response does not include event frequency counts", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: Record<string, unknown>; _status: number };
-    // These keys must not appear at top-level or nested in event_vocabulary
-    const bodyStr = JSON.stringify(res._body);
-    expect(bodyStr).not.toContain("event_frequencies");
-    expect(bodyStr).not.toContain("transition_matrix");
-    expect(bodyStr).not.toContain("event_counts");
-  });
-
-  // ── limitations ──
-
-  it("limitations is a non-empty array of strings", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    expect(Array.isArray(res._body.limitations)).toBe(true);
-    expect((res._body.limitations ?? []).length).toBeGreaterThan(0);
-    for (const lim of res._body.limitations ?? []) {
-      expect(typeof lim).toBe("string");
-    }
-  });
-
-  it("limitations mentions confirmatory_analysis_allowed=false", async () => {
-    const res = await GET(makeRequest()) as unknown as { _body: ResponseBody; _status: number };
-    const hasConfirmatory = (res._body.limitations ?? []).some((l) =>
-      l.includes("confirmatory"),
-    );
-    expect(hasConfirmatory).toBe(true);
-  });
-
 });

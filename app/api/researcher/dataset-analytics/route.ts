@@ -364,9 +364,21 @@ export async function GET(request: NextRequest) {
     if (taskSetIds.length > 0) {
       const { data: batches } = await supabaseAdmin
         .from("mst_experiment_batches")
-        .select("id, batch_name")
-        .in("id", taskSetIds);
-      for (const b of batches ?? []) taskSetNameMap.set(String(b.id), String(b.batch_name));
+        .select("batch_id, batch_name")
+        .in("batch_id", taskSetIds);
+      for (const b of batches ?? []) taskSetNameMap.set(String(b.batch_id), String(b.batch_name));
+    }
+
+    // Bulk-fetch usage status: a dataset is "used" if it has any completed pipeline run
+    const allDatasetIds = rawDatasets.map((r) => String(r.id));
+    const usedSet = new Set<string>();
+    if (allDatasetIds.length > 0) {
+      const { data: completedRuns } = await supabaseAdmin
+        .from("mst_pipeline_runs")
+        .select("dataset_id")
+        .in("dataset_id", allDatasetIds)
+        .eq("status", "completed");
+      for (const r of completedRuns ?? []) usedSet.add(String(r.dataset_id));
     }
 
     datasetList = rawDatasets
@@ -386,7 +398,7 @@ export async function GET(request: NextRequest) {
           task_id: tid,
           task_set_name: tid ? (taskSetNameMap.get(tid) ?? null) : null,
           active: Boolean(row.active),
-          usage_status: resolveUsageStatus(String(row.id)),
+          usage_status: usedSet.has(String(row.id)) ? "used" : "not_used" as "used" | "not_used",
           session_count: stats.session_count,
           learner_count: stats.learner_count,
           created_at: String(row.created_at),

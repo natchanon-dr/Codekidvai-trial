@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase-client";
+import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 import { TaskTypeIcon } from "@/lib/task-type-utils";
 import {
   SET_FAMILY_LABEL,
@@ -990,10 +990,29 @@ function RunConfirmModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingRunId, setExistingRunId] = useState<string | null>(null);
+  const [lastRunSteps, setLastRunSteps] = useState<Record<string, string> | null>(null);
 
   const isInactive = !dataset.active;
+  const isUsed = dataset.usage_status === "used";
 
-  async function handleConfirm() {
+  useEffect(() => {
+    if (!isUsed) return;
+    fetch(`/api/researcher/dataset-analytics/${dataset.id}/runs`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((j: { runs?: { status: string; analysis_steps?: { analysis: string; status: string }[] }[] }) => {
+        const last = (j.runs ?? []).find((r) => r.status === "completed");
+        if (last?.analysis_steps) {
+          const map: Record<string, string> = {};
+          for (const s of last.analysis_steps) map[s.analysis] = s.status;
+          setLastRunSteps(map);
+        }
+      })
+      .catch(() => { /* ignore */ });
+  }, [dataset.id, isUsed, token]);
+
+async function handleConfirm() {
     if (isInactive) return;
     setSubmitting(true);
     setError(null);
@@ -1051,7 +1070,7 @@ function RunConfirmModal({
             </div>
             <div className="pt-1.5">
               <p className="text-[9px] text-[#94A3B8] uppercase tracking-wide">Task Set</p>
-              <p className="text-xs text-[#475569]">{dataset.task_set_name ?? dataset.task_id ?? <span className="italic text-[#94A3B8]">—</span>}</p>
+              <p className="text-xs text-[#475569]">{dataset.task_set_name ?? <span className="italic text-[#94A3B8]">—</span>}</p>
             </div>
           </div>
           {/* Version info — truthful */}
@@ -1076,29 +1095,47 @@ function RunConfirmModal({
           </p>
         </div>
 
-        {/* Analyses that will run */}
+        {/* Analyses */}
         <div>
           <p className="text-xs font-semibold text-[#475569] mb-2">Analyses to run:</p>
           <div className="grid grid-cols-2 gap-1.5">
-            {PIPELINE_ANALYSES.map((a) => (
-              <div key={a.key} className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5">
-                <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${isInactive ? "bg-[#E2E8F0]" : "bg-amber-400"}`} />
-                <span className="text-xs text-[#475569]">{a.label}</span>
-                <span className="ml-auto text-[9px] text-amber-600 font-semibold">PENDING</span>
-              </div>
-            ))}
+            {PIPELINE_ANALYSES.map((a) => {
+              const prevStatus = lastRunSteps?.[a.key];
+              const dotColor = isInactive ? "bg-[#E2E8F0]"
+                : submitting ? "bg-[#F37021] animate-pulse"
+                : prevStatus === "completed" ? "bg-emerald-500"
+                : prevStatus === "failed" ? "bg-red-400"
+                : "bg-amber-400";
+              const labelColor = submitting ? "text-[#F37021]"
+                : prevStatus === "completed" ? "text-emerald-600"
+                : prevStatus === "failed" ? "text-red-500"
+                : "text-amber-600";
+              const label = submitting ? "Queuing…"
+                : prevStatus === "completed" ? "DONE"
+                : prevStatus === "failed" ? "FAILED"
+                : "PENDING";
+              return (
+                <div key={a.key} className="rounded-lg border border-[#E2E8F0] bg-white overflow-hidden">
+                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                    <span className="text-xs text-[#475569]">{a.label}</span>
+                    <span className={`ml-auto text-[9px] font-semibold ${labelColor}`}>{label}</span>
+                  </div>
+                  {submitting && (
+                    <div className="h-0.5 bg-[#FED7AA] overflow-hidden">
+                      <div className="h-full bg-[#F37021]" style={{ width: "30%", animation: "slide-progress 1.4s ease-in-out infinite" }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p className="text-[9px] text-[#94A3B8] mt-1.5">All analyses will be queued as pending — execution requires the pipeline worker.</p>
         </div>
 
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-            {error}
-            {existingRunId && (
-              <p className="mt-1 text-[10px]">
-                Existing run ID: <span className="font-mono">{existingRunId.slice(0, 8)}…</span> — open <strong>Run History</strong> to view or cancel it.
-              </p>
-            )}
+            <p>{error}</p>
           </div>
         )}
 
@@ -1111,7 +1148,7 @@ function RunConfirmModal({
             disabled={submitting || isInactive}
             aria-label="Confirm full pipeline run"
             className="px-4 py-2 text-xs font-semibold text-white bg-[#F37021] rounded-lg hover:bg-[#D45F10] disabled:opacity-50 transition-colors">
-            {submitting ? "Starting…" : "Confirm Run"}
+            {submitting ? "Starting…" : isUsed ? "Rerun Pipeline" : "Confirm Run"}
           </button>
         </div>
       </div>
@@ -1476,6 +1513,12 @@ function RunHistoryModal({
 export default function DatasetAnalyticsPage() {
   const router = useRouter();
 
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [participantCode, setParticipantCode] = useState<string | null>(null);
+
   // Dataset list filters
   const [search, setSearch] = useState("");
   const [listBatchType, setListBatchType] = useState<string>("");
@@ -1495,6 +1538,38 @@ export default function DatasetAnalyticsPage() {
   // Modal state
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [modalDataset, setModalDataset] = useState<DatasetRecord | null>(null);
+
+  useEffect(() => {
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof } = await supabase
+        .from("mst_profiles")
+        .select("display_name, participant_code")
+        .eq("auth_user_id", session.user.id)
+        .single();
+      setDisplayName(prof?.display_name ?? null);
+      setEmail(user?.email ?? null);
+      setParticipantCode(prof?.participant_code ?? null);
+    }
+    void init();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  }
 
   const getToken = useCallback(async (): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1591,17 +1666,51 @@ export default function DatasetAnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
-      {/* Header — Teacher nav pattern */}
-      <header className="bg-white border-b border-[#FED7AA] px-6 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/researcher/dashboard" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
-            Researcher Dashboard
-          </Link>
-          <span className="text-xs font-semibold text-[#F37021]">Dataset Analytics</span>
+      <header className="bg-white border-b border-[#FED7AA] px-6 py-3 flex items-center justify-between">
+        <div>
+          <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Researcher</p>
+          <p className="text-xs text-[#64748B]">Research data access portal</p>
+        </div>
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="w-8 h-8 rounded-full bg-[#FED7AA] flex items-center justify-center hover:bg-[#F37021] hover:text-white transition-colors text-[#F37021] border border-[#FED7AA]"
+            title="Profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 top-10 w-64 bg-white border border-[#FED7AA] rounded-2xl shadow-lg z-50 p-4 space-y-3">
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Name</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{displayName ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Email</p>
+                <p className="text-sm text-[#0F172A] break-all">{email ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Participant Code</p>
+                <p className="text-sm font-mono font-semibold text-[#64748B]">{participantCode ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <button
+                onClick={handleLogout}
+                className="w-full py-1.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+        <ResearcherBreadcrumb current="Dataset Analytics" />
 
         {/* ── Title row: left = title/desc, right = Create button ── */}
         <div className="flex flex-row items-start justify-between gap-4">

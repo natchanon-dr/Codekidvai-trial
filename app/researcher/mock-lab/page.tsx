@@ -109,13 +109,7 @@ export default function MockLabPage() {
         {/* Breadcrumb */}
         <ResearcherBreadcrumb current="Mock Lab" />
 
-        {/* Page header */}
-        <section className="space-y-1">
-          <h1 className="text-2xl font-bold text-[#0F172A]">Mock Lab</h1>
-          <p className="text-sm text-[#64748B]">Simulated baseline AI pipeline for technical validation.</p>
-        </section>
-
-        {/* MockLab feature */}
+        {/* MockLab feature (includes its own title row with Create Mock button) */}
         <MockLab />
       </main>
     </div>

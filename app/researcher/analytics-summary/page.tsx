@@ -1,8 +1,8 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase-client";
+import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 import {
   TaskTypeIcon,
   TASK_TYPE_LABEL,
@@ -305,6 +305,12 @@ function C2L3ComponentCard({ code, description }: { code: string; description: s
 export default function AnalyticsSummaryPage() {
   const router = useRouter();
 
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [participantCode, setParticipantCode] = useState<string | null>(null);
+
   // Dimension filters
   const [batchType, setBatchType] = useState<BatchTypeValue | null>(null);
   const [taskType, setTaskType] = useState<TaskTypeValue | null>(null);
@@ -316,6 +322,38 @@ export default function AnalyticsSummaryPage() {
 
   // Task type options from batch list
   const [availableTaskTypes, setAvailableTaskTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof } = await supabase
+        .from("mst_profiles")
+        .select("display_name, participant_code")
+        .eq("auth_user_id", session.user.id)
+        .single();
+      setDisplayName(prof?.display_name ?? null);
+      setEmail(user?.email ?? null);
+      setParticipantCode(prof?.participant_code ?? null);
+    }
+    void init();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  }
 
   const getToken = useCallback(async (): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -369,13 +407,49 @@ export default function AnalyticsSummaryPage() {
     <div className="min-h-screen bg-[#FFF7ED]">
       <header className="bg-white border-b border-[#FED7AA] px-6 py-3 flex items-center justify-between">
         <div>
-          <p className="font-bold text-[#0F172A] text-sm">Analytics Summary</p>
-          <p className="text-xs text-[#64748B]">Phase 4 Dataset Statistics & Feature Analysis</p>
+          <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Researcher</p>
+          <p className="text-xs text-[#64748B]">Research data access portal</p>
         </div>
-        <Link href="/researcher/dashboard" className="text-xs text-[#F37021] hover:underline">← Dashboard</Link>
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="w-8 h-8 rounded-full bg-[#FED7AA] flex items-center justify-center hover:bg-[#F37021] hover:text-white transition-colors text-[#F37021] border border-[#FED7AA]"
+            title="Profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 top-10 w-64 bg-white border border-[#FED7AA] rounded-2xl shadow-lg z-50 p-4 space-y-3">
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Name</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{displayName ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Email</p>
+                <p className="text-sm text-[#0F172A] break-all">{email ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Participant Code</p>
+                <p className="text-sm font-mono font-semibold text-[#64748B]">{participantCode ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <button
+                onClick={handleLogout}
+                className="w-full py-1.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+        <ResearcherBreadcrumb current="Feature Analytics" />
 
         {/* Pilot Disclaimer */}
         {data && <PilotDisclaimer warning={data.data_warning} />}

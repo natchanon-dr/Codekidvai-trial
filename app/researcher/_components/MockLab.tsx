@@ -243,10 +243,15 @@ export default function MockLab() {
   const [activeTab, setActiveTab]       = useState<OutcomeTab>("summary");
   const [showPipelineModal, setShowPipelineModal] = useState(false);
   const [showCreateModal, setShowCreateModal]     = useState(false);
+  const [editingConfig, setEditingConfig]         = useState<MockConfigRecord | null>(null);
   const logEndRef          = useRef<HTMLDivElement>(null);
   const abortRef           = useRef<AbortController | null>(null);
   const pipelineStepRef    = useRef<MockStep>("data");
   const pendingSetIdRef    = useRef<string>("");
+  const runConfigRef       = useRef<typeof config | null>(null);
+  // true = outcome came from a live run (unsaved); false = loaded from DB
+  const isNewOutcomeRef    = useRef(false);
+  const [outcomeSaved, setOutcomeSaved] = useState(false);
 
   // configs table state
   const [configs, setConfigs]               = useState<MockConfigRecord[]>([]);
@@ -421,7 +426,7 @@ export default function MockLab() {
     }
   }
 
-  async function openModalWithConfig(cfg: MockConfigRecord) {
+  async function openModalWithConfig(cfg: MockConfigRecord, mode: "edit" | "duplicate" = "edit") {
     const firstTaskType = (Object.keys(cfg.task_type_counts)[0] ?? "sql_text") as TaskType;
     setDummySetFamily(cfg.set_family as SetFamily);
     setDummyTaskType(firstTaskType);
@@ -460,12 +465,13 @@ export default function MockLab() {
       setSelectedClassId(""); setSelectedSetId(""); setTaskSets([]);
     }
 
+    setEditingConfig(mode === "edit" ? cfg : null);
     setShowCreateModal(true);
   }
 
   function validateBatchCode(code: string): string | null {
-    if (!code.startsWith("SIM_E2E_") && !code.startsWith("MOCK_")) {
-      return "Batch code must start with SIM_E2E_ or MOCK_";
+    if (!code.startsWith("SIM_E2E_") && !code.startsWith("MOCK_") && !code.startsWith("M")) {
+      return "Batch code must start with SIM_E2E_, MOCK_, or M";
     }
     return null;
   }
@@ -505,8 +511,9 @@ export default function MockLab() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(config),
+        body: JSON.stringify(runConfigRef.current ?? config),
       });
+      runConfigRef.current = null;
 
       if (!res.ok) {
         addLog(`ERROR: ${res.status} ${await res.text()}`);
@@ -571,7 +578,7 @@ export default function MockLab() {
               const s = payload.step as string;
               if (s) setStepStatus(prev => ({ ...prev, [s]: payload.pct === 100 ? "completed" : "running" }));
             }
-            if (eventType === "outcome") parseOutcome(payload as { report?: MockOutcome });
+            if (eventType === "outcome") parseOutcome(payload as { report?: MockOutcome }, true);
             if (eventType === "done") {
               const s = payload.step as string;
               const wasAborted: boolean = payload.aborted === true;
@@ -615,27 +622,105 @@ export default function MockLab() {
     abortRef.current?.abort();
   }
 
-  function handleRunPipeline(configId: string) {
-    setActiveConfigId(configId);
-    setShowPipelineModal(true);
+  async function handleRunPipeline(configId: string) {
     const cfg = configs.find(c => c.id === configId);
-    if (cfg) {
-      updateConfig("batchCode", cfg.code);
-      updateConfig("nStudents", cfg.n_students);
-      updateConfig("atRiskRate", cfg.at_risk_rate);
-      updateConfig("missingRate", cfg.missing_rate);
-      updateConfig("seed", cfg.seed);
-      updateConfig("setFamily", cfg.set_family as SetFamily);
-      updateConfig("taskTypeCounts", cfg.task_type_counts);
+    const merged = cfg ? {
+      ...config,
+      batchCode:      cfg.code,
+      nStudents:      cfg.n_students,
+      nTasks:         Object.values(cfg.task_type_counts)[0] ?? 3,
+      atRiskRate:     cfg.at_risk_rate,
+      missingRate:    cfg.missing_rate,
+      seed:           cfg.seed,
+      setFamily:      cfg.set_family as SetFamily,
+      taskTypeCounts: cfg.task_type_counts,
+      taskIds:        cfg.task_ids.length > 0 ? cfg.task_ids : undefined,
+      taskSetId:      cfg.task_set_id ?? undefined,
+    } : config;
+    runConfigRef.current = merged;
+    setConfig(merged);
+    setActiveConfigId(configId);
+    // Reset pipeline UI state
+    setLogs([]);
+    setErrorCount(0);
+    setElapsed(0);
+    setStepStatus({});
+    setCompleted([]);
+    setLiveProgress(null);
+    setFinalStats(null);
+    setOutcome(null);
+    isNewOutcomeRef.current = false;
+    setOutcomeSaved(false);
+    setShowPipelineModal(true);
+
+    // If already run before, load last successful outcome instead of auto-running
+    if (cfg && cfg.run_count > 0) {
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+        const res = await fetch(`/api/researcher/mock-lab/${configId}/runs`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json() as { runs?: Array<{ outcome?: unknown; status: string }> };
+        // Find the most recent run that actually has a stored outcome
+        const lastSuccessful = (data.runs ?? []).find(r => r.outcome != null);
+        if (lastSuccessful?.outcome) {
+          parseOutcome({ report: lastSuccessful.outcome as MockOutcome });
+          isNewOutcomeRef.current = false;
+          setOutcomeSaved(true);
+          // Restore all steps as completed so the workflow panel shows green
+          PIPELINE_STEPS.forEach(ps => setStepStatus(prev => ({ ...prev, [ps]: "completed" })));
+          setCompleted(PIPELINE_STEPS as string[]);
+          setActiveTab("summary");
+        }
+      } catch { /* show empty modal, user can re-run */ }
+    } else {
+      void runStep("run-all");
     }
-    void runStep("run-all");
   }
 
-  function parseOutcome(payload: { report?: MockOutcome }) {
+  function parseOutcome(payload: { report?: MockOutcome }, fromLiveRun = false) {
     if (payload.report) {
       setOutcome(payload.report);
       setActiveTab("summary");
+      if (fromLiveRun) {
+        isNewOutcomeRef.current = true;
+        setOutcomeSaved(false);
+      }
     }
+  }
+
+  async function saveOutcome() {
+    if (!activeConfigId || !outcome) return;
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      // Create run record
+      const postRes = await fetch(`/api/researcher/mock-lab/${activeConfigId}/runs`, {
+        method: "POST",
+        headers,
+      });
+      if (!postRes.ok) return;
+      const { run } = await postRes.json() as { run: { id: string } };
+
+      // Save outcome
+      await fetch(`/api/researcher/mock-lab/${activeConfigId}/runs`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          run_id:       run.id,
+          status:       "completed",
+          outcome,
+          completed_at: new Date().toISOString(),
+        }),
+      });
+
+      isNewOutcomeRef.current = false;
+      setOutcomeSaved(true);
+      void fetchConfigs(); // refresh run_count in table
+      setShowPipelineModal(false);
+    } catch { /* ignore */ }
   }
 
   async function handleCreateMock() {
@@ -702,6 +787,41 @@ export default function MockLab() {
       } else {
         setConfigError(errMsg);
       }
+    }
+  }
+
+  async function handleSaveMock() {
+    if (!editingConfig) { void handleCreateMock(); return; }
+    // Edit mode — PATCH existing config
+    setConfigError(null);
+    const isUsed = editingConfig.run_count > 0;
+    const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+    const body: Record<string, unknown> = { name: config.batchCode, active: editingConfig.active };
+    if (!isUsed) {
+      body.n_students      = config.nStudents;
+      body.at_risk_rate    = config.atRiskRate;
+      body.missing_rate    = config.missingRate;
+      body.seed            = config.seed;
+      body.set_family      = config.setFamily;
+      body.task_type_counts = config.taskTypeCounts;
+      body.task_set_id     = config.taskSetId ?? null;
+      body.task_ids        = config.taskIds ?? [];
+    }
+    const res = await fetch(`/api/researcher/mock-lab/${editingConfig.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      setShowCreateModal(false);
+      setEditingConfig(null);
+      await fetchConfigs();
+    } else {
+      const json = await res.json() as { error?: string };
+      setConfigError(json.error ?? "Failed to update mock config");
     }
   }
 
@@ -796,6 +916,11 @@ export default function MockLab() {
         CREATE MOCK MODAL — Dataset Analytics layout
     ══════════════════════════════════════════════════════════════════════════ */}
     {showCreateModal && (() => {
+      // Edit vs Create context
+      const isEdit = editingConfig !== null;
+      const isUsed = isEdit && (editingConfig?.run_count ?? 0) > 0;
+      const isLocked = isUsed; // when used, only name + status editable
+
       // Compute code preview from current form state
       const PREVIEW_ACTIVITY_CODE: Record<string, string> = { assignment: "A", lab: "L", exam: "E" };
       const PREVIEW_TASK_TYPE_CODE: Record<string, string> = { sql_text: "QT", sql_block: "QB", stored_procedure: "SP", er_diagram: "ER" };
@@ -803,7 +928,9 @@ export default function MockLab() {
       const previewFirstTaskType = Object.keys(config.taskTypeCounts ?? {})[0] ?? "";
       const isExamFamily = config.setFamily === "exam";
       const mockTaskCode = isExamFamily ? "EX" : (previewFirstTaskType ? PREVIEW_TASK_TYPE_CODE[previewFirstTaskType] : null);
-      const mockCodePreview = (mockActivityCode && mockTaskCode) ? `M${mockActivityCode}${mockTaskCode}####` : null;
+      const mockCodePreview = isEdit
+        ? editingConfig!.code
+        : ((mockActivityCode && mockTaskCode) ? `M${mockActivityCode}${mockTaskCode}####` : null);
 
       return (
       <div
@@ -813,9 +940,26 @@ export default function MockLab() {
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-[#FED7AA] shrink-0">
-            <div>
-              <h2 className="text-base font-bold text-[#0F172A]">Create Mock</h2>
-              <p className="text-xs text-[#64748B] mt-0.5">Configure a mock simulation dataset</p>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-bold text-[#0F172A]">{isEdit ? "Edit Mock" : "Create Mock"}</h2>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                {isEdit ? "แก้ไขข้อมูล mock simulation dataset" : "Configure a mock simulation dataset"}
+              </p>
+              {isEdit && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${isUsed ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-[#F1F5F9] text-[#94A3B8] border-[#E2E8F0]"}`}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    {isUsed ? `Used · ${editingConfig!.run_count} run${editingConfig!.run_count !== 1 ? "s" : ""}` : "Not used"}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${editingConfig!.active ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-[#F1F5F9] text-[#94A3B8] border-[#E2E8F0]"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${editingConfig!.active ? "bg-emerald-500" : "bg-[#CBD5E1]"}`} />
+                    {editingConfig!.active ? "Active" : "Inactive"}
+                  </span>
+                  {isUsed && (
+                    <span className="text-[10px] text-amber-600 font-medium">— แก้ได้เฉพาะ Name และ Status</span>
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={() => setShowCreateModal(false)}
@@ -876,8 +1020,8 @@ export default function MockLab() {
               {/* Column B — Activity Type */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-[#64748B]">Activity Type *</label>
-                <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
-                  <button type="button" title={SET_FAMILY_LABEL["assignment"]}
+                <div className={`flex rounded-xl border border-[#FED7AA] overflow-hidden w-fit ${isLocked ? "opacity-50 pointer-events-none" : "bg-white"}`}>
+                  <button type="button" title={SET_FAMILY_LABEL["assignment"]} disabled={isLocked}
                     onClick={() => { setDummySetFamily("assignment"); updateConfig("setFamily", "assignment"); updateConfig("taskTypeCounts", { [dummyTaskType]: config.taskIds?.length ?? config.nTasks }); }}
                     className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${(config.setFamily ?? dummySetFamily) === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -886,7 +1030,7 @@ export default function MockLab() {
                       <rect x="4" y="3" width="16" height="18" rx="2"/>
                     </svg>
                   </button>
-                  <button type="button" title={SET_FAMILY_LABEL["lab"]}
+                  <button type="button" title={SET_FAMILY_LABEL["lab"]} disabled={isLocked}
                     onClick={() => { setDummySetFamily("lab"); updateConfig("setFamily", "lab"); updateConfig("taskTypeCounts", { [dummyTaskType]: config.taskIds?.length ?? config.nTasks }); }}
                     className={`flex items-center justify-center px-3 py-2 border-r border-[#FED7AA] transition-colors ${(config.setFamily ?? dummySetFamily) === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -894,7 +1038,7 @@ export default function MockLab() {
                       <path d="M8 2h8"/><path d="M7 15h10"/>
                     </svg>
                   </button>
-                  <button type="button" title={SET_FAMILY_LABEL["exam"]}
+                  <button type="button" title={SET_FAMILY_LABEL["exam"]} disabled={isLocked}
                     onClick={() => { setDummySetFamily("exam"); updateConfig("setFamily", "exam"); updateConfig("taskTypeCounts", {}); }}
                     className={`flex items-center justify-center px-3 py-2 transition-colors ${(config.setFamily ?? dummySetFamily) === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -919,7 +1063,7 @@ export default function MockLab() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white w-fit">
+                    <div className={`flex rounded-xl border border-[#FED7AA] overflow-hidden w-fit ${isLocked ? "opacity-50 pointer-events-none" : "bg-white"}`}>
                       {(THESIS_TASK_TYPE_ORDER as TaskType[]).map((tt, i) => {
                         const phase4 = isPhase4Supported(tt);
                         const label  = THESIS_TASK_TYPE_LABEL[tt] ?? tt;
@@ -928,7 +1072,7 @@ export default function MockLab() {
                           <button
                             key={tt}
                             type="button"
-                            disabled={!phase4}
+                            disabled={!phase4 || isLocked}
                             title={!phase4 ? `${label} — Planned Phase 5` : label}
                             onClick={() => {
                               if (!phase4) return;
@@ -963,16 +1107,16 @@ export default function MockLab() {
             {/* Simulation Parameters */}
             <div className="space-y-2 border-t border-[#F1F5F9] pt-4">
               <p className="text-xs font-bold text-[#0F172A]">Simulation Parameters</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid grid-cols-2 gap-3 ${isLocked ? "opacity-50 pointer-events-none" : ""}`}>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[#64748B]">At-Risk (%)</label>
-                  <input type="number" min={0} max={100} value={config.atRiskRate}
+                  <input type="number" min={0} max={100} value={config.atRiskRate} disabled={isLocked}
                     onChange={e => updateConfig("atRiskRate", Math.max(0, Math.min(100, +e.target.value)))}
                     className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[#64748B]">Submission (%)</label>
-                  <input type="number" min={0} max={100}
+                  <input type="number" min={0} max={100} disabled={isLocked}
                     value={100 - (config.missingRate ?? 7)}
                     onChange={e => updateConfig("missingRate", Math.max(0, Math.min(100, 100 - +e.target.value)))}
                     className="w-full px-3 py-2 text-sm border border-[#CBD5E1] rounded-xl focus:outline-none focus:border-[#F37021]" />
@@ -981,7 +1125,7 @@ export default function MockLab() {
             </div>
 
             {/* Link to Real Class (optional) — auto-fills student count */}
-            <div className="border-t border-[#F1F5F9] pt-4 space-y-2">
+            <div className={`border-t border-[#F1F5F9] pt-4 space-y-2 ${isLocked ? "opacity-50 pointer-events-none" : ""}`}>
               <p className="text-xs font-bold text-[#0F172A]">Link to Real Class <span className="font-normal text-[#94A3B8]">(optional)</span></p>
               <select
                 value={selectedClassId}
@@ -1051,32 +1195,63 @@ export default function MockLab() {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-end gap-2 shrink-0">
+          <div className="px-6 py-4 border-t border-[#FED7AA] flex items-center justify-between shrink-0">
+            {/* Left — Status toggle (edit only) */}
+            {isEdit ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingConfig(prev => prev ? { ...prev, active: !prev.active } : prev)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editingConfig!.active ? "bg-emerald-500" : "bg-[#CBD5E1]"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${editingConfig!.active ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+                <span className="text-xs font-semibold text-[#64748B]">{editingConfig!.active ? "Active" : "Inactive"}</span>
+              </div>
+            ) : <div />}
+            {/* Right — action buttons */}
+            <div className="flex items-center gap-2">
+            {isEdit ? (
+              /* Edit mode: show Delete (only when not used) */
+              !isUsed && (
+                <button
+                  onClick={async () => { await handleDelete(editingConfig!.id); setShowCreateModal(false); setEditingConfig(null); }}
+                  className="p-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                  title="Delete Mock"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )
+            ) : (
+              /* Create mode: Reset button */
+              <button
+                onClick={() => {
+                  setDummySetFamily("assignment");
+                  setDummyTaskType("sql_text");
+                  setConfig(prev => ({
+                    ...prev,
+                    batchCode: "",
+                    nStudents: 10,
+                    atRiskRate: 35,
+                    missingRate: 7,
+                    seed: 42,
+                    setFamily: "assignment",
+                    taskTypeCounts: { sql_text: 3 },
+                  }));
+                  setConfigError(null);
+                }}
+                className="p-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                title="Reset"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              </button>
+            )}
             <button
-              onClick={() => {
-                setDummySetFamily("assignment");
-                setDummyTaskType("sql_text");
-                setConfig(prev => ({
-                  ...prev,
-                  batchCode: "",
-                  nStudents: 10,
-                  atRiskRate: 35,
-                  missingRate: 7,
-                  seed: 42,
-                  setFamily: "assignment",
-                  taskTypeCounts: { sql_text: 3 },
-                }));
-                setConfigError(null);
-              }}
-              className="p-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-              title="Reset"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-            </button>
-            <button
-              onClick={() => { void handleCreateMock(); }}
+              onClick={() => { void handleSaveMock(); }}
               className="p-2.5 rounded-xl bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
               title="Save Mock"
             >
@@ -1084,6 +1259,7 @@ export default function MockLab() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1128,15 +1304,32 @@ export default function MockLab() {
                   Stop
                 </button>
               ) : (
-                <button
-                  onClick={() => void runStep("run-all")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
-                  </svg>
-                  {pipelineProgress > 0 ? "Re-run" : "Run All"}
-                </button>
+                <>
+                  {/* Save icon — shown only after a live run, before saving */}
+                  {outcome && isNewOutcomeRef.current && !outcomeSaved && (
+                    <button
+                      onClick={() => void saveOutcome()}
+                      title="Save result"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                    >
+                      {/* floppy-disk save icon */}
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void runStep("run-all")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                    </svg>
+                    {(pipelineProgress > 0 || outcome) ? "Re-run" : "Run All"}
+                  </button>
+                </>
               )}
               <button
                 onClick={() => setShowPipelineModal(false)}
@@ -1510,7 +1703,10 @@ export default function MockLab() {
     <section className="space-y-5">
       {/* ── Title row ── */}
       <div className="flex items-start justify-between gap-4">
-        <div />
+        <div>
+          <h1 className="text-2xl font-bold text-[#0F172A]">Mock Lab</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Simulated baseline AI pipeline for technical validation.</p>
+        </div>
         <button
           onClick={() => {
             setDummySetFamily("assignment");
@@ -1530,6 +1726,7 @@ export default function MockLab() {
             setSelectedClassId("");
             setSelectedSetId("");
             setTaskSets([]);
+            setEditingConfig(null);
             setShowCreateModal(true);
           }}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold bg-[#F37021] text-white hover:bg-[#C2410C] transition-colors shrink-0"
@@ -1673,12 +1870,14 @@ export default function MockLab() {
                   { label: "Runs",       align: "center" },
                   { label: "Usage",      align: "center" },
                   { label: "Active",     align: "center" },
-                  { label: "Actions",    align: "center" },
                 ].map(({ label, align }) => (
                   <th key={label} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
                     {label}
                   </th>
                 ))}
+                <th className="sticky right-0 bg-white px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest text-center whitespace-nowrap shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.06)]">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1751,7 +1950,7 @@ export default function MockLab() {
                     </button>
                   </td>
                   {/* Actions */}
-                  <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+                  <td className="sticky right-0 bg-white px-3 py-3.5 whitespace-nowrap align-middle shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.06)]">
                     <div className="inline-flex items-center gap-1">
                       <button onClick={() => handleRunPipeline(cfg.id)} title="Run Pipeline"
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#FED7AA] text-[#F37021] hover:bg-[#FFF7ED] transition-colors">
@@ -1763,7 +1962,7 @@ export default function MockLab() {
                           <path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
                         </svg>
                       </button>
-                      <button onClick={() => { void openModalWithConfig(cfg); }} title="Duplicate"
+                      <button onClick={() => { void openModalWithConfig(cfg, "duplicate"); }} title="Duplicate"
                         className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E2E8F0] text-[#94A3B8] hover:border-[#F37021] hover:text-[#F37021] transition-colors">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                           <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
