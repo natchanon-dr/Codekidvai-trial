@@ -337,59 +337,7 @@ export function SequentialAnalysisDetailModal({
 
             return (
               <>
-                {/* ── Section 1: Validity Notices ── */}
-                <section className="rounded-xl border border-amber-300 bg-amber-50 p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-amber-500 text-xl mt-0.5" aria-hidden="true">&#9888;</span>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-bold text-amber-800 text-sm">Pilot Data Notice &#8212; Technical Validation Only</p>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white tracking-wide">
-                          PILOT ONLY
-                        </span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-700 text-white tracking-wide">
-                          NOT FINAL RESEARCH RESULTS
-                        </span>
-                      </div>
-                      <ul className="text-amber-700 text-xs space-y-1 mt-2 leading-relaxed">
-                        <li>Proxy labels only &#8212; labels derived from attempt stream, not expert-validated</li>
-                        <li>10 learners (pilot) &#8212; below thesis minimum of {ds.thesis_minimum_learners} learners</li>
-                        <li>Pipeline validation only &#8212; not confirmatory, not causal</li>
-                        <li>Proxy-target circularity is PRESENT &#8212; results must not be interpreted as confirmatory research findings</li>
-                        <li>Confirmatory hypothesis testing is PROHIBITED in this phase</li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <pre className="overflow-x-auto text-xs font-mono bg-white/70 border border-amber-200 rounded-lg p-3 leading-relaxed">
-                    <span className="text-[#64748B]">{"evaluation_purpose             "}</span><span className="text-[#0F172A]">{"= "}{rc.evaluation_purpose}{"\n"}</span>
-                    <span className="text-[#64748B]">{"label_source                   "}</span><span className="text-[#0F172A]">{"= "}{rc.label_source}{"\n"}</span>
-                    <span className="text-[#64748B]">{"label_validity                 "}</span><span className="text-[#0F172A]">{"= "}{rc.label_validity}{"\n"}</span>
-                    <span className="text-[#64748B]">{"proxy_target_circularity       "}</span><span className="text-[#0F172A]">{"= "}{String(rc.proxy_target_circularity)}{"\n"}</span>
-                    <span className="text-[#64748B]">{"confirmatory_analysis_allowed  "}</span><span className="text-[#0F172A]">{"= "}{String(rc.confirmatory_analysis_allowed)}</span>
-                  </pre>
-
-                  <p className="text-amber-600 text-xs italic leading-relaxed">{rc.data_warning}</p>
-                </section>
-
-                {/* ── Section 2: Analysis Scope ── */}
-                <SectionCard title="Analysis Scope" subtitle="Frozen pilot scope &#8212; read-only artifact view">
-                  <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#475569] space-y-2 leading-relaxed">
-                    <p className="font-semibold text-[#0F172A]">This page shows artifact metadata only. The following operations are explicitly prohibited:</p>
-                    <ul className="space-y-1 ml-2">
-                      <li>&#8212; No browser-side metric recomputation</li>
-                      <li>&#8212; No dataset-subset evaluation</li>
-                      <li>&#8212; No learner-group inference</li>
-                      <li>&#8212; No confirmatory analysis</li>
-                    </ul>
-                    <p className="pt-2 border-t border-[#E2E8F0] text-[#64748B]">
-                      Note: batch_type and task_type filters do not apply to sequence data. Sequence tensors are
-                      computed from the offline pipeline (NB05) and are not filterable by activity set or task type.
-                    </p>
-                  </div>
-                </SectionCard>
-
-                {/* ── Section 3: Sequence Dataset Overview ── */}
+                {/* ── Section 1: Sequence Dataset Overview ── */}
                 <SectionCard
                   title="Sequence Dataset Overview"
                   subtitle="Frozen at NB05 execution &#8212; not affected by any runtime filters"
