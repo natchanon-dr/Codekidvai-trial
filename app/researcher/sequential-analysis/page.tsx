@@ -635,8 +635,9 @@ export default function SequentialAnalysisPage() {
                             </td>
                           </tr>
                         ) : (
-                          visibleRuns.map((run, runIndex) => {
-                              const runNumber = String(runIndex + 1).padStart(3, "0");
+                          visibleRuns.map((run) => {
+                              const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+                              const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
                               const isSelected = selectedRuns.some((s) => s.runId === run.id);
                               const selectionBlocked = selectedRuns.length >= MAX_COMPARE && !isSelected;
                               const checkboxDisabled = !run.is_comparable || selectionBlocked;
