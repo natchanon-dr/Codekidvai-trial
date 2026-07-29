@@ -321,7 +321,7 @@ export function AnalysisResultView({ artifact }: Props) {
       ) : (
         <SectionCard
           title="Sequence Construction"
-          subtitle={`Schema: ${sc.schema_version} &#8212; built at ${sc.created_at_utc}`}
+          subtitle={`Schema: ${sc.schema_version} — built at ${sc.created_at_utc}`}
         >
           <div className="text-xs text-[#475569] space-y-2 leading-relaxed">
             <p>
@@ -388,7 +388,7 @@ export function AnalysisResultView({ artifact }: Props) {
       ) : (
         <SectionCard
           title="Event Vocabulary"
-          subtitle={`Schema: ${ev.schema_version} &#8212; ${ev.total_vocab_entries} total entries, ${ev.active_event_count} active`}
+          subtitle={`Schema: ${ev.schema_version} — ${ev.total_vocab_entries} total entries, ${ev.active_event_count} active`}
         >
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse min-w-[420px]">
@@ -440,7 +440,7 @@ export function AnalysisResultView({ artifact }: Props) {
                       </td>
                       <td className="py-2 text-[#94A3B8]">
                         {isReserved
-                          ? "Reserved &#8212; not collected in Phase 4"
+                          ? "Reserved — not collected in Phase 4"
                           : "Collected in Phase 4"}
                       </td>
                     </tr>
