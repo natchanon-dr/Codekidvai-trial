@@ -93,6 +93,7 @@ function mockSupabase(rows: Record<string, string>[] | null, error?: string) {
     eq: vi.fn(() => thenable),
     or: vi.fn(() => thenable),
     is: vi.fn(() => thenable),
+    in: vi.fn(() => thenable),
     order: vi.fn(() => thenable),
     then: (resolve: (v: { data: typeof rows; error: { message: string; code?: string } | null }) => void) =>
       resolve({ data: rows, error: error ? { message: error } : null }),
