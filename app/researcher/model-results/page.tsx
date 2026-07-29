@@ -311,16 +311,15 @@ export default function ModelResultsPage() {
     if (!token || actionLoading) return;
     setActionLoading(run.id);
     try {
-      const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs`, {
+      const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs/${run.id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ run_type: run.run_type || "sequential" }),
+        headers: { Authorization: `Bearer ${token}` },
       });
-      void loadData();
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         console.warn("continueRun:", (j as { error?: string }).error ?? "unknown error");
       }
+      void loadData();
     } finally {
       setActionLoading(null);
     }
