@@ -1,344 +1,199 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
-import {
-  TaskTypeIcon,
-  TASK_TYPE_LABEL,
-  TASK_TYPE_ORDER,
-} from "@/lib/task-type-utils";
+import { SequentialAnalysisDetailModal } from "@/app/researcher/_components/SequentialAnalysisDetailModal";
+import { SequentialCompareModal } from "@/app/researcher/_components/SequentialCompareModal";
+import { TaskTypeIcon } from "@/lib/task-type-utils";
+import type { SequentialDatasetRecord, SequentialRunRecord } from "@/app/api/researcher/sequential-analysis/route";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-type LiveStats = {
-  learner_count: number;
-  session_count: number;
-  batch_type_filter: string | null;
-  task_type_filter: string | null;
-  grain: "session_level";
+const MAX_COMPARE = 3;
+const PAGE_SIZE = 10;
+
+const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
+const DATASET_TASK_LABEL: Record<string, string> = {
+  sql_text: "SQL Query",
+  sql_block: "Query Block",
+  stored_procedure: "Stored Procedure",
+  er_diagram: "ER Diagram",
 };
 
-type PipelineStats = {
-  total_learners: number;
-  train_learners: number;
-  test_learners: number;
-  train_sequences: number;
-  test_sequences: number;
-  total_sequences: number;
-  total_canonical_events: number;
-  max_sequence_length: number;
-  sequence_length_percentile: number;
-  split_method: string;
-  split_random_state: number;
-  dedup_window_seconds: number;
-  vocab_size: number;
-  features_per_timestep: number;
-  thesis_minimum_learners: number;
-  source: string;
-  note: string;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type SelectedRun = {
+  datasetId: string;
+  runId: string;
+  runNumber: string;
+  datasetCode: string;
+  datasetName: string;
+  artifactSource: "result_version" | "static_fallback" | null;
 };
 
-type Validation = {
-  checks_run: number;
-  checks_passed: number;
-  no_learner_overlap: boolean;
-  no_pii_in_exports: boolean;
-  leakage_check_passed: boolean;
-  split_integrity_passed: boolean;
+type ListResponse = {
+  datasets: SequentialDatasetRecord[];
+  filter_options: {
+    batch_types: string[];
+    set_families: string[];
+    task_types: string[];
+    run_statuses: string[];
+    usage_statuses: string[];
+  };
 };
 
-type BssaGroup = {
-  label: string;
-  status: string;
-  feature_count: number;
-  features?: string[];
-  features_per_timestep?: number;
-  max_seq_len?: number;
-  feature_note?: string;
-  model_usage: string[];
-  description: string;
-  phase?: string;
-  note?: string;
-  circular_features?: string[];
-  circular_reason?: string;
+type DetailTarget = {
+  datasetId: string;
+  runId: string;
+  datasetCode: string;
+  artifactSource: "result_version" | "static_fallback" | null;
 };
 
-type BssaFeatures = {
-  framework: string;
-  note: string;
-  groups: Record<string, BssaGroup>;
-};
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
 
-type ApiData = {
-  evaluation_purpose: string;
-  label_source: string;
-  label_validity: string;
-  proxy_target_circularity: boolean;
-  confirmatory_analysis_allowed: boolean;
-  data_warning: string;
-  live_stats: LiveStats;
-  pipeline_stats: PipelineStats;
-  validation: Validation;
-  bssa_features: BssaFeatures;
-};
-
-// ─── Dimension filter config ────────────────────────────────────────────────
-
-type BatchTypeValue = "assignment_set" | "lab_set" | "exam_set";
-type TaskTypeValue = string;
-
-const BATCH_TYPE_OPTIONS: { value: BatchTypeValue; label: string }[] = [
-  { value: "assignment_set", label: "Assignment" },
-  { value: "lab_set", label: "Lab" },
-  { value: "exam_set", label: "Exam" },
-];
-
-function BatchTypeIcon({ value, className }: { value: BatchTypeValue; className?: string }) {
-  if (value === "assignment_set") return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
-      <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd"/>
-    </svg>
-  );
-  if (value === "lab_set") return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
-      <path fillRule="evenodd" d="M7 2a1 1 0 00-.707 1.707L7 4.414v3.758a1 1 0 01-.293.707l-4 4C.817 14.769 2.156 18 4.828 18h10.343c2.673 0 4.012-3.231 2.122-5.121l-4-4A1 1 0 0113 8.172V4.414l.707-.707A1 1 0 0013 2H7zm2 6.172V4h2v4.172a3 3 0 00.879 2.12l1.027 1.028a4 4 0 00-2.171.102l-.47.156a4 4 0 01-2.53 0l-.563-.187a1.993 1.993 0 00-.114-.035l1.063-1.063A3 3 0 009 8.172z" clipRule="evenodd"/>
-    </svg>
-  );
+function StarIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/>
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
     </svg>
   );
 }
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
-
-function PilotDisclaimer({ warning }: { warning: string }) {
+function DumbbellIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-      <div className="flex items-start gap-3">
-        <span className="text-amber-500 text-xl mt-0.5">⚠</span>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-bold text-amber-800 text-sm">Pilot Data Notice — Technical Validation Only</p>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white tracking-wide">PILOT ONLY</span>
-          </div>
-          <p className="text-amber-700 text-xs mt-2 leading-relaxed">
-            This data uses <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">proxy_behavioral</code> labels
-            {" "}derived from the attempt stream. Proxy-target circularity is present. Results must not be interpreted as confirmatory research findings.
-          </p>
-          <p className="text-amber-600 text-xs mt-1.5 italic">{warning}</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono bg-white/70 border border-amber-200 rounded-lg p-3">
-        <span className="text-[#64748B]">evaluation_purpose</span><span className="text-[#0F172A]">= technical_pipeline_validation</span>
-        <span className="text-[#64748B]">label_source</span><span className="text-[#0F172A]">= proxy_behavioral</span>
-        <span className="text-[#64748B]">label_validity</span><span className="text-[#0F172A]">= pilot_only</span>
-        <span className="text-[#64748B]">proxy_target_circularity</span><span className="text-[#0F172A]">= true</span>
-        <span className="text-[#64748B]">confirmatory_analysis_allowed</span><span className="text-[#0F172A]">= false</span>
-      </div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+      <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+      <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+      <path d="M7.5 12h9" />
+    </svg>
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string | number }) {
+function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <div className="flex items-baseline justify-between py-2.5 border-b border-[#F1F5F9]">
-      <span className="text-xs text-[#475569]">{label}</span>
-      <span className="text-sm font-semibold text-[#0F172A] ml-3 text-right">{value}</span>
-    </div>
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+    </svg>
   );
 }
 
-function CheckBadge({ ok, label }: { ok: boolean; label: string }) {
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    completed: "bg-green-100 text-green-700 border-green-200",
+    pending: "bg-amber-100 text-amber-700 border-amber-200",
+    running: "bg-blue-100 text-blue-700 border-blue-200",
+    failed: "bg-red-100 text-red-700 border-red-200",
+    cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  };
+  const cls = colorMap[status] ?? "bg-gray-100 text-gray-600 border-gray-200";
   return (
-    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-      <span>{ok ? "✅" : "❌"}</span>
-      <span>{label}</span>
-    </div>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
+      {status}
+    </span>
   );
 }
 
-function ToggleBtn({
-  active, onClick, children, title, "aria-label": ariaLabel, compact,
-}: {
-  active: boolean; onClick: () => void; children: React.ReactNode;
-  title?: string; "aria-label"?: string; compact?: boolean;
-}) {
+function ArtifactBadge({ availability }: { availability: SequentialRunRecord["artifact_availability"] }) {
+  if (availability === "available") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200">
+        available
+      </span>
+    );
+  }
+  if (availability === "static_fallback") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+        Pilot &#8212; static artifact
+      </span>
+    );
+  }
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={ariaLabel}
-      className={`${compact ? "px-2" : "px-3"} py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-        active
-          ? "bg-[#F37021] text-white border-[#F37021]"
-          : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#F37021] hover:text-[#F37021]"
-      }`}
-    >
-      {children}
-    </button>
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+      unavailable
+    </span>
   );
 }
 
-// ─── BSSA Feature Group Card ─────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
-function BssaGroupCard({ groupKey, group }: { groupKey: string; group: BssaGroup }) {
-  const [expanded, setExpanded] = useState(false);
-  const isImplemented = group.status === "implemented";
-  const isDeferred = group.status === "deferred";
-
-  const statusColor = isImplemented
-    ? "bg-green-50 border-green-200 text-green-700"
-    : isDeferred
-      ? "bg-amber-50 border-amber-200 text-amber-700"
-      : "bg-[#F1F5F9] border-[#E2E8F0] text-[#64748B]";
-
-  const statusLabel = isImplemented
-    ? "Implemented"
-    : isDeferred
-      ? "Deferred → Phase 5"
-      : "Not Implemented";
-
-  return (
-    <div className={`rounded-xl border p-4 space-y-2 ${isImplemented ? "border-[#E2E8F0] bg-white" : "border-[#F1F5F9] bg-[#F8FAFC] opacity-80"}`}>
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-xs text-[#0F172A]">{group.label}</span>
-          {isImplemented && (
-            <span className="text-[10px] font-mono text-[#F37021]">{group.feature_count} features</span>
-          )}
-        </div>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor}`}>
-          {statusLabel}
-        </span>
-      </div>
-
-      <p className="text-[11px] text-[#64748B] leading-relaxed">{group.description}</p>
-
-      {group.model_usage.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          <span className="text-[10px] text-[#94A3B8]">Used by:</span>
-          {group.model_usage.map(m => (
-            <span key={m} className="text-[10px] font-mono bg-[#F1F5F9] text-[#475569] px-1.5 py-0.5 rounded">{m}</span>
-          ))}
-        </div>
-      )}
-
-      {groupKey === "sequential" && (
-        <div className="text-[10px] text-[#64748B] space-y-0.5">
-          <p><span className="text-[#94A3B8]">Features per timestep:</span> {group.features_per_timestep}</p>
-          <p><span className="text-[#94A3B8]">Max sequence length:</span> {group.max_seq_len} steps</p>
-          {group.feature_note && <p className="italic">{group.feature_note}</p>}
-        </div>
-      )}
-
-      {group.circular_features && group.circular_features.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-800 space-y-0.5">
-          <p className="font-semibold">⚠ Proxy-target circularity: PRESENT in this group</p>
-          <p className="leading-relaxed">{group.circular_reason}</p>
-        </div>
-      )}
-
-      {isImplemented && group.features && group.features.length > 0 && (
-        <div>
-          <button
-            onClick={() => setExpanded(v => !v)}
-            className="text-[10px] text-[#F37021] hover:underline font-medium"
-          >
-            {expanded ? `▲ Hide features` : `▼ Show all ${group.features.length} features`}
-          </button>
-          {expanded && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {group.features.map(f => {
-                const isCircular = group.circular_features?.includes(f) ?? false;
-                return (
-                  <span key={f} className="inline-flex items-center gap-1">
-                    <code className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                      isCircular
-                        ? "bg-amber-50 border-amber-300 text-amber-800 font-semibold"
-                        : "bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]"
-                    }`}>{f}</code>
-                    {isCircular && (
-                      <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-1 py-0.5 rounded uppercase tracking-wide">
-                        circular
-                      </span>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isImplemented && group.note && (
-        <p className="text-[10px] text-[#94A3B8] italic">{group.note}</p>
-      )}
-    </div>
-  );
-}
-
-// ─── 2C3L Rubric Component Card ──────────────────────────────────────────────
-
-function C2L3ComponentCard({ code, description }: { code: string; description: string }) {
-  return (
-    <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-sm text-[#0F172A] font-mono">{code}</span>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">
-          Pilot Only · Not Yet Validated
-        </span>
-      </div>
-      <p className="text-[11px] text-[#64748B] leading-relaxed">{description}</p>
-      <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2 text-[10px] text-[#94A3B8]">
-        No teacher-reviewed or expert-validated assessment — results cannot be displayed yet
-      </div>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
-
-export default function AnalyticsSummaryPage() {
+export default function FeatureAnalyticsPage() {
   const router = useRouter();
-
   const profileRef = useRef<HTMLDivElement>(null);
+
+  // Auth / profile
   const [profileOpen, setProfileOpen] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
-  // Dimension filters
-  const [batchType, setBatchType] = useState<BatchTypeValue | null>(null);
-  const [taskType, setTaskType] = useState<TaskTypeValue | null>(null);
-
-  // API data
-  const [data, setData] = useState<ApiData | null>(null);
+  // Data
+  const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Task type options from batch list
-  const [availableTaskTypes, setAvailableTaskTypes] = useState<string[]>([]);
+  // Filters
+  const [search, setSearch] = useState("");
+  const [batchTypeFilter, setBatchTypeFilter] = useState("");
+  const [setFamilyFilter, setSetFamilyFilter] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("");
+  const [runStatusFilter, setRunStatusFilter] = useState("");
+  const [usageFilter, setUsageFilter] = useState<"used" | "not_used" | "">("");
+
+  // Table state
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [selectedRuns, setSelectedRuns] = useState<SelectedRun[]>([]);
+  const [page, setPage] = useState(1);
+
+  // Modals
+  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [runTarget, setRunTarget] = useState<SequentialDatasetRecord | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) { router.push("/auth/login"); return; }
+
       const { data: { user } } = await supabase.auth.getUser();
       const { data: prof } = await supabase
         .from("mst_profiles")
-        .select("display_name, participant_code")
+        .select("display_name, participant_code, role")
         .eq("auth_user_id", session.user.id)
         .single();
+
+      if (prof && prof.role !== "researcher" && prof.role !== "admin") {
+        router.push("/student/dashboard");
+        return;
+      }
+
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
+      setToken(session.access_token);
     }
     void init();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -355,56 +210,149 @@ export default function AnalyticsSummaryPage() {
     router.push("/auth/login");
   }
 
-  const getToken = useCallback(async (): Promise<string | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ?? null;
-  }, []);
-
-  // Load available task types once from batch list
-  useEffect(() => {
-    async function loadTaskTypes() {
-      const token = await getToken();
-      if (!token) return;
-      try {
-        const res = await fetch("/api/researcher/batches", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const j = await res.json();
-        if (j.taskTypes?.length) setAvailableTaskTypes(j.taskTypes as string[]);
-      } catch {
-        // non-critical — fallback to TASK_TYPE_ORDER
-      }
-    }
-    void loadTaskTypes();
-  }, [getToken]);
+  // ── Data loading ──────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
-    const token = await getToken();
-    if (!token) { router.push("/auth/login"); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
+
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams();
-    if (batchType) params.set("batch_type", batchType);
-    if (taskType) params.set("task_type", taskType);
-    const res = await fetch(`/api/researcher/analytics-summary?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
+
+    const res = await fetch("/api/researcher/sequential-analysis", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
     });
+
     if (!res.ok) {
       const j = await res.json().catch(() => ({ error: "Request failed" }));
       setError((j as { error?: string }).error ?? "Failed to load data.");
       setLoading(false);
       return;
     }
-    setData(await res.json() as ApiData);
+
+    setData(await res.json() as ListResponse);
     setLoading(false);
-  }, [getToken, router, batchType, taskType]);
+  }, [router]);
 
   useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
 
-  const bssaGroupOrder = ["tag_based", "behavioral", "sequential", "semantic", "combined"];
+  // ── Filtering ─────────────────────────────────────────────────────────────
+
+  const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!ds.code.toLowerCase().includes(q) && !ds.name.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (batchTypeFilter && ds.batch_type !== batchTypeFilter) return false;
+    if (setFamilyFilter && ds.set_family !== setFamilyFilter) return false;
+    if (taskTypeFilter && ds.task_type !== taskTypeFilter) return false;
+    if (runStatusFilter) {
+      const hasStatus = ds.runs.some((r) => r.status === runStatusFilter);
+      if (!hasStatus) return false;
+    }
+    if (usageFilter && ds.usage_status !== usageFilter) return false;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDatasets.length / PAGE_SIZE));
+  const pagedDatasets = filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectRun(ds: SequentialDatasetRecord, run: SequentialRunRecord) {
+    setSelectedRuns((prev) => {
+      const exists = prev.find((s) => s.runId === run.id);
+      if (exists) return prev.filter((s) => s.runId !== run.id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+      const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+      return [
+        ...prev,
+        {
+          datasetId: ds.id,
+          runId: run.id,
+          runNumber,
+          datasetCode: ds.code,
+          datasetName: ds.name,
+          artifactSource: run.artifact_source,
+        },
+      ];
+    });
+  }
+
+  function openDetail(ds: SequentialDatasetRecord, run: SequentialRunRecord) {
+    setDetailTarget({
+      datasetId: ds.id,
+      runId: run.id,
+      datasetCode: ds.code,
+      artifactSource: run.artifact_source,
+    });
+  }
+
+  function openCompare() {
+    setCompareOpen(true);
+  }
+
+  async function confirmRunPipeline() {
+    if (!runTarget || !token) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${runTarget.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_type: "sequential" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Request failed" }));
+        setRunError((j as { error?: string }).error ?? "Failed to start run.");
+        return;
+      }
+      setRunTarget(null);
+      void loadData();
+    } finally {
+      setRunLoading(false);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">
+        Loading...
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 max-w-md">
+          <p className="font-semibold mb-1">Error loading data</p>
+          <p>{error}</p>
+          <button onClick={() => void loadData()} className="mt-3 text-xs text-red-600 underline">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
+      {/* Header */}
       <header className="bg-white border-b border-[#FED7AA] px-6 py-3 flex items-center justify-between">
         <div>
           <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Researcher</p>
@@ -448,319 +396,498 @@ export default function AnalyticsSummaryPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <ResearcherBreadcrumb current="Feature Analytics" />
 
-        {/* Pilot Disclaimer */}
-        {data && <PilotDisclaimer warning={data.data_warning} />}
+        {/* Title */}
+        <div>
+          <h1 className="text-xl font-bold text-[#0F172A]">Feature Analytics</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Dataset &#8594; Pipeline Run &#8594; Feature &amp; Sequence Analytics records</p>
+        </div>
 
-        {/* ── Section 1: Dimension Filters ── */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-          {/* Header row: icon-only filter button + title + clear */}
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <button
-                title="Filters"
-                aria-label="Filters"
-                className="p-1.5 rounded-lg text-[#94A3B8] hover:text-[#F37021] hover:bg-orange-50 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-.293.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+        {/* ── Filters ── */}
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
+
+          {/* Search */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Search</label>
+            <div className="relative">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Code or name…"
+                className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44"
+              />
+            </div>
+          </div>
+
+          {/* Batch Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Batch</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All batches" onClick={() => { setBatchTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Main" onClick={() => { setBatchTypeFilter(batchTypeFilter === "main" ? "" : "main"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "main" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <StarIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Trial" onClick={() => { setBatchTypeFilter(batchTypeFilter === "trial" ? "" : "trial"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "trial" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <DumbbellIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Pilot" onClick={() => { setBatchTypeFilter(batchTypeFilter === "pilot" ? "" : "pilot"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${batchTypeFilter === "pilot" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <PaperAirplaneIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Activity Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Activity</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All activities" onClick={() => { setSetFamilyFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Assignment" onClick={() => { setSetFamilyFilter(setFamilyFilter === "assignment" ? "" : "assignment"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                  <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                  <rect x="4" y="3" width="16" height="18" rx="2"/>
                 </svg>
               </button>
-              <div>
-                <h2 className="font-semibold text-[#0F172A] text-sm">Dimension Filters</h2>
-                <p className="text-[11px] text-[#64748B]">
-                  Filter live activity statistics below — model comparison results are not affected.
-                </p>
-              </div>
-            </div>
-            {(batchType ?? taskType) && (
-              <button
-                onClick={() => { setBatchType(null); setTaskType(null); }}
-                className="text-[10px] font-semibold text-[#F37021] hover:underline"
-              >
-                Clear filters
+              <button type="button" title="Lab" onClick={() => { setSetFamilyFilter(setFamilyFilter === "lab" ? "" : "lab"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                  <path d="M8 2h8"/><path d="M7 15h10"/>
+                </svg>
               </button>
+              <button type="button" title="Exam" onClick={() => { setSetFamilyFilter(setFamilyFilter === "exam" ? "" : "exam"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${setFamilyFilter === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Task Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Task</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All task types" onClick={() => { setTaskTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {DATASET_TASK_TYPES_IN_SCOPE.map((v, i) => (
+                <button key={v} type="button" title={DATASET_TASK_LABEL[v]}
+                  onClick={() => { setTaskTypeFilter(taskTypeFilter === v ? "" : v); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < DATASET_TASK_TYPES_IN_SCOPE.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskTypeFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <TaskTypeIcon type={v} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Run Status */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Run Status</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All statuses" onClick={() => { setRunStatusFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${runStatusFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {[
+                { value: "completed", dotCls: "bg-green-500",  label: "Completed" },
+                { value: "pending",   dotCls: "bg-amber-400",  label: "Pending" },
+                { value: "running",   dotCls: "bg-blue-500",   label: "Running" },
+                { value: "failed",    dotCls: "bg-red-400",    label: "Failed" },
+              ].map(({ value, dotCls, label }, i, arr) => (
+                <button key={value} type="button" title={label}
+                  onClick={() => { setRunStatusFilter(runStatusFilter === value ? "" : value); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${runStatusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <span className={`w-2 h-2 rounded-full ${runStatusFilter === value ? "bg-white" : dotCls}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Usage */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Usage</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All" onClick={() => { setUsageFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${usageFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Used" onClick={() => { setUsageFilter(usageFilter === "used" ? "" : "used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${usageFilter === "used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </button>
+              <button type="button" title="Not used" onClick={() => { setUsageFilter(usageFilter === "not_used" ? "" : "not_used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${usageFilter === "not_used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Clear All */}
+          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter || runStatusFilter || usageFilter) && (
+            <button type="button"
+              onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setRunStatusFilter(""); setUsageFilter(""); setPage(1); }}
+              className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
+              Clear All
+            </button>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Selected count + Compare */}
+          <div className="self-end flex items-center gap-2 pb-[2px]">
+            {selectedRuns.length > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FED7AA] text-[#92400E]">
+                {selectedRuns.length} selected
+              </span>
             )}
+            <button
+              onClick={openCompare}
+              disabled={selectedRuns.length < 2}
+              title={selectedRuns.length < 2 ? "Select at least 2 runs to compare" : `Compare ${selectedRuns.length} runs`}
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#F37021] text-white hover:bg-[#D95F10] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Compare
+            </button>
           </div>
+        </section>
 
-          {/* Single toolbar: Activity Set + Task Type side-by-side on desktop */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-y-3 gap-x-0 items-start">
-            {/* Activity Set group */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
-                Activity Set
-              </span>
-              <ToggleBtn active={batchType === null} onClick={() => setBatchType(null)}>All</ToggleBtn>
-              {BATCH_TYPE_OPTIONS.map(o => (
-                <ToggleBtn
-                  key={o.value}
-                  active={batchType === o.value}
-                  onClick={() => setBatchType(o.value)}
-                  title={o.label}
-                  aria-label={o.label}
-                  compact
-                >
-                  <BatchTypeIcon value={o.value} className="w-3.5 h-3.5" />
-                </ToggleBtn>
-              ))}
-            </div>
+        {/* ── Dataset Table ── */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          {loading ? (
+            <p className="text-sm text-[#94A3B8] py-6 text-center">Loading…</p>
+          ) : error ? (
+            <div className="m-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
+          ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[780px]">
+              <thead>
+                <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                  {[
+                    { label: "Code",      align: "left"   },
+                    { label: "Name",      align: "left"   },
+                    { label: "Batch",     align: "center" },
+                    { label: "Activity",  align: "center" },
+                    { label: "Task Type", align: "center" },
+                    { label: "Sessions",  align: "center" },
+                    { label: "Learners",  align: "center" },
+                    { label: "Usage",     align: "center" },
+                    { label: "Runs",      align: "center" },
+                    { label: "",          align: "center" },
+                  ].map(({ label, align }, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pagedDatasets.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">
+                      No datasets found.
+                    </td>
+                  </tr>
+                )}
+                {pagedDatasets.map((ds) => {
+                  const isExpanded = expandedIds.has(ds.id);
+                  const visibleRuns = ds.runs.filter((r) => !runStatusFilter || r.status === runStatusFilter);
+                  return (
+                    <Fragment key={ds.id}>
+                      {/* Dataset row */}
+                      <tr
+                        className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
+                        onClick={() => toggleExpanded(ds.id)}
+                      >
+                        {/* Code */}
+                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+                          <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
+                            {ds.code}
+                          </span>
+                        </td>
+                        {/* Name */}
+                        <td className="px-3 py-3.5 align-middle min-w-[140px]">
+                          <span className="text-xs text-[#0F172A] font-medium leading-snug">{ds.name}</span>
+                        </td>
+                        {/* Batch */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.batch_type === "main"  && <span title="Main"  className="inline-flex items-center justify-center text-[#F37021]"><StarIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "trial" && <span title="Trial" className="inline-flex items-center justify-center text-[#F37021]"><DumbbellIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "pilot" && <span title="Pilot" className="inline-flex items-center justify-center text-[#F37021]"><PaperAirplaneIcon className="w-4 h-4" /></span>}
+                          {!["main","trial","pilot"].includes(ds.batch_type) && <span className="text-[10px] text-[#94A3B8]">{ds.batch_type || "—"}</span>}
+                        </td>
+                        {/* Activity */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span title={ds.set_family} className="inline-flex items-center justify-center text-[#64748B]">
+                            {ds.set_family === "assignment" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg>}
+                            {ds.set_family === "lab"        && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/></svg>}
+                            {ds.set_family === "exam"       && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
+                            {!["assignment","lab","exam"].includes(ds.set_family) && <span className="text-[10px] text-[#94A3B8]">{ds.set_family || "—"}</span>}
+                          </span>
+                        </td>
+                        {/* Task Type */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.task_type ? (
+                            <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#64748B]">
+                              <TaskTypeIcon type={ds.task_type} />
+                            </span>
+                          ) : (
+                            <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
+                          )}
+                        </td>
+                        {/* Sessions */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+                        </td>
+                        {/* Learners */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+                        </td>
+                        {/* Usage */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.usage_status === "used" ? (
+                            <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                              </svg>
+                            </span>
+                          ) : (
+                            <span title="Not used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                              </svg>
+                            </span>
+                          )}
+                        </td>
+                        {/* Runs count */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+                            {ds.runs.length}
+                          </span>
+                        </td>
+                        {/* Actions: Run + Expand */}
+                        <td className="px-3 py-3.5 text-center align-middle">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setRunError(null); setRunTarget(ds); }}
+                              title="Run Feature Analytics"
+                              className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] transition-colors"
+                              aria-label="Run Feature Analytics"
+                            >
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M5 3l14 9-14 9V3z" />
+                              </svg>
+                            </button>
+                            <svg
+                              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                              strokeLinecap="round" strokeLinejoin="round"
+                              className={`w-4 h-4 text-[#94A3B8] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              aria-hidden="true"
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </div>
+                        </td>
+                      </tr>
 
-            {/* Vertical divider — desktop only */}
-            <div className="hidden sm:block w-px bg-[#E2E8F0] self-stretch mx-4" />
+                      {/* Expanded run rows */}
+                      {isExpanded && (
+                        visibleRuns.length === 0 ? (
+                          <tr className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                            <td colSpan={10} className="pl-8 pr-4 py-3 text-xs text-[#94A3B8] italic">
+                              No runs{runStatusFilter ? ` with status "${runStatusFilter}"` : ""} for this dataset.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleRuns.map((run) => {
+                            const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+                            const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+                            const isSelected = selectedRuns.some((s) => s.runId === run.id);
+                            const selectionBlocked = selectedRuns.length >= MAX_COMPARE && !isSelected;
+                            const checkboxDisabled = !run.is_comparable || selectionBlocked;
+                            const checkboxTitle = !run.is_comparable
+                              ? (run.not_comparable_reason ?? "Not comparable")
+                              : selectionBlocked
+                                ? `Max ${MAX_COMPARE} runs selected`
+                                : undefined;
+                            const canView = run.artifact_availability !== "unavailable";
 
-            {/* Task Type group */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide whitespace-nowrap">
-                Task Type
-              </span>
-              <ToggleBtn active={taskType === null} onClick={() => setTaskType(null)}>All</ToggleBtn>
-              {(availableTaskTypes.length > 0
-                ? [...availableTaskTypes].sort((a, b) => {
-                    const ai = TASK_TYPE_ORDER.indexOf(a);
-                    const bi = TASK_TYPE_ORDER.indexOf(b);
-                    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-                  })
-                : [...TASK_TYPE_ORDER]
-              ).map(t => (
-                <ToggleBtn
-                  key={t}
-                  active={taskType === t}
-                  onClick={() => setTaskType(t)}
-                  title={TASK_TYPE_LABEL[t] ?? t}
-                  aria-label={TASK_TYPE_LABEL[t] ?? t}
-                  compact
-                >
-                  <TaskTypeIcon type={t} className="w-3.5 h-3.5" />
-                </ToggleBtn>
-              ))}
-            </div>
+                            return (
+                              <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                                {/* Checkbox */}
+                                <td className="pl-8 pr-2 py-2.5 align-middle">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={checkboxDisabled}
+                                    title={checkboxTitle}
+                                    onChange={() => toggleSelectRun(ds, run)}
+                                    className="w-3.5 h-3.5 accent-[#F37021] disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                {/* Run# */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={2}>
+                                  <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
+                                </td>
+                                {/* DateTime */}
+                                <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={2}>
+                                  {run.created_at ? new Date(run.created_at).toLocaleString() : "—"}
+                                </td>
+                                {/* Status */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={1}>
+                                  <StatusBadge status={run.status} />
+                                </td>
+                                {/* Artifact */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={1}>
+                                  <ArtifactBadge availability={run.artifact_availability} />
+                                </td>
+                                {/* View */}
+                                <td className="px-3 py-2.5 align-middle text-center" colSpan={3}>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openDetail(ds, run); }}
+                                    disabled={!canView}
+                                    title={canView ? "View Feature Analytics" : (run.not_comparable_reason ?? "No artifact available")}
+                                    className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="View Feature Analytics"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M2 12s3.636-7 10-7 10 7 10 7-3.636 7-10 7-10-7-10-7z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+          )}
 
-          {/* Active filter summary */}
-          {(batchType ?? taskType) && (
-            <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-[11px] text-orange-700 flex items-center justify-between flex-wrap gap-2">
-              <span>
-                Filtered by:{" "}
-                {batchType && <strong>{BATCH_TYPE_OPTIONS.find(o => o.value === batchType)?.label ?? batchType}</strong>}
-                {batchType && taskType && " × "}
-                {taskType && <strong>{TASK_TYPE_LABEL[taskType] ?? taskType}</strong>}
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#FED7AA] bg-[#FFF7ED]">
+              <span className="text-xs text-[#64748B]">
+                Page {page} of {totalPages} ({filteredDatasets.length} datasets)
               </span>
-              <button
-                onClick={() => { setBatchType(null); setTaskType(null); }}
-                className="text-[10px] font-semibold text-[#F37021] hover:underline"
-              >
-                Clear filters
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </section>
+      </main>
 
-        {/* ── Section 2: Activity Statistics (Live from Supabase) ── */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">Activity Statistics</h2>
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">
-                Live query from <code>vw_dataset_session_level</code> — grain: 1 row per session
-                {(batchType ?? taskType) ? " (filtered)" : " (all)"}
-              </p>
-            </div>
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-              Live
-            </span>
-          </div>
+      {/* Detail Modal */}
+      {detailTarget && token && (
+        <SequentialAnalysisDetailModal
+          datasetId={detailTarget.datasetId}
+          runId={detailTarget.runId}
+          datasetCode={detailTarget.datasetCode}
+          artifactSource={detailTarget.artifactSource}
+          token={token}
+          onClose={() => setDetailTarget(null)}
+        />
+      )}
 
-          {loading ? (
-            <p className="text-sm text-[#94A3B8]">Loading...</p>
-          ) : error ? (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
-          ) : data ? (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-4">
-                  <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide">Learner Count</p>
-                  <p className="text-3xl font-bold text-[#0F172A] mt-1">{data.live_stats.learner_count}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-1">COUNT(DISTINCT participant_code)</p>
-                </div>
-                <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-4">
-                  <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide">Session Count</p>
-                  <p className="text-3xl font-bold text-[#0F172A] mt-1">{data.live_stats.session_count}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-1">COUNT(DISTINCT session_id)</p>
-                </div>
+      {/* Compare Modal */}
+      {compareOpen && token && (
+        <SequentialCompareModal
+          selected={selectedRuns}
+          token={token}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
+
+      {/* Run Confirm Modal */}
+      {runTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Run Feature Analytics</p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Dataset <span className="font-mono font-semibold text-[#F37021]">{runTarget.code}</span>
+                </p>
               </div>
-
-              {data.live_stats.learner_count === 0 && (
-                <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-4 py-3 text-xs text-[#64748B] text-center">
-                  No data found for the selected filters — try changing the filter.
-                </div>
-              )}
-
-              <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                Live statistics may include learners outside the frozen Phase 4 pilot cohort (10 learners). Live count reflects all participants in <code>vw_dataset_session_level</code>.
-              </p>
-
-              <p className="text-[10px] text-[#94A3B8]">
-                Sequence Count (90 sequences from Phase 4 pipeline) is from an offline artifact — see Pipeline Statistics below
-              </p>
-            </>
-          ) : null}
-        </section>
-
-        {/* ── Section 3: Pipeline Statistics (Frozen artifact) ── */}
-        {data && (
-          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-            <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">Pipeline Statistics</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#64748B] bg-[#F1F5F9] border border-[#E2E8F0] px-2 py-0.5 rounded-full">
-                  Frozen at NB05
-                </span>
-                <span className="text-[10px] text-[#94A3B8]">— not affected by dimension filters above</span>
-              </div>
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-              <StatRow label="Total learners" value={data.pipeline_stats.total_learners} />
-              <StatRow label="Thesis minimum learners" value={data.pipeline_stats.thesis_minimum_learners} />
-              <StatRow label="Training learners" value={data.pipeline_stats.train_learners} />
-              <StatRow label="Test learners" value={data.pipeline_stats.test_learners} />
-              <StatRow label="Total sequences" value={data.pipeline_stats.total_sequences} />
-              <StatRow label="Training sequences" value={data.pipeline_stats.train_sequences} />
-              <StatRow label="Test sequences" value={data.pipeline_stats.test_sequences} />
-              <StatRow label="Canonical events" value={data.pipeline_stats.total_canonical_events} />
-              <StatRow label="Max sequence length" value={`${data.pipeline_stats.max_sequence_length} steps`} />
-              <StatRow label="Sequence length percentile" value={`${data.pipeline_stats.sequence_length_percentile}th`} />
-              <StatRow label="Features per timestep" value={data.pipeline_stats.features_per_timestep} />
-              <StatRow label="Vocabulary size" value={data.pipeline_stats.vocab_size} />
-            </div>
-
-            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-              ⚠ {data.pipeline_stats.total_learners} learners — below thesis minimum ({data.pipeline_stats.thesis_minimum_learners} learners). Pipeline validation scope only.
-            </div>
-          </section>
-        )}
-
-        {/* ── Section 4: BSSA Feature Analysis ── */}
-        {data?.bssa_features && (
-          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-            <div>
-              <h2 className="font-semibold text-[#0F172A] text-sm">Feature Analysis</h2>
-              <p className="text-[11px] text-[#64748B] mt-1">
-                BSSA is a Feature Framework (grouping of feature sets), not an analysis dimension.
-                Source: <code className="text-[10px]">comparison_manifest_v1.json</code>
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              {bssaGroupOrder.map(key => {
-                const group = data.bssa_features.groups[key];
-                if (!group) return null;
-                return <BssaGroupCard key={key} groupKey={key} group={group} />;
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* ── Section 5: 2C3L Assessment ── */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-          <div>
-            <h2 className="font-semibold text-[#0F172A] text-sm">Assessment Rubric</h2>
-            <p className="text-[11px] text-[#64748B] mt-1">
-              Assessment Rubric is an evaluation criterion (learner evaluation criteria), not an analysis dimension, not a BSSA feature, and not an analytical model
+            <p className="text-xs text-[#475569]">
+              This will create a new <strong>sequential</strong> pipeline run for{" "}
+              <strong>{runTarget.name}</strong>. The run will start in <em>pending</em> state.
             </p>
-          </div>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
-            <p className="font-semibold">Current Status: Pilot Only — Not Yet Validated</p>
-            <p>Insufficient teacher-reviewed or expert-validated assessment results for reporting</p>
-            <p className="pt-1 border-t border-amber-200 text-[11px] font-mono">
-              Current pilot labels: <code className="bg-amber-100 border border-amber-200 px-1 rounded">at_risk = NOT any_correct</code> (behavioral proxy).
-              The 2C3L threshold of 65/100 requires teacher-reviewed scores and is not applied in Phase 4.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <C2L3ComponentCard
-              code="C1"
-              description="Correctness — accuracy of task output (e.g. whether a SQL query returns the correct result)"
-            />
-            <C2L3ComponentCard
-              code="C2"
-              description="Clarity — clarity and appropriateness of the solution approach"
-            />
-            <C2L3ComponentCard
-              code="L1"
-              description="Logic — soundness of reasoning and step-by-step problem-solving process"
-            />
-            <C2L3ComponentCard
-              code="L2"
-              description="Learning Process — learning behaviors such as revision, retry, and hint usage"
-            />
-            <C2L3ComponentCard
-              code="L3"
-              description="Level of Mastery — overall mastery level assessed from the full rubric"
-            />
-          </div>
-
-          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 space-y-2">
-            <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wide">Prerequisites for Displaying Assessment Rubric Results</p>
-            <ul className="text-[11px] text-[#64748B] space-y-1">
-              <li>• teacher-reviewed or expert-validated labels are available</li>
-              <li>• at least 60 learners (thesis minimum)</li>
-              <li>• passed the validation protocol defined in the research contract</li>
-            </ul>
-          </div>
-        </section>
-
-        {/* ── Pipeline Validation Gate ── */}
-        {data && (
-          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-            <h2 className="font-semibold text-[#0F172A] text-sm">Pipeline Validation Gate</h2>
-
-            {/* Structural checks — green when all pass */}
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide">
-                Structural Checks — {data.validation.checks_passed}/{data.validation.checks_run} passed
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <CheckBadge ok={data.validation.checks_passed === data.validation.checks_run}
-                  label={`All ${data.validation.checks_run} structural checks passed`} />
-                <CheckBadge ok={data.validation.no_learner_overlap} label="No learner overlap (train/test)" />
-                <CheckBadge ok={data.validation.no_pii_in_exports} label="No PII in pipeline exports" />
-                <CheckBadge ok={data.validation.split_integrity_passed} label="Split integrity passed" />
-              </div>
-            </div>
-
-            {/* Feature-level circularity — always amber when proxy_target_circularity is true */}
-            {data.proxy_target_circularity && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="text-amber-500 text-base mt-0.5">⚠</span>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-amber-800">
-                      Feature-Level Circularity: PRESENT (by design)
-                    </p>
-                    <p className="text-[11px] text-amber-700 leading-relaxed">
-                      Behavioral features <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">any_correct</code> and{" "}
-                      <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">correctness_ratio</code> were used as predictors
-                      AND to construct the proxy label <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">at_risk = NOT any_correct</code>.
-                      Sequential feature <code className="bg-amber-100 border border-amber-200 px-1 rounded text-amber-800">attempt_is_correct</code> creates an equivalent
-                      circularity for LSTM and GRU.
-                    </p>
-                    <p className="text-[11px] text-amber-700 leading-relaxed">
-                      All non-Dummy 1.0 metric results are artifacts of this circularity.
-                      This is a documented property of the Phase 4 pilot dataset, not a pipeline failure.
-                      Confirmatory analysis is prohibited.
-                    </p>
-                  </div>
-                </div>
+            {runError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {runError}
               </div>
             )}
-          </section>
-        )}
-
-      </main>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmRunPipeline()}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] disabled:opacity-50 transition-colors"
+              >
+                {runLoading ? "Starting…" : "Confirm Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
