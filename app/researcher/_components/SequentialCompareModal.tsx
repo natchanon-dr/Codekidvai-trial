@@ -390,112 +390,102 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 Pilot · pipeline validation only
               </span>
             </div>
-            {(() => {
-              const hit = results.find((r): r is { state: "ok"; data: ArtifactData } =>
-                r.state === "ok" && !!r.data.model_comparison,
-              );
-              if (!hit) return (
-                <p className="px-4 py-3 text-xs text-[#94A3B8] italic">No model comparison data available.</p>
-              );
-              const mc = hit.data.model_comparison!;
-              const isCircular = hit.data.research_constraints?.proxy_target_circularity ?? false;
-
-              const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
-                baseline:       { label: "BASE",  cls: "bg-slate-100 text-slate-600 border-slate-200" },
-                flat_baseline:  { label: "FLAT",  cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                graph_baseline: { label: "TAG",   cls: "bg-purple-50 text-purple-700 border-purple-200" },
-                sequence:       { label: "SEQ",   cls: "bg-orange-50 text-orange-700 border-orange-200" },
-              };
-
-              return (
-                <div className="px-4 py-4 space-y-4">
-                  {isCircular && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-0.5">
-                      <p className="font-semibold">⚠ proxy_target_circularity = true</p>
-                      <p className="text-[11px]">Non-Dummy models score 1.0 due to label circularity. Results are pipeline integrity checks only — not research conclusions.</p>
-                    </div>
-                  )}
-                  <div className="text-[10px] text-[#64748B] flex gap-4">
-                    <span>Test sequences: <strong>{mc.test_sequences}</strong></span>
-                    <span>Class distribution: <strong>{mc.test_class_distribution.positive}+</strong> / <strong>{mc.test_class_distribution.negative}−</strong></span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse min-w-[520px]">
-                      <thead>
-                        <tr className="bg-[#F8FAFC] border-b-2 border-[#E2E8F0]">
-                          {["Model", "Acc", "F1", "ROC-AUC", "PR-AUC", "Train (s)", "Params"].map((h) => (
-                            <th key={h} className={`px-2 py-2 text-[10px] font-bold text-[#64748B] uppercase tracking-wide whitespace-nowrap ${h === "Model" ? "text-left pl-3" : "text-center"}`}>
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mc.models.map((m) => {
-                          const badge = TYPE_BADGE[m.type] ?? TYPE_BADGE.baseline;
-                          const circular = m.type !== "baseline" && isCircular;
-                          const numCls = circular ? "text-red-600 font-mono" : "text-[#0F172A] font-mono";
-                          return (
-                            <tr key={m.name} className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7]">
-                              <td className="pl-3 pr-2 py-2.5 align-middle">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-medium text-[#0F172A]">{m.name}</span>
-                                  <span className={`text-[8px] border px-1 rounded font-bold ${badge.cls}`}>{badge.label}</span>
-                                  {circular && <span className="text-red-500 text-[10px]" title="Circularity">⚠</span>}
-                                </div>
-                              </td>
-                              <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.accuracy.toFixed(2)}</td>
-                              <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.f1.toFixed(2)}</td>
-                              <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.roc_auc.toFixed(2)}</td>
-                              <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.pr_auc.toFixed(2)}</td>
-                              <td className="px-2 py-2.5 text-center font-mono text-[#475569]">
-                                {m.train_time_sec < 0.001 ? "<0.001" : m.train_time_sec.toFixed(3)}
-                              </td>
-                              <td className="px-2 py-2.5 text-center font-mono text-[#475569]">
-                                {m.parameters != null ? m.parameters.toLocaleString() : "—"}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Seed stability */}
-                  {hit.data.seed_stability && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide border-t border-[#F1F5F9] pt-3">
-                        Seed Stability (seeds 11 · 22 · 33 · 42 · 55)
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {(["lstm", "gru"] as const).map((model) => {
-                          const st = hit.data.seed_stability![model];
-                          return (
-                            <div key={model} className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5 space-y-2">
-                              <p className="text-[10px] font-bold text-[#0F172A] uppercase">{model}</p>
-                              {(["exp_a_seq_only", "exp_b_seq_plus_tag"] as const).map((exp) => {
-                                const e = st[exp];
+            <div className="flex divide-x divide-[#F1F5F9]">
+              {results.map((result, i) => {
+                const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+                  baseline:       { label: "BASE", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+                  flat_baseline:  { label: "FLAT", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                  graph_baseline: { label: "TAG",  cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                  sequence:       { label: "SEQ",  cls: "bg-orange-50 text-orange-700 border-orange-200" },
+                };
+                return (
+                  <div key={selected[i].runId} className={`${colWidth} px-3 py-3 space-y-3`}>
+                    {result.state === "loading" && <CellLoading />}
+                    {result.state === "error" && <CellError message={result.message} />}
+                    {result.state === "notimpl" && <CellError message="Not implemented." />}
+                    {result.state === "ok" && !result.data.model_comparison && (
+                      <p className="text-xs text-[#94A3B8] italic">No model comparison data.</p>
+                    )}
+                    {result.state === "ok" && result.data.model_comparison && (() => {
+                      const mc = result.data.model_comparison;
+                      const isCircular = result.data.research_constraints?.proxy_target_circularity ?? false;
+                      return (
+                        <div className="space-y-3">
+                          {isCircular && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] text-red-700">
+                              <span className="font-semibold">⚠ proxy_target_circularity=true</span>
+                              <span className="ml-1">— scores are 1.0 due to label circularity</span>
+                            </div>
+                          )}
+                          <div className="text-[10px] text-[#64748B]">
+                            Test: <strong>{mc.test_sequences}</strong> seq · <strong>{mc.test_class_distribution.positive}+</strong>/<strong>{mc.test_class_distribution.negative}−</strong>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[10px] border-collapse">
+                              <thead>
+                                <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                                  <th className="text-left pl-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Model</th>
+                                  <th className="text-center px-1.5 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Acc</th>
+                                  <th className="text-center px-1.5 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">F1</th>
+                                  <th className="text-center px-1.5 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">AUC</th>
+                                  <th className="text-center px-1.5 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Params</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {mc.models.map((m) => {
+                                  const badge = TYPE_BADGE[m.type] ?? TYPE_BADGE.baseline;
+                                  const circular = m.type !== "baseline" && isCircular;
+                                  const numCls = circular ? "text-red-600 font-mono" : "text-[#0F172A] font-mono";
+                                  return (
+                                    <tr key={m.name} className="border-b border-[#F1F5F9]">
+                                      <td className="pl-2 pr-1 py-1.5 align-middle">
+                                        <div className="flex items-center gap-1">
+                                          <span className="font-medium text-[#0F172A] text-[10px] leading-tight">{m.name}</span>
+                                          <span className={`text-[7px] border px-0.5 rounded font-bold ${badge.cls}`}>{badge.label}</span>
+                                          {circular && <span className="text-red-500 text-[9px]">⚠</span>}
+                                        </div>
+                                      </td>
+                                      <td className={`px-1.5 py-1.5 text-center text-[10px] ${numCls}`}>{m.accuracy.toFixed(2)}</td>
+                                      <td className={`px-1.5 py-1.5 text-center text-[10px] ${numCls}`}>{m.f1.toFixed(2)}</td>
+                                      <td className={`px-1.5 py-1.5 text-center text-[10px] ${numCls}`}>{m.roc_auc.toFixed(2)}</td>
+                                      <td className="px-1.5 py-1.5 text-center text-[10px] font-mono text-[#475569]">
+                                        {m.parameters != null ? m.parameters.toLocaleString() : "—"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          {result.data.seed_stability && (
+                            <div className="space-y-1.5 border-t border-[#F1F5F9] pt-2">
+                              <p className="text-[9px] font-bold text-[#64748B] uppercase tracking-wide">Seed Stability (5 seeds)</p>
+                              {(["lstm", "gru"] as const).map((model) => {
+                                const st = result.data.seed_stability![model];
                                 return (
-                                  <div key={exp} className="text-[10px] space-y-0.5">
-                                    <p className="text-[#64748B] font-medium">{exp === "exp_a_seq_only" ? "Exp-A (Seq only)" : "Exp-B (Seq + TAG)"}</p>
-                                    <div className="flex gap-3 font-mono text-[#0F172A]">
-                                      <span>Acc <strong>{e.accuracy_mean.toFixed(2)}</strong></span>
-                                      <span>F1 <strong>{e.f1_mean.toFixed(2)}</strong></span>
-                                      <span>AUC <strong>{e.roc_auc_mean.toFixed(2)}</strong></span>
-                                      <span className="text-[#94A3B8]">{e.epochs_trained_mean.toFixed(0)} ep</span>
-                                    </div>
+                                  <div key={model} className="rounded border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-1.5">
+                                    <p className="text-[9px] font-bold text-[#0F172A] uppercase mb-1">{model}</p>
+                                    {(["exp_a_seq_only", "exp_b_seq_plus_tag"] as const).map((exp) => {
+                                      const e = st[exp];
+                                      return (
+                                        <div key={exp} className="text-[9px] mb-0.5">
+                                          <span className="text-[#64748B]">{exp === "exp_a_seq_only" ? "Exp-A" : "Exp-B"}: </span>
+                                          <span className="font-mono text-[#0F172A]">Acc {e.accuracy_mean.toFixed(2)} F1 {e.f1_mean.toFixed(2)} AUC {e.roc_auc_mean.toFixed(2)}</span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 );
                               })}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Section 6: Analysis Charts */}
@@ -504,27 +494,31 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
               <p className="text-xs font-semibold text-[#0F172A]">6. Analysis Charts</p>
               <p className="text-[10px] text-[#94A3B8] mt-0.5">Seed 42 · static Phase 4 artifact · pipeline validation only</p>
             </div>
-            {(() => {
-              const hit = results.find((r): r is { state: "ok"; data: ArtifactData } =>
-                r.state === "ok" && !!r.data.charts && r.data.charts.length > 0,
-              );
-              if (!hit) return (
-                <p className="px-4 py-3 text-xs text-[#94A3B8] italic">No chart data available.</p>
-              );
-              return (
-                <div className="p-4 grid grid-cols-2 gap-4">
-                  {hit.data.charts!.map((chart) => (
-                    <div key={chart.key} className="space-y-1.5">
-                      <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wide">{chart.title}</p>
-                      <div className="border border-[#E2E8F0] rounded-lg overflow-hidden bg-[#F8FAFC]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={chart.path} alt={chart.title} className="w-full h-auto" loading="lazy" />
-                      </div>
+            <div className="flex divide-x divide-[#F1F5F9]">
+              {results.map((result, i) => (
+                <div key={selected[i].runId} className={`${colWidth} px-3 py-3 space-y-3`}>
+                  {result.state === "loading" && <CellLoading />}
+                  {result.state === "error" && <CellError message={result.message} />}
+                  {result.state === "notimpl" && <CellError message="Not implemented." />}
+                  {result.state === "ok" && (!result.data.charts || result.data.charts.length === 0) && (
+                    <p className="text-xs text-[#94A3B8] italic">No chart data.</p>
+                  )}
+                  {result.state === "ok" && result.data.charts && result.data.charts.length > 0 && (
+                    <div className="space-y-3">
+                      {result.data.charts.map((chart) => (
+                        <div key={chart.key} className="space-y-1">
+                          <p className="text-[9px] font-semibold text-[#475569] uppercase tracking-wide">{chart.title}</p>
+                          <div className="border border-[#E2E8F0] rounded-lg overflow-hidden bg-[#F8FAFC]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={chart.path} alt={chart.title} className="w-full h-auto" loading="lazy" />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              );
-            })()}
+              ))}
+            </div>
           </div>
 
         </main>
