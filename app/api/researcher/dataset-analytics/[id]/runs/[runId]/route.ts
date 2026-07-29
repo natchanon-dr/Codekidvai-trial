@@ -36,7 +36,11 @@ export async function POST(
     .eq("dataset_id", id)
     .maybeSingle();
 
-  if (fetchErr || !run) {
+  if (fetchErr) {
+    return NextResponse.json({ error: "Failed to fetch run." }, { status: 500 });
+  }
+
+  if (!run) {
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
   }
 

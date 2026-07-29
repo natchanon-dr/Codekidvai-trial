@@ -164,10 +164,13 @@ describe("POST /api/researcher/dataset-analytics/[id]/runs/[runId] — simulate"
     expect(typeof res._body.error).toBe("string");
   });
 
-  it("3b: returns 404 when fetch returns a DB error", async () => {
+  it("3b: returns 500 (not 404) when the DB fetch itself errors — no update issued", async () => {
     mockSimulateSupabase({ fetchRow: null, fetchError: true });
     const res = await POST(makeRequest(), { params: makeParams("ds1", "run1") }) as unknown as { _body: SimulateBody; _status: number };
-    expect(res._status).toBe(404);
+    expect(res._status).toBe(500);
+    expect(typeof res._body.error).toBe("string");
+    // Only one DB call (the fetch); no update should have been attempted
+    expect(mockFrom).toHaveBeenCalledTimes(1);
   });
 
   it("4: dataset_id scoping — run found only if dataset_id matches (enforced by .eq('dataset_id', id))", () => {
