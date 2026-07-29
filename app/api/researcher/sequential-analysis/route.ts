@@ -177,6 +177,9 @@ function buildStaticPayload() {
       lstm: summary.model_configs.lstm,
       gru: summary.model_configs.gru,
     },
+    model_comparison: summary.model_comparison,
+    seed_stability: summary.seed_stability,
+    charts: summary.charts,
     validation: summary.validation,
     artifact_versions: {
       phase4_ui_summary: { schema_version: summary.schema_version },
