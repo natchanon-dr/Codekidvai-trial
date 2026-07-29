@@ -216,19 +216,20 @@ describe("GET /api/researcher/sequential-analysis", () => {
     expect(r.artifact_availability).toBe("unavailable");
   });
 
-  // ── Test 5: available when result_version is not null ──
+  // ── Test 5: unavailable when result_version is not null (Phase 5 deferred) ──
 
-  it("run with non-null result_version → available", async () => {
+  it("run with non-null result_version → unavailable (Phase 5 deferred)", async () => {
     const run = makeRun({ status: "completed", result_version: "v1.0.0" });
     setupListMocks([PILOT_DATASET], [run]);
     const res = await GET(makeRequest()) as unknown as {
-      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string; artifact_source: string }> }> };
+      _body: { datasets: Array<{ runs: Array<{ artifact_availability: string; artifact_source: string | null; is_comparable: boolean }> }> };
       _status: number;
     };
     expect(res._status).toBe(200);
     const r = res._body.datasets[0].runs[0];
-    expect(r.artifact_availability).toBe("available");
-    expect(r.artifact_source).toBe("result_version");
+    expect(r.artifact_availability).toBe("unavailable");
+    expect(r.artifact_source).toBeNull();
+    expect(r.is_comparable).toBe(false);
   });
 
   // ── Test 6: unavailable for pending run ──
@@ -338,9 +339,9 @@ describe("GET /api/researcher/sequential-analysis", () => {
     expect(res._body.limitations).toBeDefined();
   });
 
-  // ── Test 11: Detail mode with non-pilot result_version returns 501 ──
+  // ── Test 11: Detail mode with non-null result_version returns 404 (Phase 5 deferred) ──
 
-  it("detail mode for run with non-null result_version returns 501", async () => {
+  it("detail mode for run with non-null result_version returns 404 (Phase 5 deferred)", async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === "mst_datasets") {
         return makeChain({ data: { id: "ds-pilot", code: "PAQT0001" }, error: null });
@@ -354,20 +355,21 @@ describe("GET /api/researcher/sequential-analysis", () => {
     const res = await GET(
       makeRequest({ mode: "detail", dataset_id: "ds-pilot", run_id: "run-001" }),
     ) as unknown as { _body: Record<string, unknown>; _status: number };
-    expect(res._status).toBe(501);
+    expect(res._status).toBe(404);
     expect(typeof res._body.error).toBe("string");
-    expect((res._body.error as string).toLowerCase()).toContain("not yet implemented");
+    expect((res._body.error as string).toLowerCase()).toContain("phase 5");
   });
 
   // ── Test 12: resolveArtifact pure function tests ──
 
   describe("resolveArtifact pure function", () => {
-    it("result_version not null → available, source=result_version, comparable", () => {
+    it("result_version not null → unavailable (Phase 5 deferred), not comparable", () => {
       const r = resolveArtifact("completed", "v1.0.0", "ANYTHING");
-      expect(r.availability).toBe("available");
-      expect(r.source).toBe("result_version");
-      expect(r.isComparable).toBe(true);
-      expect(r.reason).toBeNull();
+      expect(r.availability).toBe("unavailable");
+      expect(r.source).toBeNull();
+      expect(r.isComparable).toBe(false);
+      expect(typeof r.reason).toBe("string");
+      expect(r.reason!.toLowerCase()).toContain("phase 5");
     });
 
     it("completed + PAQT0001 + null result_version → static_fallback", () => {

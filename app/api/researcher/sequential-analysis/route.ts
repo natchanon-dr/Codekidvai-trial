@@ -71,11 +71,13 @@ export function resolveArtifact(
   reason: string | null;
 } {
   if (result_version !== null) {
+    // result_version artifact loading is deferred to Phase 5 — detail endpoint returns 501.
+    // Mark as unavailable so Eye and Compare controls are correctly disabled in the UI.
     return {
-      availability: "available",
-      source: "result_version",
-      isComparable: true,
-      reason: null,
+      availability: "unavailable",
+      source: null,
+      isComparable: false,
+      reason: "Per-run artifact loading not yet implemented (Phase 5).",
     };
   }
 
@@ -382,13 +384,6 @@ async function handleDetailMode(
 
   if (resolved.source === "static_fallback") {
     return NextResponse.json(buildStaticPayload());
-  }
-
-  if (resolved.source === "result_version") {
-    return NextResponse.json(
-      { error: "result_version artifact loading not yet implemented" },
-      { status: 501 },
-    );
   }
 
   return NextResponse.json(
