@@ -53,6 +53,9 @@ export type SequentialDatasetRecord = {
   class_name: string | null;
   active: boolean;
   created_at: string;
+  session_count: number;
+  learner_count: number;
+  usage_status: "used" | "not_used";
   runs: SequentialRunRecord[];
 };
 
@@ -238,6 +241,7 @@ async function handleListMode(): Promise<NextResponse> {
         set_families: [],
         task_types: [],
         run_statuses: [],
+        usage_statuses: [],
       },
     });
   }
@@ -264,13 +268,35 @@ async function handleListMode(): Promise<NextResponse> {
   }
 
   const classNameMap: Record<string, string> = {};
+  const classBatchIds: Record<string, string[]> = {};
   if (classIds.length > 0) {
-    const { data: classes } = await supabaseAdmin
-      .from("tb_classes")
-      .select("class_id, class_name")
-      .in("class_id", classIds);
+    const [{ data: classes }, { data: classSets }] = await Promise.all([
+      supabaseAdmin.from("tb_classes").select("class_id, class_name").in("class_id", classIds),
+      supabaseAdmin.from("tb_class_sets").select("class_id, batch_id").in("class_id", classIds),
+    ]);
     for (const c of classes ?? []) {
       classNameMap[c.class_id as string] = c.class_name as string;
+    }
+    for (const cs of classSets ?? []) {
+      const cid = cs.class_id as string;
+      if (!classBatchIds[cid]) classBatchIds[cid] = [];
+      classBatchIds[cid].push(cs.batch_id as string);
+    }
+  }
+
+  const sessionCountByBatch: Record<string, number> = {};
+  const learnerSetByBatch: Record<string, Set<string>> = {};
+  const allBatchIds = [...new Set(Object.values(classBatchIds).flat())];
+  if (allBatchIds.length > 0) {
+    const { data: sessions } = await supabaseAdmin
+      .from("trn_learning_sessions")
+      .select("batch_id, session_id, profile_id")
+      .in("batch_id", allBatchIds);
+    for (const s of sessions ?? []) {
+      const bid = s.batch_id as string;
+      sessionCountByBatch[bid] = (sessionCountByBatch[bid] ?? 0) + 1;
+      if (!learnerSetByBatch[bid]) learnerSetByBatch[bid] = new Set();
+      learnerSetByBatch[bid].add(s.profile_id as string);
     }
   }
 
@@ -319,18 +345,30 @@ async function handleListMode(): Promise<NextResponse> {
     });
   }
 
-  const datasetRecords: SequentialDatasetRecord[] = dsRows.map((d) => ({
-    id: d.id as string,
-    code: d.code as string,
-    name: d.name as string,
-    batch_type: (d.batch_type as string) ?? "",
-    set_family: (d.set_family as string) ?? "",
-    task_type: (d.task_type as string) ?? "",
-    class_name: d.class_id ? (classNameMap[d.class_id as string] ?? null) : null,
-    active: (d.active as boolean) ?? false,
-    created_at: d.created_at as string,
-    runs: runsByDataset[d.id as string] ?? [],
-  }));
+  const datasetRecords: SequentialDatasetRecord[] = dsRows.map((d) => {
+    const batchIds = d.class_id ? (classBatchIds[d.class_id as string] ?? []) : [];
+    const sessionCount = batchIds.reduce((sum, bid) => sum + (sessionCountByBatch[bid] ?? 0), 0);
+    const learnerSet = batchIds.reduce((acc, bid) => {
+      learnerSetByBatch[bid]?.forEach((id) => acc.add(id));
+      return acc;
+    }, new Set<string>());
+    const dsRuns = runsByDataset[d.id as string] ?? [];
+    return {
+      id: d.id as string,
+      code: d.code as string,
+      name: d.name as string,
+      batch_type: (d.batch_type as string) ?? "",
+      set_family: (d.set_family as string) ?? "",
+      task_type: (d.task_type as string) ?? "",
+      class_name: d.class_id ? (classNameMap[d.class_id as string] ?? null) : null,
+      active: (d.active as boolean) ?? false,
+      created_at: d.created_at as string,
+      session_count: sessionCount,
+      learner_count: learnerSet.size,
+      usage_status: dsRuns.some((r) => r.status === "completed") ? "used" : "not_used",
+      runs: dsRuns,
+    };
+  });
 
   const batchTypes = [...new Set(dsRows.map((d) => d.batch_type as string).filter(Boolean))];
   const setFamilies = [...new Set(dsRows.map((d) => d.set_family as string).filter(Boolean))];
@@ -346,6 +384,7 @@ async function handleListMode(): Promise<NextResponse> {
       set_families: setFamilies,
       task_types: taskTypes,
       run_statuses: runStatuses,
+      usage_statuses: ["used", "not_used"],
     },
   });
 }

@@ -44,6 +44,7 @@ type ListResponse = {
     set_families: string[];
     task_types: string[];
     run_statuses: string[];
+    usage_statuses: string[];
   };
 };
 
@@ -153,6 +154,7 @@ export default function SequentialAnalysisPage() {
   const [setFamilyFilter, setSetFamilyFilter] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("");
   const [runStatusFilter, setRunStatusFilter] = useState("");
+  const [usageFilter, setUsageFilter] = useState<"used" | "not_used" | "">("");
 
   // Table state
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -162,6 +164,9 @@ export default function SequentialAnalysisPage() {
   // Modals
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [runTarget, setRunTarget] = useState<SequentialDatasetRecord | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -247,6 +252,7 @@ export default function SequentialAnalysisPage() {
       const hasStatus = ds.runs.some((r) => r.status === runStatusFilter);
       if (!hasStatus) return false;
     }
+    if (usageFilter && ds.usage_status !== usageFilter) return false;
     return true;
   });
 
@@ -296,6 +302,28 @@ export default function SequentialAnalysisPage() {
 
   function openCompare() {
     setCompareOpen(true);
+  }
+
+  async function confirmRunPipeline() {
+    if (!runTarget || !token) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${runTarget.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_type: "sequential" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Request failed" }));
+        setRunError((j as { error?: string }).error ?? "Failed to start run.");
+        return;
+      }
+      setRunTarget(null);
+      void loadData();
+    } finally {
+      setRunLoading(false);
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -497,9 +525,32 @@ export default function SequentialAnalysisPage() {
             </div>
           </div>
 
+          {/* Usage */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Usage</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All" onClick={() => { setUsageFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${usageFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Used" onClick={() => { setUsageFilter(usageFilter === "used" ? "" : "used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${usageFilter === "used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </button>
+              <button type="button" title="Not used" onClick={() => { setUsageFilter(usageFilter === "not_used" ? "" : "not_used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${usageFilter === "not_used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           {/* Clear All */}
-          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter || runStatusFilter) && (
-            <button type="button" onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setRunStatusFilter(""); setPage(1); }}
+          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter || runStatusFilter || usageFilter) && (
+            <button type="button" onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setRunStatusFilter(""); setUsageFilter(""); setPage(1); }}
               className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
               Clear All
             </button>
@@ -542,7 +593,9 @@ export default function SequentialAnalysisPage() {
                     { label: "Batch",     align: "center" },
                     { label: "Activity",  align: "center" },
                     { label: "Task Type", align: "center" },
-                    { label: "Class",     align: "left"   },
+                    { label: "Sessions",  align: "center" },
+                    { label: "Learners",  align: "center" },
+                    { label: "Usage",     align: "center" },
                     { label: "Runs",      align: "center" },
                     { label: "",          align: "center" },
                   ].map(({ label, align }, i) => (
@@ -606,9 +659,29 @@ export default function SequentialAnalysisPage() {
                             <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
                           )}
                         </td>
-                        {/* Class */}
-                        <td className="px-3 py-3.5 align-middle">
-                          <span className="text-xs text-[#475569]">{ds.class_name ?? "—"}</span>
+                        {/* Sessions */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+                        </td>
+                        {/* Learners */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+                        </td>
+                        {/* Usage */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.usage_status === "used" ? (
+                            <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                              </svg>
+                            </span>
+                          ) : (
+                            <span title="Not used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                              </svg>
+                            </span>
+                          )}
                         </td>
                         {/* Runs count */}
                         <td className="px-2 py-3.5 text-center align-middle">
@@ -616,8 +689,19 @@ export default function SequentialAnalysisPage() {
                             {ds.runs.length}
                           </span>
                         </td>
-                        {/* Expand chevron */}
+                        {/* Actions: Run + Expand */}
                         <td className="px-3 py-3.5 text-center align-middle">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setRunError(null); setRunTarget(ds); }}
+                              title="Run Sequence Analysis"
+                              className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] transition-colors"
+                              aria-label="Run Sequence Analysis"
+                            >
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M5 3l14 9-14 9V3z" />
+                              </svg>
+                            </button>
                           <svg
                             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                             strokeLinecap="round" strokeLinejoin="round"
@@ -626,6 +710,7 @@ export default function SequentialAnalysisPage() {
                           >
                             <polyline points="6 9 12 15 18 9" />
                           </svg>
+                          </div>
                         </td>
                       </tr>
 
@@ -752,6 +837,56 @@ export default function SequentialAnalysisPage() {
           token={token}
           onClose={() => setCompareOpen(false)}
         />
+      )}
+
+      {/* Run Confirm Modal */}
+      {runTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Run Sequence Analysis</p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Dataset <span className="font-mono font-semibold text-[#F37021]">{runTarget.code}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#475569]">
+              This will create a new <strong>sequential</strong> pipeline run for{" "}
+              <strong>{runTarget.name}</strong>. The run will start in <em>pending</em> state.
+            </p>
+            {runError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {runError}
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmRunPipeline()}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] disabled:opacity-50 transition-colors"
+              >
+                {runLoading ? "Starting…" : "Confirm Run"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
