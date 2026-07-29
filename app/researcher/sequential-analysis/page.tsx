@@ -106,28 +106,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function ArtifactBadge({ availability }: { availability: SequentialRunRecord["artifact_availability"] }) {
-  if (availability === "available") {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200">
-        available
-      </span>
-    );
-  }
-  if (availability === "static_fallback") {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
-        Pilot &#8212; static artifact
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 border border-gray-200">
-      unavailable
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -398,8 +376,6 @@ export default function SequentialAnalysisPage() {
       </div>
     );
   }
-
-  const filterOptions = data?.filter_options;
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">

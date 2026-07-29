@@ -4,14 +4,23 @@ import { requireAdminOrResearcher } from "@/lib/api-auth";
 
 // ---------------------------------------------------------------------------
 // POST /:id/runs/:runId — simulate pipeline execution for a pending run
-// Transitions pending → completed in the dev / mock environment.
-// The frontend uses this as the "Continue" action on stuck pending runs.
+// Transitions pending → completed in the dev / mock environment ONLY.
+// Guarded by APP_ENV: returns 403 in any non-development environment so a
+// misrouted production request cannot force-complete a real pipeline run.
 // ---------------------------------------------------------------------------
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; runId: string }> },
 ) {
+  // Hard gate: this endpoint must never execute in production.
+  if (process.env.APP_ENV !== "development") {
+    return NextResponse.json(
+      { error: "Run simulation is not available outside the development environment." },
+      { status: 403 },
+    );
+  }
+
   try {
     await requireAdminOrResearcher(request);
   } catch {
