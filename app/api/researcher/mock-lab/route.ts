@@ -184,6 +184,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate numeric params
+  if (n_students !== undefined && (n_students < 5 || n_students > 200)) {
+    return NextResponse.json({ error: "n_students must be between 5 and 200" }, { status: 400 });
+  }
   if (at_risk_rate !== undefined && (at_risk_rate < 0 || at_risk_rate > 100)) {
     return NextResponse.json({ error: "at_risk_rate must be between 0 and 100" }, { status: 400 });
   }
