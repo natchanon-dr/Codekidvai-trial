@@ -53,8 +53,8 @@ const SIMULATION_SEED = parseInt(opts["seed"] ?? "42", 10);
 const RAW_CONCURRENCY    = parseInt(process.env.MOCK_STUDENT_CONCURRENCY ?? opts["concurrency"] ?? "2", 10);
 const STUDENT_CONCURRENCY = Math.max(1, Math.min(4, isNaN(RAW_CONCURRENCY) ? 2 : RAW_CONCURRENCY));
 
-if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
-  console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
+if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_") && !BATCH_CODE.startsWith("M")) {
+  console.error(`ERROR: Batch code must start with SIM_E2E_, MOCK_, or M. Got: ${BATCH_CODE}`);
   process.exit(1);
 }
 const ALLOWED_SET_FAMILIES = ["assignment", "lab", "exam"];

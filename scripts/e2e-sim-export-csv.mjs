@@ -49,8 +49,8 @@ function parseArgs() {
 const cliOpts = parseArgs();
 const BATCH_CODE = cliOpts["batch"] ?? "SIM_E2E_2026_001";
 
-if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_") && !BATCH_CODE.startsWith("TEST_")) {
-  console.error(`ERROR: Batch code must start with SIM_E2E_, MOCK_, or TEST_. Got: ${BATCH_CODE}`);
+if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_") && !BATCH_CODE.startsWith("TEST_") && !BATCH_CODE.startsWith("M")) {
+  console.error(`ERROR: Batch code must start with SIM_E2E_, MOCK_, TEST_, or M. Got: ${BATCH_CODE}`);
   process.exit(1);
 }
 

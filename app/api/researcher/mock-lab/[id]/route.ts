@@ -20,7 +20,7 @@ export async function PATCH(
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
 
-  const allowed = ["name", "n_students", "at_risk_rate", "missing_rate",
+  const allowed = ["name", "active", "n_students", "at_risk_rate", "missing_rate",
                    "seed", "set_family", "task_type_counts", "task_set_id", "task_ids"];
   const update: Record<string, unknown> = {};
   for (const key of allowed) {

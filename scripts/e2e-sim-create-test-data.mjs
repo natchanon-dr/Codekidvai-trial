@@ -53,8 +53,8 @@ const BLOCK_TASK_TYPES     = ["sql_block", "er_diagram", "coding_text", "coding_
 const SET_FAMILY = opts["set-family"] ?? "assignment";
 const DUMMY_TASK_TYPE = opts["task-type"] ?? "sql_text";
 
-if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_")) {
-  console.error(`ERROR: Batch code must start with SIM_E2E_ or MOCK_. Got: ${BATCH_CODE}`);
+if (!BATCH_CODE.startsWith("SIM_E2E_") && !BATCH_CODE.startsWith("MOCK_") && !BATCH_CODE.startsWith("M")) {
+  console.error(`ERROR: Batch code must start with SIM_E2E_, MOCK_, or M. Got: ${BATCH_CODE}`);
   process.exit(1);
 }
 if (!ALLOWED_SET_FAMILIES.includes(SET_FAMILY)) {
