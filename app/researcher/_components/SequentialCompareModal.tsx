@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 export type SelectedRunRef = {
   datasetId: string;
   runId: string;
+  runNumber: string;
   datasetCode: string;
   datasetName: string;
   artifactSource: "result_version" | "static_fallback" | null;
@@ -231,7 +232,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <p className="font-mono font-semibold text-[#0F172A] text-xs">{ref.datasetCode}</p>
                 <p className="text-[11px] text-[#64748B] mt-0.5 truncate">{ref.datasetName}</p>
                 <p className="text-[10px] font-mono text-[#94A3B8] mt-1" title={ref.runId}>
-                  Run {i + 1}: {ref.runId.slice(0, 8)}&hellip;
+                  #{ref.runNumber} &middot; {ref.runId.slice(0, 8)}&hellip;
                 </p>
                 {ref.artifactSource === "static_fallback" && (
                   <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">

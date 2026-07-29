@@ -146,6 +146,27 @@ export type ArtifactVersions = {
   };
 };
 
+type ModelComparisonEntry = {
+  name: string;
+  accuracy: number;
+  f1: number;
+  roc_auc: number;
+  pr_auc: number;
+  train_time_sec: number;
+  parameters: number | null;
+  type: string;
+};
+
+type ModelComparison = {
+  test_sequences: number;
+  test_class_distribution: { positive: number; negative: number };
+  models: ModelComparisonEntry[];
+};
+
+type SeedStabilityExp = { accuracy_mean: number; f1_mean: number; roc_auc_mean: number; epochs_trained_mean: number };
+type SeedStabilityModel = { exp_a_seq_only: SeedStabilityExp; exp_b_seq_plus_tag: SeedStabilityExp };
+type SeedStability = { lstm: SeedStabilityModel; gru: SeedStabilityModel };
+
 export type ArtifactPayload = {
   artifact_source: "result_version" | "static_fallback";
   research_constraints?: ResearchConstraints | null;
@@ -155,6 +176,9 @@ export type ArtifactPayload = {
   feature_scaler?: FeatureScaler | null;
   tag_structure?: TagStructure | null;
   model_sequence_config?: { lstm: ModelConfig; gru: ModelConfig } | null;
+  model_comparison?: ModelComparison | null;
+  seed_stability?: SeedStability | null;
+  charts?: Array<{ key: string; title: string; path: string }> | null;
   validation?: Validation | null;
   artifact_versions?: ArtifactVersions | null;
   limitations?: string[] | null;
@@ -252,6 +276,9 @@ export function AnalysisResultView({ artifact }: Props) {
     event_vocabulary: ev,
     tag_structure: tag,
     model_sequence_config: mc,
+    model_comparison: mcmp,
+    seed_stability: ss,
+    charts,
     validation: val,
     artifact_versions: av,
     limitations,
@@ -857,6 +884,119 @@ proxy_target_circularity   = ${String(rc.proxy_target_circularity)}
 confirmatory_analysis_allowed = ${String(rc.confirmatory_analysis_allowed)}`}
           </pre>
           <p className="text-[11px] text-[#64748B] italic">{rc.data_warning}</p>
+        </SectionCard>
+      )}
+
+      {/* ── Section 9: Model Comparison ── */}
+      {!mcmp ? (
+        <UnavailableSection title="Model Comparison" />
+      ) : (
+        <SectionCard title="Model Comparison">
+          {rc?.proxy_target_circularity && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-0.5 mb-3">
+              <p className="font-semibold">⚠ proxy_target_circularity = true</p>
+              <p className="text-[11px]">Non-Dummy models score 1.0 due to label circularity. Pipeline integrity check only — not research conclusions.</p>
+            </div>
+          )}
+          <div className="text-[10px] text-[#64748B] mb-2 flex gap-4">
+            <span>Test sequences: <strong>{mcmp.test_sequences}</strong></span>
+            <span>Class: <strong>{mcmp.test_class_distribution.positive}+</strong> / <strong>{mcmp.test_class_distribution.negative}−</strong></span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse min-w-[480px]">
+              <thead>
+                <tr className="bg-[#F8FAFC] border-b-2 border-[#E2E8F0]">
+                  {["Model", "Acc", "F1", "ROC-AUC", "PR-AUC", "Train (s)", "Params"].map((h) => (
+                    <th key={h} className={`px-2 py-2 text-[10px] font-bold text-[#64748B] uppercase tracking-wide whitespace-nowrap ${h === "Model" ? "text-left pl-3" : "text-center"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mcmp.models.map((m) => {
+                  const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+                    baseline:       { label: "BASE", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+                    flat_baseline:  { label: "FLAT", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                    graph_baseline: { label: "TAG",  cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                    sequence:       { label: "SEQ",  cls: "bg-orange-50 text-orange-700 border-orange-200" },
+                  };
+                  const badge = TYPE_BADGE[m.type] ?? TYPE_BADGE.baseline;
+                  const circular = m.type !== "baseline" && !!rc?.proxy_target_circularity;
+                  const numCls = circular ? "text-red-600 font-mono" : "text-[#0F172A] font-mono";
+                  return (
+                    <tr key={m.name} className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7]">
+                      <td className="pl-3 pr-2 py-2.5 align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-[#0F172A]">{m.name}</span>
+                          <span className={`text-[8px] border px-1 rounded font-bold ${badge.cls}`}>{badge.label}</span>
+                          {circular && <span className="text-red-500 text-[10px]" title="Circularity">⚠</span>}
+                        </div>
+                      </td>
+                      <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.accuracy.toFixed(2)}</td>
+                      <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.f1.toFixed(2)}</td>
+                      <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.roc_auc.toFixed(2)}</td>
+                      <td className={`px-2 py-2.5 text-center ${numCls}`}>{m.pr_auc.toFixed(2)}</td>
+                      <td className="px-2 py-2.5 text-center font-mono text-[#475569]">
+                        {m.train_time_sec < 0.001 ? "<0.001" : m.train_time_sec.toFixed(3)}
+                      </td>
+                      <td className="px-2 py-2.5 text-center font-mono text-[#475569]">
+                        {m.parameters != null ? m.parameters.toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {ss && (
+            <div className="mt-4 space-y-2">
+              <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wide border-t border-[#F1F5F9] pt-3">
+                Seed Stability (seeds 11 · 22 · 33 · 42 · 55)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {(["lstm", "gru"] as const).map((model) => {
+                  const st = ss[model];
+                  return (
+                    <div key={model} className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5 space-y-2">
+                      <p className="text-[10px] font-bold text-[#0F172A] uppercase">{model}</p>
+                      {(["exp_a_seq_only", "exp_b_seq_plus_tag"] as const).map((exp) => {
+                        const e = st[exp];
+                        return (
+                          <div key={exp} className="text-[10px] space-y-0.5">
+                            <p className="text-[#64748B] font-medium">{exp === "exp_a_seq_only" ? "Exp-A (Seq only)" : "Exp-B (Seq + TAG)"}</p>
+                            <div className="flex gap-3 font-mono text-[#0F172A]">
+                              <span>Acc <strong>{e.accuracy_mean.toFixed(2)}</strong></span>
+                              <span>F1 <strong>{e.f1_mean.toFixed(2)}</strong></span>
+                              <span>AUC <strong>{e.roc_auc_mean.toFixed(2)}</strong></span>
+                              <span className="text-[#94A3B8]">{e.epochs_trained_mean.toFixed(0)} ep</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* ── Section 10: Analysis Charts ── */}
+      {!charts || charts.length === 0 ? (
+        <UnavailableSection title="Analysis Charts" />
+      ) : (
+        <SectionCard title="Analysis Charts" subtitle="Seed 42 · static Phase 4 artifact · pipeline validation only">
+          <div className="grid grid-cols-2 gap-4">
+            {charts.map((chart) => (
+              <div key={chart.key} className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wide">{chart.title}</p>
+                <div className="border border-[#E2E8F0] rounded-lg overflow-hidden bg-[#F8FAFC]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={chart.path} alt={chart.title} className="w-full h-auto" loading="lazy" />
+                </div>
+              </div>
+            ))}
+          </div>
         </SectionCard>
       )}
     </>

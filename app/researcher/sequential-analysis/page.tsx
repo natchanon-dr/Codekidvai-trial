@@ -31,6 +31,7 @@ const DATASET_TASK_LABEL: Record<string, string> = {
 type SelectedRun = {
   datasetId: string;
   runId: string;
+  runNumber: string;
   datasetCode: string;
   datasetName: string;
   artifactSource: "result_version" | "static_fallback" | null;
@@ -268,11 +269,14 @@ export default function SequentialAnalysisPage() {
       const exists = prev.find((s) => s.runId === run.id);
       if (exists) return prev.filter((s) => s.runId !== run.id);
       if (prev.length >= MAX_COMPARE) return prev;
+      const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+      const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
       return [
         ...prev,
         {
           datasetId: ds.id,
           runId: run.id,
+          runNumber,
           datasetCode: ds.code,
           datasetName: ds.name,
           artifactSource: run.artifact_source,
