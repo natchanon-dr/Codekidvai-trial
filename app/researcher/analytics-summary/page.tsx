@@ -167,6 +167,7 @@ export default function FeatureAnalyticsPage() {
   const [runTarget, setRunTarget] = useState<SequentialDatasetRecord | null>(null);
   const [runLoading, setRunLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -236,6 +237,15 @@ export default function FeatureAnalyticsPage() {
 
   useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
 
+  useEffect(() => {
+    const hasActive = (data?.datasets ?? []).some((ds) =>
+      ds.runs.some((r) => r.status === "running" || r.status === "pending"),
+    );
+    if (!hasActive) return;
+    const id = setInterval(() => { void loadData(); }, 10_000);
+    return () => clearInterval(id);
+  }, [data, loadData]);
+
   // ── Filtering ─────────────────────────────────────────────────────────────
 
   const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
@@ -302,6 +312,46 @@ export default function FeatureAnalyticsPage() {
 
   function openCompare() {
     setCompareOpen(true);
+  }
+
+  async function continueRun(ds: SequentialDatasetRecord, run: SequentialRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_type: run.run_type || "sequential" }),
+      });
+      void loadData();
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        console.warn("continueRun:", (j as { error?: string }).error ?? "unknown error");
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function stopRun(ds: SequentialDatasetRecord, run: SequentialRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs?run_id=${run.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      void loadData();
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function runProgress(run: SequentialRunRecord): { pct: number; done: number; total: number } | null {
+    const steps = run.analysis_steps;
+    if (!steps || steps.length === 0) return null;
+    const done = steps.filter((s) => s.status === "completed").length;
+    return { pct: Math.round((done / steps.length) * 100), done, total: steps.length };
   }
 
   async function confirmRunPipeline() {
@@ -763,8 +813,61 @@ export default function FeatureAnalyticsPage() {
                                 <td className="px-3 py-2.5 align-middle" colSpan={1}>
                                   <ArtifactBadge availability={run.artifact_availability} />
                                 </td>
+                                {/* Progress / Action */}
+                                <td className="px-2 py-2.5 align-middle" colSpan={2}>
+                                  {run.status === "pending" && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); void continueRun(ds, run); }}
+                                      disabled={actionLoading === run.id}
+                                      title="Queue a new run for this dataset"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                    >
+                                      {actionLoading === run.id ? (
+                                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                      ) : (
+                                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"/></svg>
+                                      )}
+                                      Continue
+                                    </button>
+                                  )}
+                                  {run.status === "running" && (() => {
+                                    const prog = runProgress(run);
+                                    return (
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="flex flex-col gap-0.5 min-w-[44px]">
+                                          <div className="h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                                            {prog ? (
+                                              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${prog.pct}%` }} />
+                                            ) : (
+                                              <div className="h-full w-1/2 bg-blue-400 rounded-full animate-pulse" />
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] font-mono text-blue-600 leading-none">
+                                            {prog ? `${prog.pct}%` : "…"}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); void stopRun(ds, run); }}
+                                          disabled={actionLoading === run.id}
+                                          title="Request cancellation"
+                                          className="p-1 rounded hover:bg-red-100 text-[#94A3B8] hover:text-red-500 disabled:opacity-50 transition-colors"
+                                          aria-label="Pause run"
+                                        >
+                                          {actionLoading === run.id ? (
+                                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                          ) : (
+                                            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
+                                              <rect x="6" y="4" width="4" height="16" rx="1" />
+                                              <rect x="14" y="4" width="4" height="16" rx="1" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+                                </td>
                                 {/* View */}
-                                <td className="px-3 py-2.5 align-middle text-center" colSpan={3}>
+                                <td className="px-3 py-2.5 align-middle text-center" colSpan={1}>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); openDetail(ds, run); }}
                                     disabled={!canView}
