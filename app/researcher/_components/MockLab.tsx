@@ -250,7 +250,7 @@ export default function MockLab() {
   const pendingSetIdRef    = useRef<string>("");
   const runConfigRef       = useRef<typeof config | null>(null);
   // true = outcome came from a live run (unsaved); false = loaded from DB
-  const isNewOutcomeRef    = useRef(false);
+  const [isNewOutcome, setIsNewOutcome] = useState(false);
   const [outcomeSaved, setOutcomeSaved] = useState(false);
 
   // configs table state
@@ -288,7 +288,7 @@ export default function MockLab() {
 
   // fetch configs from DB
   const fetchConfigs = useCallback(async () => {
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     try {
       const { data: { session: listSession } } = await supabase.auth.getSession();
       const listToken = listSession?.access_token ?? "";
@@ -380,15 +380,17 @@ export default function MockLab() {
     const familyMatch = found.family === dummySetFamily;
     const taskTypeMatch = Object.keys(found.task_type_counts).includes(dummyTaskType);
     if (!familyMatch || !taskTypeMatch) {
-      setSelectedSetId("");
-      setConfig(prev => ({
-        ...prev,
-        taskIds: undefined,
-        taskSetId: undefined,
-        nTasks: 3,
-        setFamily: dummySetFamily,
-        taskTypeCounts: { [dummyTaskType]: 3 },
-      }));
+      queueMicrotask(() => {
+        setSelectedSetId("");
+        setConfig(prev => ({
+          ...prev,
+          taskIds: undefined,
+          taskSetId: undefined,
+          nTasks: 3,
+          setFamily: dummySetFamily,
+          taskTypeCounts: { [dummyTaskType]: 3 },
+        }));
+      });
     }
   }, [dummySetFamily, dummyTaskType, selectedSetId, taskSets]);
 
@@ -649,7 +651,7 @@ export default function MockLab() {
     setLiveProgress(null);
     setFinalStats(null);
     setOutcome(null);
-    isNewOutcomeRef.current = false;
+    setIsNewOutcome(false);
     setOutcomeSaved(false);
     setShowPipelineModal(true);
 
@@ -665,7 +667,7 @@ export default function MockLab() {
         const lastSuccessful = (data.runs ?? []).find(r => r.outcome != null);
         if (lastSuccessful?.outcome) {
           parseOutcome({ report: lastSuccessful.outcome as MockOutcome });
-          isNewOutcomeRef.current = false;
+          setIsNewOutcome(false);
           setOutcomeSaved(true);
           // Restore all steps as completed so the workflow panel shows green
           PIPELINE_STEPS.forEach(ps => setStepStatus(prev => ({ ...prev, [ps]: "completed" })));
@@ -683,7 +685,7 @@ export default function MockLab() {
       setOutcome(payload.report);
       setActiveTab("summary");
       if (fromLiveRun) {
-        isNewOutcomeRef.current = true;
+        setIsNewOutcome(true);
         setOutcomeSaved(false);
       }
     }
@@ -716,7 +718,7 @@ export default function MockLab() {
         }),
       });
 
-      isNewOutcomeRef.current = false;
+      setIsNewOutcome(false);
       setOutcomeSaved(true);
       void fetchConfigs(); // refresh run_count in table
       setShowPipelineModal(false);
@@ -1306,7 +1308,7 @@ export default function MockLab() {
               ) : (
                 <>
                   {/* Save icon — shown only after a live run, before saving */}
-                  {outcome && isNewOutcomeRef.current && !outcomeSaved && (
+                  {outcome && isNewOutcome && !outcomeSaved && (
                     <button
                       onClick={() => void saveOutcome()}
                       title="Save result"

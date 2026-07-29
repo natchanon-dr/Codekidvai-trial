@@ -410,14 +410,14 @@ function CreateModal({
 
   // Exam has no specific task type — auto-clear taskType when exam is selected
   useEffect(() => {
-    if (setFamily === "exam") setTaskType("");
+    if (setFamily === "exam") queueMicrotask(() => setTaskType(""));
   }, [setFamily]);
 
   // Reload sets + scoped stats when class changes
   const isInitialClassLoad = useRef(true);
   useEffect(() => {
-    if (!classId) { setAllSets([]); setTaskId(""); setScopedStats(null); isInitialClassLoad.current = false; return; }
-    setLoadingSets(true);
+    if (!classId) { queueMicrotask(() => { setAllSets([]); setTaskId(""); setScopedStats(null); }); isInitialClassLoad.current = false; return; }
+    queueMicrotask(() => setLoadingSets(true));
     void Promise.all([
       fetch(`/api/researcher/classes/${classId}/sets`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.ok ? r.json() as Promise<{ sets: TaskSetOption[] }> : Promise.resolve({ sets: [] })),
@@ -1659,7 +1659,7 @@ export default function DatasetAnalyticsPage() {
 
   // Filter panel: Exam has no task type — auto-clear when exam selected
   useEffect(() => {
-    if (listSetFamily === "exam") setListTaskType("");
+    if (listSetFamily === "exam") queueMicrotask(() => setListTaskType(""));
   }, [listSetFamily]);
 
   const hasListFilter = search || listBatchType || listSetFamily || listTaskType || listActive || listUsage;
