@@ -51,6 +51,7 @@ type ListResponse = {
 type DetailTarget = {
   datasetId: string;
   runId: string;
+  runNumber: string;
   datasetCode: string;
   artifactSource: "result_version" | "static_fallback" | null;
 };
@@ -280,9 +281,12 @@ export default function SequentialAnalysisPage() {
   }
 
   function openDetail(ds: SequentialDatasetRecord, run: SequentialRunRecord) {
+    const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+    const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
     setDetailTarget({
       datasetId: ds.id,
       runId: run.id,
+      runNumber,
       datasetCode: ds.code,
       artifactSource: run.artifact_source,
     });
@@ -901,6 +905,7 @@ export default function SequentialAnalysisPage() {
         <SequentialAnalysisDetailModal
           datasetId={detailTarget.datasetId}
           runId={detailTarget.runId}
+          runNumber={detailTarget.runNumber}
           datasetCode={detailTarget.datasetCode}
           artifactSource={detailTarget.artifactSource}
           token={token}

@@ -11,6 +11,7 @@ import type { ArtifactPayload } from "./AnalysisResultView";
 type Props = {
   datasetId: string;
   runId: string;
+  runNumber?: string;
   datasetCode: string;
   artifactSource: "result_version" | "static_fallback" | null;
   onClose: () => void;
@@ -24,6 +25,7 @@ type Props = {
 export function AnalysisResultModal({
   datasetId,
   runId,
+  runNumber,
   datasetCode,
   artifactSource,
   onClose,
@@ -91,7 +93,7 @@ export function AnalysisResultModal({
               Sequential Analysis &#8212; {datasetCode}
             </p>
             <p className="text-xs text-[#64748B]">
-              Run: {runId.slice(0, 8)}&hellip; &#183; Read-only
+              Run: {runNumber ? `#${runNumber}` : `${runId.slice(0, 8)}…`} &#183; Read-only
               {artifactSource === "static_fallback" && (
                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
                   Pilot &#8212; static artifact
