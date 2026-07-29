@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
@@ -560,10 +560,9 @@ export default function SequentialAnalysisPage() {
                   const isExpanded = expandedIds.has(ds.id);
                   const visibleRuns = ds.runs.filter((r) => !runStatusFilter || r.status === runStatusFilter);
                   return (
-                    <>
+                    <Fragment key={ds.id}>
                       {/* Dataset row */}
                       <tr
-                        key={ds.id}
                         className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
                         onClick={() => toggleExpanded(ds.id)}
                       >
@@ -695,7 +694,7 @@ export default function SequentialAnalysisPage() {
                             })
                         )
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
