@@ -57,6 +57,9 @@ notebooks/models/*.joblib
 # nbconvert temp artifacts (created when runner cwd is notebooks/)
 notebooks/notebooks/
 
+# Phase 3 regression testing copy — generated, not source
+notebooks/_phase3_regression_tmp/
+
 # Test script temp outputs
 scripts/_csv_schema_test_tmp/
 
