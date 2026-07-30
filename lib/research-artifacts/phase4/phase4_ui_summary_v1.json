@@ -35,9 +35,11 @@
     ],
     "test_sequences": 18,
     "timing_note": "sklearn and PyTorch use different frameworks — do not imply strict computational superiority.",
+    "test_class_distribution": { "positive": 9, "negative": 9 },
     "models": [
       {
         "name": "Dummy",
+        "strategy": "most_frequent",
         "accuracy": 0.5,
         "precision": 0.0,
         "recall": 0.0,
@@ -301,8 +303,10 @@
       "max_sequence_length": 6,
       "tag_features_exp_b": 18,
       "trainable_params_exp_a": 5665,
-      "trainable_params_exp_b": 5665,
-      "architecture": "PackedSequence → LSTM(32) → Dropout(0.2) → Linear(1) → Sigmoid"
+      "trainable_params_exp_b": 5683,
+      "architecture": "PackedSequence → LSTM(32) → Dropout(0.2) → Linear(1) → Sigmoid",
+      "architecture_exp_a": "PackedSequence → LSTM(10→32) → Dropout(0.2) → Linear(32→1) → Sigmoid [EXP-A: 5,665 params — LSTM: 5,632, fc Linear(32→1): 33]",
+      "architecture_exp_b": "PackedSequence → LSTM(10→32) → Dropout(0.2) → [concat TAG(18)] → Linear(50→1) → Sigmoid [EXP-B: 5,683 params — LSTM: 5,632, fc Linear(50→1): 51; fc.in_features = lstm_hidden(32) + n_tag(18)]"
     },
     "gru": {
       "cell_type": "GRU",
@@ -375,7 +379,9 @@
           "Random Forest",
           "TAG-based LR"
         ],
-        "description": "Flat summary statistics computed per session sequence. Used in EXP-A."
+        "description": "Flat summary statistics computed per session sequence. Used in EXP-A.",
+        "circular_features": ["any_correct", "correctness_ratio"],
+        "circular_reason": "any_correct == 0 ↔ at_risk == 1 (exact biconditional); correctness_ratio == 0 ↔ any_correct == 0 for current pilot data"
       },
       "sequential": {
         "label": "Sequential",
@@ -389,7 +395,9 @@
           "LSTM",
           "GRU"
         ],
-        "description": "Ordered temporal sequences of behavioral features (shape: [n_sessions, max_seq_len, n_features]). Used in EXP-A and EXP-B."
+        "description": "Ordered temporal sequences of behavioral features (shape: [n_sessions, max_seq_len, n_features]). Used in EXP-A and EXP-B.",
+        "circular_features": ["attempt_is_correct"],
+        "circular_reason": "any(attempt_is_correct over timesteps) == any_correct; LSTM/GRU can infer at_risk from a single timestep where attempt_is_correct == 1"
       },
       "tag_based": {
         "label": "TAG-based (Temporal Assessment Graph)",

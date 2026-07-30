@@ -53,8 +53,8 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-if (TARGET_BATCH && !TARGET_BATCH.startsWith("SIM_E2E_") && !TARGET_BATCH.startsWith("MOCK_")) {
-  console.error(`ERROR: --batch must start with SIM_E2E_ or MOCK_. Got: ${TARGET_BATCH}`);
+if (TARGET_BATCH && !TARGET_BATCH.startsWith("SIM_E2E_") && !TARGET_BATCH.startsWith("MOCK_") && !TARGET_BATCH.startsWith("M")) {
+  console.error(`ERROR: --batch must start with SIM_E2E_, MOCK_, or M. Got: ${TARGET_BATCH}`);
   process.exit(1);
 }
 

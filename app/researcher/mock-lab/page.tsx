@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import MockLab from "@/app/researcher/_components/MockLab";
+import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 
 export default function MockLabPage() {
   const router = useRouter();
@@ -107,23 +107,9 @@ export default function MockLabPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-10 space-y-6">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs text-[#64748B]">
-          <Link href="/researcher/dashboard" className="hover:text-[#F37021] transition-colors">
-            Researcher Dashboard
-          </Link>
-          <svg className="w-3.5 h-3.5 text-[#CBD5E1]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-          <span className="font-semibold text-[#0F172A]">Mock Lab</span>
-        </nav>
+        <ResearcherBreadcrumb current="Mock Lab" />
 
-        {/* Page header */}
-        <section className="space-y-1">
-          <h1 className="text-2xl font-bold text-[#0F172A]">Mock Lab</h1>
-          <p className="text-sm text-[#64748B]">Simulated baseline AI pipeline for technical validation.</p>
-        </section>
-
-        {/* MockLab feature */}
+        {/* MockLab feature (includes its own title row with Create Mock button) */}
         <MockLab />
       </main>
     </div>

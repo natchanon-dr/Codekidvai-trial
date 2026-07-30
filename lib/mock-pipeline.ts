@@ -72,8 +72,8 @@ export type MockOutcome = {
 };
 
 export function validateMockConfig(config: MockConfig): string | null {
-  if (!config.batchCode.startsWith("SIM_E2E_") && !config.batchCode.startsWith("MOCK_")) {
-    return "Batch code must start with SIM_E2E_ or MOCK_";
+  if (!config.batchCode.startsWith("SIM_E2E_") && !config.batchCode.startsWith("MOCK_") && !config.batchCode.startsWith("M")) {
+    return "Batch code must start with SIM_E2E_, MOCK_, or M";
   }
   if (config.nStudents < 5 || config.nStudents > 200) {
     return "Students must be between 5 and 200";

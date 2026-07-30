@@ -29,3 +29,9 @@ body {
   color: #64748b;
   opacity: 1;
 }
+
+@keyframes slide-progress {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}

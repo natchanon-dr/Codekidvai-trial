@@ -1,0 +1,22 @@
+{
+  "schema_version": "seq_v1",
+  "padding_token": 0,
+  "event_type_vocab": {
+    "session_end": 1,
+    "sql_error": 2,
+    "sql_run": 3,
+    "sql_success": 4,
+    "submit_answer": 5,
+    "block_add": 6,
+    "block_delete": 7,
+    "block_move": 8,
+    "block_submit": 9
+  },
+  "block_events_reserved": [
+    "block_add",
+    "block_delete",
+    "block_move",
+    "block_submit"
+  ],
+  "note": "Block event slots reserved for future phases \u2014 not collected in Phase 4"
+}

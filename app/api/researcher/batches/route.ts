@@ -11,6 +11,20 @@ export async function GET(request: NextRequest) {
     const toDate = params.get("to_date");
     const batchType = params.get("batch_type");
     const taskType = params.get("task_type");
+    const classId = params.get("class_id");
+
+    // Resolve batch_codes that belong to any class (always filter to class-linked batches only)
+    let setsQuery = supabaseAdmin
+      .from("tb_class_sets")
+      .select("batch_id, mst_experiment_batches(batch_code)");
+    if (classId) setsQuery = setsQuery.eq("class_id", classId);
+    const { data: sets } = await setsQuery;
+    const allowedBatchCodes = (sets ?? []).map((s) => {
+      const b = Array.isArray(s.mst_experiment_batches)
+        ? s.mst_experiment_batches[0]
+        : s.mst_experiment_batches;
+      return (b as { batch_code: string } | null)?.batch_code ?? "";
+    }).filter(Boolean);
 
     let query = supabaseAdmin
       .from("vw_dataset_session_level")
@@ -20,6 +34,7 @@ export async function GET(request: NextRequest) {
     if (toDate) query = query.lte("started_at", toDate + "T23:59:59.999Z");
     if (batchType) query = query.eq("batch_type", batchType);
     if (taskType) query = query.eq("task_type", taskType);
+    query = query.in("batch_code", allowedBatchCodes.length ? allowedBatchCodes : ["__none__"]);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);

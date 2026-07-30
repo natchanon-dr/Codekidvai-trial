@@ -6,6 +6,9 @@
  *   set_family     → tb_class_sets.family          CHECK ('assignment','lab','exam')
  *   task_type      → mst_tasks.task_type            CHECK (6 values, see below)
  *   batch_type     → mst_experiment_batches.batch_type  CHECK ('pilot','main','practice')
+ *                    NOTE: The researcher analytics system uses 'trial' instead of 'practice'
+ *                    at the UI and API layer. Existing DB batches remain stored as 'practice'.
+ *                    A follow-up migration to align the DB CHECK constraint is deferred.
  *                    NOTE: batch_type is an operational field, NOT set_family.
  *                    Do NOT use batch_type as a proxy for set_family.
  *
@@ -148,9 +151,9 @@ export const THESIS_TASK_TYPE_ORDER: readonly TaskType[] = [
 // Batch Type (operational — separate from set_family)
 // ---------------------------------------------------------------------------
 
-export type BatchType = "pilot" | "main" | "practice";
+export type BatchType = "pilot" | "main" | "trial";
 
-export const BATCH_TYPE_VALUES = ["pilot", "main", "practice"] as const satisfies readonly BatchType[];
+export const BATCH_TYPE_VALUES = ["pilot", "main", "trial"] as const satisfies readonly BatchType[];
 
 // ---------------------------------------------------------------------------
 // Pilot Constraints (unchanged Phase 4 research contract)

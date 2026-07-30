@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
+import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 import { type DatasetExportType } from "@/services/admin-dataset-export-service";
 import {
   TaskTypeIcon,
@@ -16,6 +17,12 @@ type Batch = {
   batch_type: string;
   batch_status: string;
   task_types: string[];
+};
+
+type ClassOption = {
+  class_id: string;
+  class_code: string;
+  class_name: string;
 };
 
 const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactNode }[] = [
@@ -119,16 +126,24 @@ function getFilenameFromContentDisposition(header: string | null, fallback: stri
 export default function ResearcherDatasetPage() {
   const router = useRouter();
 
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [participantCode, setParticipantCode] = useState<string | null>(null);
+
   // Filters
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [batchTypeFilter, setBatchTypeFilter] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("");
 
   // Options
   const [batchTypeOptions, setBatchTypeOptions] = useState<string[]>([]);
   const [taskTypeOptions, setTaskTypeOptions] = useState<string[]>([]);
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
 
   // Batch list
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -138,6 +153,47 @@ export default function ResearcherDatasetPage() {
   // Export
   const [loadingExport, setLoadingExport] = useState<DatasetExportType | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof } = await supabase
+        .from("mst_profiles")
+        .select("display_name, participant_code")
+        .eq("auth_user_id", session.user.id)
+        .single();
+      setDisplayName(prof?.display_name ?? null);
+      setEmail(user?.email ?? null);
+      setParticipantCode(prof?.participant_code ?? null);
+
+      // Load class options
+      const classRes = await fetch("/api/researcher/classes", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (classRes.ok) {
+        const classJson = await classRes.json() as { classes?: ClassOption[] };
+        setClassOptions(classJson.classes ?? []);
+      }
+    }
+    void init();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  }
 
   const getToken = useCallback(async (): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -155,6 +211,7 @@ export default function ResearcherDatasetPage() {
     if (toDate) params.set("to_date", toDate);
     if (batchTypeFilter) params.set("batch_type", batchTypeFilter);
     if (taskTypeFilter) params.set("task_type", taskTypeFilter);
+    if (classFilter) params.set("class_id", classFilter);
 
     const res = await fetch(`/api/researcher/batches?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -171,7 +228,7 @@ export default function ResearcherDatasetPage() {
       return new Set([...prev].filter((c) => codes.has(c)));
     });
     setLoadingBatches(false);
-  }, [fromDate, toDate, batchTypeFilter, taskTypeFilter, getToken, router]);
+  }, [fromDate, toDate, batchTypeFilter, taskTypeFilter, classFilter, getToken, router]);
 
   useEffect(() => { queueMicrotask(() => { void loadBatches(); }); }, [loadBatches]);
 
@@ -236,131 +293,190 @@ export default function ResearcherDatasetPage() {
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
-      <header className="bg-white border-b border-[#FED7AA] px-6 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <a href="/researcher/dashboard" className="text-sm font-semibold text-[#64748B] hover:text-[#F37021]">
-            Researcher Dashboard
-          </a>
-          <span className="text-xs font-semibold text-[#F37021] tracking-wide uppercase">Dataset Export</span>
+      <header className="bg-white border-b border-[#FED7AA] px-6 py-3 flex items-center justify-between">
+        <div>
+          <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Researcher</p>
+          <p className="text-xs text-[#64748B]">Research data access portal</p>
+        </div>
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="w-8 h-8 rounded-full bg-[#FED7AA] flex items-center justify-center hover:bg-[#F37021] hover:text-white transition-colors text-[#F37021] border border-[#FED7AA]"
+            title="Profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 top-10 w-64 bg-white border border-[#FED7AA] rounded-2xl shadow-lg z-50 p-4 space-y-3">
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Name</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{displayName ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Email</p>
+                <p className="text-sm text-[#0F172A] break-all">{email ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <div>
+                <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Participant Code</p>
+                <p className="text-sm font-mono font-semibold text-[#64748B]">{participantCode ?? "—"}</p>
+              </div>
+              <hr className="border-[#FED7AA]" />
+              <button
+                onClick={handleLogout}
+                className="w-full py-1.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        <ResearcherBreadcrumb current="Dataset Export" />
         <section>
           <h1 className="text-2xl font-bold text-[#0F172A]">Dataset Export</h1>
           <p className="text-sm text-[#64748B] mt-1">กรอง batch ที่ต้องการ แล้วเลือก batch และกด Export</p>
         </section>
 
         {/* Filters */}
-        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
-          {/* Date range */}
-          <div className="flex items-end gap-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">From</label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
-              />
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 space-y-3">
+          {/* Row 1: Date range + Class */}
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Date range */}
+            <div className="flex items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#64748B] font-medium">From</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+                />
+              </div>
+              <span className="text-sm text-[#94A3B8] pb-2.5">—</span>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#64748B] font-medium">To</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
+                />
+              </div>
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setFromDate(""); setToDate(""); }}
+                  className="pb-2.5 text-xs font-semibold text-[#F37021] hover:underline"
+                >
+                  Clear
+                </button>
+              )}
             </div>
-            <span className="text-sm text-[#94A3B8] pb-2.5">—</span>
+
+            {/* Class filter */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">To</label>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021]"
-              />
-            </div>
-            {(fromDate || toDate) && (
-              <button
-                type="button"
-                onClick={() => { setFromDate(""); setToDate(""); }}
-                className="pb-2.5 text-xs font-semibold text-[#F37021] hover:underline"
+              <label className="text-xs text-[#64748B] font-medium">Class</label>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="px-3 py-2.5 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] min-w-[200px]"
               >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* Batch Type toggle */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#64748B] font-medium">Type</label>
-            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-              {BATCH_TYPE_OPTIONS.map(({ value, label, icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  title={label}
-                  onClick={() => setBatchTypeFilter(value)}
-                  className={`flex items-center justify-center px-3 py-2.5 font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
-                    ${batchTypeFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
-                >
-                  {icon ?? <span className="text-sm">All</span>}
-                </button>
-              ))}
+                <option value="">All Classes</option>
+                {classOptions.map((c) => (
+                  <option key={c.class_id} value={c.class_id}>
+                    {c.class_name} ({c.class_code})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Task Type toggle */}
-          {taskTypeOptions.length > 0 && (
+          {/* Row 2: Type | Task | Status */}
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Batch Type toggle */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Task</label>
+              <label className="text-xs text-[#64748B] font-medium">Type</label>
               <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-                <button
-                  type="button"
-                  title="All"
-                  onClick={() => setTaskTypeFilter("")}
-                  className={`px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] transition-colors
-                    ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
-                >
-                  All
-                </button>
-                {[...taskTypeOptions].sort((a, b) => {
-                  const ai = TASK_TYPE_ORDER.indexOf(a);
-                  const bi = TASK_TYPE_ORDER.indexOf(b);
-                  return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-                }).map((t) => (
+                {BATCH_TYPE_OPTIONS.map(({ value, label, icon }) => (
                   <button
-                    key={t}
+                    key={value}
                     type="button"
-                    title={TASK_TYPE_SHORT_LABEL[t] ?? t}
-                    onClick={() => setTaskTypeFilter(t)}
-                    className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] last:border-r-0 transition-colors
-                      ${taskTypeFilter === t ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                    title={label}
+                    onClick={() => setBatchTypeFilter(value)}
+                    className={`flex items-center justify-center px-3 py-2.5 font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                      ${batchTypeFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
                   >
-                    <TaskTypeIcon type={t} />
+                    {icon ?? <span className="text-sm">All</span>}
                   </button>
                 ))}
               </div>
             </div>
-          )}
-          {/* Status toggle */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#64748B] font-medium">Status</label>
-            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-              {[
-                { value: "", label: "All" },
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ].map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setStatusFilter(value)}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
-                    ${statusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
-                >
-                  {value !== "" && (
-                    <span className={`w-2 h-2 rounded-full ${
-                      statusFilter === value ? "bg-white" : value === "active" ? "bg-emerald-500" : "bg-[#CBD5E1]"
-                    }`} />
-                  )}
-                  {label}
-                </button>
-              ))}
+
+            {/* Task Type toggle */}
+            {taskTypeOptions.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#64748B] font-medium">Task</label>
+                <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    title="All"
+                    onClick={() => setTaskTypeFilter("")}
+                    className={`px-3 py-2.5 text-sm font-semibold border-r border-[#FED7AA] transition-colors
+                      ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                  >
+                    All
+                  </button>
+                  {[...taskTypeOptions].sort((a, b) => {
+                    const ai = TASK_TYPE_ORDER.indexOf(a);
+                    const bi = TASK_TYPE_ORDER.indexOf(b);
+                    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                  }).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      title={TASK_TYPE_SHORT_LABEL[t] ?? t}
+                      onClick={() => setTaskTypeFilter(t)}
+                      className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] last:border-r-0 transition-colors
+                        ${taskTypeFilter === t ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                    >
+                      <TaskTypeIcon type={t} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Status toggle */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[#64748B] font-medium">Status</label>
+              <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+                {[
+                  { value: "", label: "All" },
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStatusFilter(value)}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
+                      ${statusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
+                  >
+                    {value !== "" && (
+                      <span className={`w-2 h-2 rounded-full ${
+                        statusFilter === value ? "bg-white" : value === "active" ? "bg-emerald-500" : "bg-[#CBD5E1]"
+                      }`} />
+                    )}
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </section>

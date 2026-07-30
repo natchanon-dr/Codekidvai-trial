@@ -226,11 +226,11 @@ contains none of the above column names or their known aliases.
 | Vocabulary | `notebooks/data/sequences/vocabulary_v1.json` | `v1` |
 | Scaler params | `notebooks/data/sequences/scaler_v1.json` | `v1` |
 | Sequence manifest | `notebooks/data/sequences/sequence_manifest_v1.json` | `v1` |
-| TAG nodes | `notebooks/data/sequences/tag_nodes_v1.parquet` | `v1` |
-| TAG edges | `notebooks/data/sequences/tag_edges_v1.parquet` | `v1` |
-| LSTM model | `notebooks/models/lstm_v1.keras` | `v1` |
-| GRU model | `notebooks/models/gru_v1.keras` | `v1` |
-| Comparison table | `notebooks/reports/model_comparison_v1.md` | `v1` |
+| TAG nodes | `notebooks/data/tag/tag_nodes_v1.parquet` | `v1` |
+| TAG edges | `notebooks/data/tag/tag_edges_v1.parquet` | `v1` |
+| LSTM model | `notebooks/models/sequence/lstm/lstm_model_v1.pt` | `v1` |
+| GRU model | `notebooks/models/sequence/gru/gru_model_v1.pt` | `v1` |
+| Comparison table | `notebooks/models/sequence/comparison/model_comparison_v1.md` | `v1` |
 
 All artifacts carry a `schema_version` field in their metadata.
 `seq_v1` is the canonical schema version for Phase 4.

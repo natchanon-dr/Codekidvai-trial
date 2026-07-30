@@ -1,0 +1,41 @@
+{
+  "schema_version": "seq_v1",
+  "feature_names": [
+    "event_type_code",
+    "duration_from_start_norm",
+    "is_sql_run",
+    "is_submit",
+    "is_error_event",
+    "cumulative_run_count",
+    "cumulative_submit_count",
+    "cumulative_error_count",
+    "attempt_is_correct",
+    "step_position_norm"
+  ],
+  "mean_": [
+    2.7083333333333335,
+    0.5591379861111112,
+    0.5,
+    0.0,
+    0.3958333333333333,
+    2.0,
+    0.0,
+    1.3958333333333333,
+    0.0,
+    0.5
+  ],
+  "scale_": [
+    0.6441510347391795,
+    0.30237370850742334,
+    0.5,
+    1.0,
+    0.4890289414293959,
+    0.816496580927726,
+    1.0,
+    0.835154260534477,
+    1.0,
+    0.34156502553198664
+  ],
+  "n_samples_seen": 432,
+  "fit_split": "train"
+}
