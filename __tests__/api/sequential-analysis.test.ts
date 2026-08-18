@@ -79,7 +79,8 @@ const PILOT_DATASET = {
   id: "ds-pilot",
   code: "PAQT0001",
   name: "Pilot Dataset",
-  batch_type: "assignment_set",
+  // batch_type must be a real DB value: mst_experiment_batches.batch_type CHECK ('pilot','main','practice')
+  batch_type: "pilot",
   set_family: "sql",
   task_type: "sql_text",
   class_id: null,
@@ -91,7 +92,8 @@ const OTHER_DATASET = {
   id: "ds-other",
   code: "OTHER001",
   name: "Other Dataset",
-  batch_type: "lab_set",
+  // batch_type must be a real DB value; 'lab_set' does not exist in the DB CHECK constraint
+  batch_type: "main",
   set_family: "er",
   task_type: "er_diagram",
   class_id: null,

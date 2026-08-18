@@ -68,40 +68,15 @@ const EXPORT_TYPES: { type: DatasetExportType; label: string; icon: React.ReactN
   },
 ];
 
-const BATCH_TYPE_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] = [
-  { value: "", label: "All", icon: null },
-  {
-    value: "lab_set",
-    label: "Lab",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2" />
-        <path d="M8 2h8" /><path d="M7 15h10" />
-      </svg>
-    ),
-  },
-  {
-    value: "assignment_set",
-    label: "Assignment",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M9 5h6" /><path d="M9 12h6" /><path d="M9 17h4" />
-        <path d="M5 7.5 6.5 9 9 6" /><path d="M5 14.5 6.5 16 9 13" />
-        <rect x="4" y="3" width="16" height="18" rx="2" />
-      </svg>
-    ),
-  },
-  {
-    value: "exam_set",
-    label: "Exam",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-        <path d="M14 2v6h6" /><path d="M9 14h6" /><path d="M9 18h4" />
-      </svg>
-    ),
-  },
-];
+// Activity-type (set_family) filter — removed.
+// The previous values 'lab_set', 'assignment_set', 'exam_set' do not exist in
+// any database CHECK constraint. Using them as a batch_type filter produced
+// silent empty results because mst_experiment_batches.batch_type stores
+// 'pilot' | 'main' | 'practice', never those values.
+// set_family requires class_id context (tb_class_sets is keyed on
+// (class_id, batch_id)); a global filter without class_id is undefined.
+// A proper set_family filter is tracked as a separate issue.
+// See: fix/set-family-batch-type-semantics
 
 // TaskTypeIcon is imported from @/lib/task-type-utils
 
@@ -399,22 +374,14 @@ export default function ResearcherDatasetPage() {
 
           {/* Row 2: Type | Task | Status */}
           <div className="flex flex-wrap items-end gap-4">
-            {/* Batch Type toggle */}
+            {/* Activity Type filter — disabled (set_family requires class_id context) */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Type</label>
-              <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-                {BATCH_TYPE_OPTIONS.map(({ value, label, icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    title={label}
-                    onClick={() => setBatchTypeFilter(value)}
-                    className={`flex items-center justify-center px-3 py-2.5 font-semibold border-r border-[#FED7AA] last:border-r-0 transition-colors
-                      ${batchTypeFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}
-                  >
-                    {icon ?? <span className="text-sm">All</span>}
-                  </button>
-                ))}
+              <label className="text-xs text-[#94A3B8] font-medium">Activity Type</label>
+              <div
+                className="flex items-center px-3 py-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8] text-xs cursor-not-allowed select-none"
+                title="Activity Type filter is not available in this export view. set_family requires class context and is not exposed as a standalone batch_type filter."
+              >
+                Not available
               </div>
             </div>
 
@@ -532,9 +499,7 @@ export default function ResearcherDatasetPage() {
                   <span className="text-sm font-mono font-semibold text-[#F37021] truncate">{batch.batch_code}</span>
                   <span className="text-sm text-[#0F172A] truncate">{batch.batch_name}</span>
                   <span className="flex items-center justify-center text-[#64748B]">
-                    {BATCH_TYPE_OPTIONS.find((o) => o.value === batch.batch_type)?.icon ?? (
-                      <span className="text-xs">{batch.batch_type}</span>
-                    )}
+                    <span className="text-xs">{batch.batch_type}</span>
                   </span>
                   <span className="flex items-center justify-center gap-1 text-[#64748B]">
                     {(batch.task_types ?? []).length >= 4 ? (
