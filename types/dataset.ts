@@ -90,3 +90,39 @@ export interface StudentBlock {
   display_order: number;
   metadata_json: Record<string, unknown> | null;
 }
+
+// ─── Block event types (Phase 5 contract v1) ──────────────────────────────────
+//
+// Token assignments (canonical — do not reorder):
+//   block_add    = 6  emitted when a block is added to the workspace
+//   block_delete = 7  emitted when a block is removed from the workspace
+//   block_move   = 8  emitted when a block is repositioned within the workspace
+//   block_submit = 9  RESERVED — not activated; final answer is captured by the
+//                     existing submit_answer event pair (Phase 4 contract).
+//
+// block_instance_id: a client-generated UUID assigned at add time and carried
+//   through move and delete events. It uniquely identifies one physical instance
+//   of a block in the workspace even when the same block_id appears multiple times.
+
+export type BlockEventType = "block_add" | "block_delete" | "block_move";
+
+export interface BlockEventInput {
+  session_id: string;
+  task_id: string;
+  event_type: BlockEventType;
+  /** Client-generated UUID assigned when the block is added; stable across move/delete. */
+  block_instance_id: string;
+  /** mst_blocks.block_id — the template block being manipulated. */
+  block_id: string;
+  /** Final 0-indexed position in the workspace after the action (block_move only). */
+  position?: number | null;
+  /** Seconds elapsed since trn_learning_sessions.started_at. */
+  duration_from_start: number;
+  /** Optional structured context (e.g. previous position, source zone). */
+  metadata_json?: Record<string, unknown> | null;
+}
+
+export interface BlockEventResult {
+  event_id: string;
+  event_order: number;
+}
