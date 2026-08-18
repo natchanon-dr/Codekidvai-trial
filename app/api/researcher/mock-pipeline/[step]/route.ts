@@ -138,15 +138,21 @@ async function runStep(
 
   switch (step) {
     case "data": {
-      // Validate: block-based task types cannot be simulated in Phase 4
+      // Phase 5 M5.2: sql_block simulation is supported. Block remaining unsupported block types.
       if (config.taskTypeCounts) {
-        const blockTypes = Object.entries(config.taskTypeCounts)
-          .filter(([tt]) => getLearningMode(tt) === "block_based")
+        const unsupportedBlockTypes = Object.entries(config.taskTypeCounts)
+          .filter(([tt]) => {
+            // sql_block — supported from Phase 5 M5.2
+            if (tt === "sql_block") return false;
+            // er_diagram, coding_block — block-based but not yet simulated
+            return getLearningMode(tt) === "block_based";
+          })
           .map(([tt]) => tt);
-        if (blockTypes.length > 0) {
+        if (unsupportedBlockTypes.length > 0) {
           send(makeSseChunk("error", {
-            msg: `Block-based task types are not supported in Phase 4 simulation: ${blockTypes.join(", ")}. ` +
-                 `ER Diagram and Visual Query Builder are planned for Phase 5.`,
+            msg: `The following block-based task types are not yet supported in simulation: ${unsupportedBlockTypes.join(", ")}. ` +
+                 `SQL Block (Visual Query Builder) is supported from Phase 5. ` +
+                 `ER Diagram and Coding Block are planned for a future phase.`,
           }));
           send(makeSseChunk("done", { step: "data", success: false }));
           return;
