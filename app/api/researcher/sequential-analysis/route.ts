@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import path from "node:path";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminOrResearcher } from "@/lib/api-auth";
 import summary from "@/lib/research-artifacts/phase4/phase4_ui_summary_v1.json";
@@ -38,7 +39,7 @@ export type SequentialRunRecord = {
   error_summary: string | null;
   created_at: string;
   artifact_availability: ArtifactAvailability;
-  artifact_source: "result_version" | "static_fallback" | null;
+  artifact_source: "result_version" | "static_fallback" | "local_disk" | null;
   is_comparable: boolean;
   not_comparable_reason: string | null;
 };
@@ -212,6 +213,173 @@ function buildStaticPayload() {
       "Per-sequence prediction display — unsupported: not implemented in Phase 4 pipeline",
       "Statistical significance testing — unsupported: n=10 pilot, insufficient sample size",
       "Confirmatory analysis — unsupported: confirmatory_analysis_allowed=false",
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 M5.10 — local disk fallback for mock pipeline runs
+// Reads NB05–NB09 artifacts from notebooks/ and reports/phase4/ on disk.
+// Returns null when no comparison CSV is found (pipeline hasn't run yet).
+// ---------------------------------------------------------------------------
+
+async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
+  const fsAsync = await import("node:fs/promises");
+  const NB_DIR  = path.join(process.cwd(), "notebooks");
+  const RPT_DIR = path.join(process.cwd(), "reports", "phase4");
+
+  // Require comparison CSV as minimum viable artifact
+  const compPath = path.join(NB_DIR, "models", "sequence", "comparison", "model_comparison_v1.csv");
+  let csvText: string;
+  try {
+    csvText = await fsAsync.readFile(compPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  // ── Parse comparison CSV → model_comparison.models[] ─────────────────────
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const hdrs = lines[0].split(",").map((h: string) => h.trim());
+  const models = lines.slice(1).map((line: string) => {
+    const vals: string[] = line.split(",");
+    const r: Record<string, string> = {};
+    hdrs.forEach((h: string, i: number) => { r[h] = (vals[i] ?? "").trim(); });
+    return {
+      name:                       r["model"]       ?? "",
+      accuracy:                   r["accuracy"]     ? parseFloat(r["accuracy"])     : null,
+      precision:                  r["precision"]    ? parseFloat(r["precision"])    : null,
+      recall:                     r["recall"]       ? parseFloat(r["recall"])       : null,
+      f1:                         r["f1"]           ? parseFloat(r["f1"])           : null,
+      roc_auc:                    r["roc_auc"]      ? parseFloat(r["roc_auc"])      : null,
+      pr_auc:                     r["pr_auc"]       ? parseFloat(r["pr_auc"])       : null,
+      train_time_sec:             r["train_time_s"] ? parseFloat(r["train_time_s"]) : null,
+      inference_time_per_seq_sec: r["inf_time_s"]   ? parseFloat(r["inf_time_s"])   : null,
+      parameters: r["parameters"] !== "" && r["parameters"] != null
+        ? parseFloat(r["parameters"]) : null,
+      type: r["feature_set"] ?? "",
+    };
+  }).filter((m) => m.name !== "");
+
+  // ── Optional: sequence_manifest + seed stability JSONs ───────────────────
+  async function tryJson(p: string): Promise<Record<string, unknown> | null> {
+    try { return JSON.parse(await fsAsync.readFile(p, "utf-8")); }
+    catch { return null; }
+  }
+  const [seqManifest, lstmMetrics, gruMetrics] = await Promise.all([
+    tryJson(path.join(NB_DIR, "data", "sequences", "sequence_manifest_v1.json")),
+    tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_metrics_v1.json")),
+    tryJson(path.join(NB_DIR, "models", "sequence", "gru",  "gru_metrics_v1.json")),
+  ]);
+
+  // ── PNG charts as base64 data URLs ────────────────────────────────────────
+  async function tryPng(relPath: string): Promise<string | null> {
+    try {
+      const buf = await fsAsync.readFile(path.join(RPT_DIR, relPath));
+      return `data:image/png;base64,${buf.toString("base64")}`;
+    } catch { return null; }
+  }
+  const [seqLenPng, tagHeatPng, tagCohortPng, lstmCurvesPng, gruCurvesPng, compRocPng, compCmPng] =
+    await Promise.all([
+      tryPng("seq_length_dist.png"),
+      tryPng("tag_transition_heatmap.png"),
+      tryPng("tag_cohort_graphs.png"),
+      tryPng(path.join("lstm",       "lstm_training_curves.png")),
+      tryPng(path.join("gru",        "gru_training_curves.png")),
+      tryPng(path.join("comparison", "comparison_roc_curves.png")),
+      tryPng(path.join("comparison", "comparison_confusion_matrices.png")),
+    ]);
+  const charts = [
+    seqLenPng    && { key: "seq_length_dist",          title: "Sequence Length Distribution",          path: seqLenPng },
+    tagHeatPng   && { key: "tag_transition_heatmap",    title: "Block Transition Heatmap (TAG)",        path: tagHeatPng },
+    tagCohortPng && { key: "tag_cohort_graphs",         title: "Cohort TAG Graphs",                     path: tagCohortPng },
+    lstmCurvesPng && { key: "lstm_training_curves",     title: "LSTM Training Curves",                  path: lstmCurvesPng },
+    gruCurvesPng  && { key: "gru_training_curves",      title: "GRU Training Curves",                   path: gruCurvesPng },
+    compRocPng   && { key: "comparison_roc_curves",     title: "Model Comparison — ROC Curves",         path: compRocPng },
+    compCmPng    && { key: "comparison_confusion_matrices", title: "Model Comparison — Confusion Matrices", path: compCmPng },
+  ].filter(Boolean);
+
+  // ── dataset_summary from sequence_manifest.dataset_stats ─────────────────
+  type Manifest = { dataset_stats?: Record<string, unknown>; parameters?: Record<string, unknown>; schema_version?: string; created_at_utc?: string; data_warning?: string };
+  const mf = seqManifest as Manifest | null;
+  const ds = mf?.dataset_stats ?? {};
+  const prm = mf?.parameters ?? {};
+  const trainShape = ds["train_shape"] as [number, number, number] | null;
+  const testShape  = ds["test_shape"]  as [number, number, number] | null;
+  const datasetSummary = mf ? {
+    total_learners:          (ds["total_learners"]  ?? null) as number | null,
+    train_learners:          (ds["train_learners"]  ?? null) as number | null,
+    test_learners:           (ds["test_learners"]   ?? null) as number | null,
+    train_sequences:         trainShape?.[0] ?? null,
+    test_sequences:          testShape?.[0]  ?? null,
+    total_sequences:         (trainShape?.[0] ?? 0) + (testShape?.[0] ?? 0),
+    total_canonical_events:  (ds["canonical_events"] ?? null) as number | null,
+    max_sequence_length:     (prm["max_seq_len"]   ?? null) as number | null,
+    split_method:            "GroupShuffleSplit",
+    split_random_state:      (prm["random_state"]  ?? 42) as number,
+    vocab_size:              (prm["n_features"]    ?? 10) as number,
+    features_per_timestep:   (prm["n_features"]    ?? 10) as number,
+    thesis_minimum_learners: 30,
+  } : null;
+
+  // ── seed_stability from lstm/gru experiments ─────────────────────────────
+  type MetricsJson = { experiments?: Record<string, Record<string, unknown>> };
+  function extractExp(raw: Record<string, unknown> | null, expKey: string) {
+    return ((raw as MetricsJson | null)?.experiments ?? {})[expKey] ?? null;
+  }
+  const expA_lstm = extractExp(lstmMetrics, "EXP-A");
+  const expB_lstm = extractExp(lstmMetrics, "EXP-B");
+  const expA_gru  = extractExp(gruMetrics,  "EXP-A");
+  const expB_gru  = extractExp(gruMetrics,  "EXP-B");
+  const seedStability = (lstmMetrics || gruMetrics) ? {
+    lstm: lstmMetrics ? { exp_a_seq_only: expA_lstm, exp_b_seq_plus_tag: expB_lstm } : undefined,
+    gru:  gruMetrics  ? { exp_a_seq_only: expA_gru,  exp_b_seq_plus_tag: expB_gru  } : undefined,
+  } : null;
+
+  // ── Assemble payload ──────────────────────────────────────────────────────
+  return {
+    artifact_source: "local_disk",
+    research_constraints: {
+      evaluation_purpose:            "technical_pipeline_validation",
+      label_source:                  "proxy_behavioral",
+      label_validity:                "pilot_only",
+      proxy_target_circularity:      true,
+      confirmatory_analysis_allowed: false,
+      data_warning: "PILOT ONLY — Local disk artifacts from mock pipeline run. Not thesis results.",
+    },
+    dataset_summary: datasetSummary,
+    sequence_construction: mf ? {
+      schema_version: mf.schema_version ?? "seq_v1",
+      created_at_utc: mf.created_at_utc ?? null,
+      parameters:     prm,
+      dataset_stats:  ds,
+      data_warning:   mf.data_warning ?? "PILOT ONLY — Mock pipeline artifacts.",
+    } : null,
+    event_vocabulary:     null,
+    feature_scaler:       null,
+    tag_structure:        null,
+    model_sequence_config: null,
+    model_comparison: {
+      primary_seed:            42,
+      all_seeds:               [11, 22, 33, 42, 55],
+      test_sequences:          testShape?.[0] ?? null,
+      timing_note:             null,
+      test_class_distribution: null,
+      models,
+    },
+    seed_stability: seedStability,
+    charts:    charts.length > 0 ? charts : null,
+    validation: null,
+    artifact_versions: {
+      phase4_ui_summary: { schema_version: "local_disk_v1" },
+      sequence_manifest: mf ? { schema_version: mf.schema_version, created_at_utc: mf.created_at_utc } : null,
+    },
+    limitations: [
+      "Local disk artifacts — only available when the mock pipeline has been run on this server",
+      "Event vocabulary and feature scaler not loaded (offline parquet artifacts)",
+      "TAG structure details not loaded in this fallback path",
+      "Confirmatory analysis — unsupported: confirmatory_analysis_allowed=false",
+      "Statistical significance testing — unsupported: proxy labels only",
     ],
   };
 }
@@ -426,6 +594,17 @@ async function handleDetailMode(
 
   if (resolved.source === "static_fallback") {
     return NextResponse.json(buildStaticPayload());
+  }
+
+  // Phase 5 M5.10 — local disk fallback for any completed run with no DB artifact.
+  // Reads NB05–NB09 output files from notebooks/ and reports/phase4/ on disk.
+  // Enables the researcher to view LSTM/GRU results for any mock pipeline run
+  // without requiring mst_pipeline_run_results entries.
+  if (status === "completed" && resultVersion === null) {
+    const localPayload = await buildLocalPayload();
+    if (localPayload) {
+      return NextResponse.json(localPayload);
+    }
   }
 
   return NextResponse.json(

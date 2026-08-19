@@ -12,7 +12,7 @@ export type SelectedRunRef = {
   runNumber: string;
   datasetCode: string;
   datasetName: string;
-  artifactSource: "result_version" | "static_fallback" | null;
+  artifactSource: "result_version" | "static_fallback" | "local_disk" | null;
 };
 
 type Props = {

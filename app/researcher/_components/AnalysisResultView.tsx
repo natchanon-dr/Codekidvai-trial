@@ -168,7 +168,7 @@ type SeedStabilityModel = { exp_a_seq_only: SeedStabilityExp; exp_b_seq_plus_tag
 type SeedStability = { lstm: SeedStabilityModel; gru: SeedStabilityModel };
 
 export type ArtifactPayload = {
-  artifact_source: "result_version" | "static_fallback";
+  artifact_source: "result_version" | "static_fallback" | "local_disk";
   research_constraints?: ResearchConstraints | null;
   dataset_summary?: DatasetSummary | null;
   sequence_construction?: SequenceConstruction | null;

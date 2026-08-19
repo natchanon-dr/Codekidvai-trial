@@ -13,7 +13,7 @@ type Props = {
   runId: string;
   runNumber?: string;
   datasetCode: string;
-  artifactSource: "result_version" | "static_fallback" | null;
+  artifactSource: "result_version" | "static_fallback" | "local_disk" | null;
   onClose: () => void;
   token: string;
 };
