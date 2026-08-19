@@ -1,4 +1,4 @@
-"""Run notebooks 02-05 for E2E mock validation.
+"""Run notebooks 02-09 for E2E mock validation.
 
 Usage:
   python run_e2e_notebooks.py                              # uses last CSV in data/raw/
@@ -14,6 +14,10 @@ Args:
   --batch-tag       BATCH_CODE_VAL for notebook substitution (default: auto-detect)
   --snapshot-date   SNAPSHOT_DATE for notebook substitution (default: today)
   --skip-nb05       skip NB05 (useful when sequence/outcome CSVs are absent)
+  --skip-nb06       skip NB06 TAG builder
+  --skip-nb07       skip NB07 LSTM model
+  --skip-nb08       skip NB08 GRU model
+  --skip-nb09       skip NB09 model comparison
 """
 import json, subprocess, os, sys, argparse
 from pathlib import Path
@@ -23,7 +27,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description="Run NB02-05 for E2E validation.")
+parser = argparse.ArgumentParser(description="Run NB02-09 for E2E validation.")
 parser.add_argument("--session-file",    default=None, help="Session CSV filename in data/raw/")
 parser.add_argument("--attempt-file",    default=None, help="Attempt CSV filename in data/raw/")
 parser.add_argument("--event-file",      default=None, help="Block event CSV filename in data/raw/ (Phase 5 M5.4)")
@@ -32,6 +36,10 @@ parser.add_argument("--outcome-file",    default=None, help="Outcome CSV filenam
 parser.add_argument("--batch-tag",       default=None, help="Batch code tag for notebook substitution")
 parser.add_argument("--snapshot-date",   default=None, help="Snapshot date YYYYMMDD")
 parser.add_argument("--skip-nb05",       action="store_true", help="Skip NB05 even if sequence/outcome CSVs exist")
+parser.add_argument("--skip-nb06",       action="store_true", help="Skip NB06 TAG builder (Phase 5 M5.7)")
+parser.add_argument("--skip-nb07",       action="store_true", help="Skip NB07 LSTM model (Phase 5 M5.7)")
+parser.add_argument("--skip-nb08",       action="store_true", help="Skip NB08 GRU model (Phase 5 M5.7)")
+parser.add_argument("--skip-nb09",       action="store_true", help="Skip NB09 model comparison (Phase 5 M5.7)")
 args = parser.parse_args()
 
 # ── Auto-detect latest CSV if not specified ───────────────────────────────────
@@ -195,7 +203,14 @@ def patch_and_run(nb_name):
     KEY = ["PASS","FAIL","ERROR","gate","AUC","F1","missing","Missing","[OK]",
            "LEAKAGE","SPLIT","logistic","random_forest","majority","WARNING","baseline","imbalance",
            "sequence","tensor","vocab","token","NB05","sequence_tensors","Loaded","sequences",
-           "sessions","events","outcome"]
+           "sessions","events","outcome",
+           # NB06 TAG builder
+           "TAG","tag","nodes","edges","graph","transition","cohort","feature",
+           # NB07/NB08 LSTM/GRU
+           "LSTM","lstm","GRU","gru","EXP","epoch","val_auc","early","seed","history",
+           "train_auc","model","saved","manifest",
+           # NB09 comparison
+           "comparison","dummy","Dummy","rank"]
     for line in "\n".join(output_lines).split("\n"):
         s = line.strip()
         if s and any(k in s for k in KEY):
@@ -220,6 +235,58 @@ elif not Path(NB05).exists():
     print(f"\n[skip] {NB05} — notebook not found in notebooks/")
 else:
     results[NB05] = patch_and_run(NB05)
+
+# ── Phase 5 M5.7: NB06 TAG builder ───────────────────────────────────────────
+# Prereq: NB05 must have produced data/sequences/ artifacts.
+NB06     = "06_tag_builder.ipynb"
+_nb05_ok = results.get(NB05, False)
+if args.skip_nb06:
+    print(f"\n[skip] {NB06} — --skip-nb06 flag set")
+elif not _nb05_ok:
+    print(f"\n[skip] {NB06} — NB05 did not pass (sequence artifacts required)")
+elif not Path(NB06).exists():
+    print(f"\n[skip] {NB06} — notebook not found")
+else:
+    results[NB06] = patch_and_run(NB06)
+
+# ── Phase 5 M5.7: NB07 LSTM model ────────────────────────────────────────────
+# Prereq: NB05 tensors (required) + NB06 TAG features (optional — EXP-B only).
+NB07     = "07_lstm_model.ipynb"
+_nb06_ok = results.get(NB06, False)
+if args.skip_nb07:
+    print(f"\n[skip] {NB07} — --skip-nb07 flag set")
+elif not _nb05_ok:
+    print(f"\n[skip] {NB07} — NB05 did not pass (sequence tensors required)")
+elif not Path(NB07).exists():
+    print(f"\n[skip] {NB07} — notebook not found")
+else:
+    results[NB07] = patch_and_run(NB07)
+
+# ── Phase 5 M5.7: NB08 GRU model ─────────────────────────────────────────────
+# Prereq: NB07 LSTM artifacts (cross-contract audit at startup).
+NB08     = "08_gru_model.ipynb"
+_nb07_ok = results.get(NB07, False)
+if args.skip_nb08:
+    print(f"\n[skip] {NB08} — --skip-nb08 flag set")
+elif not _nb07_ok:
+    print(f"\n[skip] {NB08} — NB07 did not pass (LSTM artifacts required)")
+elif not Path(NB08).exists():
+    print(f"\n[skip] {NB08} — notebook not found")
+else:
+    results[NB08] = patch_and_run(NB08)
+
+# ── Phase 5 M5.7: NB09 model comparison ──────────────────────────────────────
+# Prereq: NB07 + NB08 predictions (LSTM required; GRU expected).
+NB09     = "09_model_comparison.ipynb"
+_nb08_ok = results.get(NB08, False)
+if args.skip_nb09:
+    print(f"\n[skip] {NB09} — --skip-nb09 flag set")
+elif not _nb07_ok:
+    print(f"\n[skip] {NB09} — NB07 did not pass (LSTM artifacts required)")
+elif not Path(NB09).exists():
+    print(f"\n[skip] {NB09} — notebook not found")
+else:
+    results[NB09] = patch_and_run(NB09)
 
 print("\n── Notebook Run Summary ──")
 for nb, ok in results.items():
