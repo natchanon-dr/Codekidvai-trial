@@ -387,6 +387,34 @@ async function runStep(
               labelValidity,
             };
             log(send, `[outcome] NB09 comparison loaded — ${compRows.length} models, LSTM AUC=${lstmRow?.auc?.toFixed(3)} GRU AUC=${gruRow?.auc?.toFixed(3)}`);
+
+            // Phase 5 M5.9: read sequence-model PNG charts from reports/phase4/
+            const reportsDir = path.join(PROJECT_ROOT, "reports", "phase4");
+            async function trySeqPng(relPath: string): Promise<string | undefined> {
+              try {
+                const buf = await fs.readFile(path.join(reportsDir, relPath));
+                return `data:image/png;base64,${buf.toString("base64")}`;
+              } catch { return undefined; }
+            }
+            const [seqLenPng, tagHeatPng, tagCohortPng, lstmCurvesPng, gruCurvesPng] = await Promise.all([
+              trySeqPng("seq_length_dist.png"),
+              trySeqPng("tag_transition_heatmap.png"),
+              trySeqPng("tag_cohort_graphs.png"),
+              trySeqPng(path.join("lstm", "lstm_training_curves.png")),
+              trySeqPng(path.join("gru",  "gru_training_curves.png")),
+            ]);
+            const seqCharts: import("@/lib/mock-pipeline").SequenceCharts = {
+              seqLengthDist:       seqLenPng,
+              tagTransitionHeatmap: tagHeatPng,
+              tagCohortGraphs:      tagCohortPng,
+              lstmTrainingCurves:   lstmCurvesPng,
+              gruTrainingCurves:    gruCurvesPng,
+            };
+            const nCharts = Object.values(seqCharts).filter(Boolean).length;
+            if (nCharts > 0) {
+              outcome.sequenceModels!.charts = seqCharts;
+              log(send, `[outcome] Loaded ${nCharts} sequence chart(s) from reports/phase4/`);
+            }
           }
         } catch {
           // NB09 artifacts absent — sequence pipeline did not run (sql_text-only batch or skipped)

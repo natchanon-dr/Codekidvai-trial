@@ -44,6 +44,15 @@ export type SequenceModelMetrics = {
   params?: number;
 };
 
+/** Phase 5 M5.9 — base64 PNG charts produced by NB05–NB08. */
+export type SequenceCharts = {
+  seqLengthDist?: string;       // NB05: sequence-length distribution
+  tagTransitionHeatmap?: string; // NB06: block-transition heatmap
+  tagCohortGraphs?: string;      // NB06: cohort TAG graphs
+  lstmTrainingCurves?: string;   // NB07: LSTM training curves
+  gruTrainingCurves?: string;    // NB08: GRU training curves
+};
+
 export type MockOutcome = {
   batchCode: string;
   dataset: {
@@ -93,6 +102,8 @@ export type MockOutcome = {
     }>;
     /** Always "pilot_only" for mock runs — surfaced for UI disclaimer. */
     labelValidity?: string;
+    /** Phase 5 M5.9 — base64 PNG charts from NB05–NB08. */
+    charts?: SequenceCharts;
   };
 };
 

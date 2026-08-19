@@ -1677,6 +1677,32 @@ export default function MockLab() {
                               </div>
                             </div>
                           )}
+
+                          {/* Phase 5 M5.9 — sequence model charts (NB05–NB08 PNGs) */}
+                          {outcome.sequenceModels.charts && (() => {
+                            const c = outcome.sequenceModels!.charts!;
+                            const chartDefs = ([
+                              { key: "seqLengthDist"        as const, label: "Sequence Length Distribution (NB05)" },
+                              { key: "tagTransitionHeatmap" as const, label: "Block Transition Heatmap (NB06)"     },
+                              { key: "tagCohortGraphs"      as const, label: "Cohort TAG Graphs (NB06)"            },
+                              { key: "lstmTrainingCurves"   as const, label: "LSTM Training Curves (NB07)"         },
+                              { key: "gruTrainingCurves"    as const, label: "GRU Training Curves (NB08)"          },
+                            ] as const).filter(d => !!c[d.key]);
+                            if (chartDefs.length === 0) return null;
+                            return (
+                              <div>
+                                <p className="text-xs font-bold text-[#0F172A] mb-2">Block Journey Charts</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {chartDefs.map(({ key, label }) => (
+                                    <div key={key} className="border border-[#E2E8F0] rounded-xl p-3">
+                                      <p className="text-[11px] font-semibold text-[#64748B] mb-2">{label}</p>
+                                      <img src={c[key]!} alt={label} className="w-full rounded-xl" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </>
                       ) : (
                         <p className="text-sm text-[#94A3B8]">
