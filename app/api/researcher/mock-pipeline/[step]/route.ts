@@ -222,13 +222,41 @@ async function runStep(
       } catch { /* rawDir missing — fall through to today */ }
       const sessionFile = `session_${snapshotDate}_${batchTag}.csv`;
       const attemptFile = `attempt_${snapshotDate}_${batchTag}.csv`;
-      await runProcess(send, step, "python", [
+
+      // Phase 5 M5.8: also pass sequence/outcome CSVs when present so NB05–NB09 run.
+      // e2e-sim-export-csv.mjs already writes these files; we just need to forward them.
+      function findLatestCsv(prefix: string): string | null {
+        try {
+          const files = fsSync.readdirSync(rawDir)
+            .filter((f: string) => f.startsWith(`${prefix}_`) && f.endsWith(`_${batchTag}.csv`))
+            .sort()
+            .reverse();
+          return files.length > 0 ? files[0] : null;
+        } catch { return null; }
+      }
+      const sequenceFile = findLatestCsv("sequence");
+      const outcomeFile  = findLatestCsv("outcome");
+
+      const nbArgs: string[] = [
         "run_e2e_notebooks.py",
-        "--session-file", sessionFile,
-        "--attempt-file", attemptFile,
-        "--batch-tag",    batchTag,
+        "--session-file",  sessionFile,
+        "--attempt-file",  attemptFile,
+        "--batch-tag",     batchTag,
         "--snapshot-date", snapshotDate,
-      ], NB_DIR, signal);
+      ];
+      if (sequenceFile) {
+        nbArgs.push("--sequence-file", sequenceFile);
+        log(send, `[train] sequence CSV: ${sequenceFile}`);
+      }
+      if (outcomeFile) {
+        nbArgs.push("--outcome-file", outcomeFile);
+        log(send, `[train] outcome CSV: ${outcomeFile}`);
+      }
+      if (!sequenceFile) {
+        log(send, "[train] No sequence_*.csv found — NB05-NB09 will be skipped (sql_text-only batch)");
+      }
+
+      await runProcess(send, step, "python", nbArgs, NB_DIR, signal);
       break;
     }
 
@@ -317,6 +345,53 @@ async function runStep(
         };
 
         log(send, `Loaded ${metaFile} — LR AUC=${outcome.metrics.logisticRegression.auc} RF AUC=${outcome.metrics.randomForest.auc}`);
+
+        // Phase 5 M5.8: read NB09 comparison CSV if available (sequence pipeline ran)
+        const seqCompDir = path.join(NB_DIR, "models", "sequence", "comparison");
+        try {
+          const csvRaw = await fs.readFile(path.join(seqCompDir, "model_comparison_v1.csv"), "utf-8");
+          const lines  = csvRaw.trim().split(/\r?\n/);
+          if (lines.length >= 2) {
+            const headers = lines[0].split(",").map((h: string) => h.trim());
+            const lvIdx   = headers.indexOf("label_validity");
+            const compRows = lines.slice(1)
+              .map((line: string) => {
+                const vals: string[] = line.split(",");
+                const row: Record<string, string> = {};
+                headers.forEach((h: string, i: number) => { row[h] = (vals[i] ?? "").trim(); });
+                return {
+                  model:      row["model"]       ?? "",
+                  featureSet: row["feature_set"] ?? "",
+                  auc:        row["roc_auc"] ? parseFloat(row["roc_auc"]) : null,
+                  f1:         row["f1"]      ? parseFloat(row["f1"])      : null,
+                  params:     row["parameters"] !== "" && row["parameters"] != null
+                                ? parseFloat(row["parameters"])
+                                : null,
+                };
+              })
+              .filter(r => r.model !== "");
+
+            const lstmRow = compRows.find(r => r.model === "LSTM");
+            const gruRow  = compRows.find(r => r.model === "GRU");
+            const firstLine = lines[1].split(",");
+            const labelValidity = (lvIdx >= 0 ? firstLine[lvIdx]?.trim() : null) ?? "pilot_only";
+
+            outcome.sequenceModels = {
+              lstm: lstmRow
+                ? { auc: lstmRow.auc, f1: lstmRow.f1, params: lstmRow.params ?? undefined }
+                : undefined,
+              gru: gruRow
+                ? { auc: gruRow.auc,  f1: gruRow.f1,  params: gruRow.params  ?? undefined }
+                : undefined,
+              comparisonRows: compRows,
+              labelValidity,
+            };
+            log(send, `[outcome] NB09 comparison loaded — ${compRows.length} models, LSTM AUC=${lstmRow?.auc?.toFixed(3)} GRU AUC=${gruRow?.auc?.toFixed(3)}`);
+          }
+        } catch {
+          // NB09 artifacts absent — sequence pipeline did not run (sql_text-only batch or skipped)
+        }
+
         send(makeSseChunk("outcome", { report: outcome }));
       } catch (e) {
         log(send, `Could not read models directory: ${e instanceof Error ? e.message : String(e)}`);

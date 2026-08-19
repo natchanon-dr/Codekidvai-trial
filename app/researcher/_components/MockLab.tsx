@@ -62,7 +62,7 @@ interface FinalStats {
 }
 
 type StepStatus = "waiting" | "running" | "completed" | "failed" | "aborted";
-type OutcomeTab = "summary" | "metrics" | "charts" | "dataset" | "reports" | "logs";
+type OutcomeTab = "summary" | "metrics" | "sequence" | "charts" | "dataset" | "reports" | "logs";
 
 const PIPELINE_STEPS: MockStep[] = ["data", "extract", "process", "train", "evaluate", "outcome"];
 
@@ -1535,7 +1535,10 @@ export default function MockLab() {
             {(outcome || logs.length > 0) && (
               <div className="border border-[#FED7AA] rounded-2xl overflow-hidden">
                 <div className="flex border-b border-[#FED7AA] overflow-x-auto">
-                  {(["summary", "metrics", "charts", "dataset", "reports", "logs"] as OutcomeTab[]).map(tab => (
+                  {(["summary", "metrics",
+                    ...(outcome?.sequenceModels ? ["sequence"] : []),
+                    "charts", "dataset", "reports", "logs",
+                  ] as OutcomeTab[]).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
@@ -1603,6 +1606,83 @@ export default function MockLab() {
                           ))}
                         </div>
                       ) : <p className="text-sm text-[#94A3B8]">Run Mock Outcome to load metrics.</p>}
+                    </div>
+                  )}
+                  {/* Sequence Models — Phase 5 M5.8 (NB05–NB09, sql_block sessions only) */}
+                  {activeTab === "sequence" && (
+                    <div className="space-y-4">
+                      {outcome?.sequenceModels ? (
+                        <>
+                          {/* Pilot-only disclaimer */}
+                          <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-3 text-xs text-[#92400E]">
+                            <span className="font-semibold">⚠ Pilot Only</span>
+                            {" — label_validity="}<span className="font-mono">{outcome.sequenceModels.labelValidity ?? "pilot_only"}</span>.
+                            {" Pipeline validation results only — not thesis conclusions."}
+                          </div>
+
+                          {/* LSTM / GRU metric bars */}
+                          {(outcome.sequenceModels.lstm || outcome.sequenceModels.gru) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {(["lstm", "gru"] as const).map(key => {
+                                const m = outcome.sequenceModels![key];
+                                if (!m) return null;
+                                const color = key === "lstm"
+                                  ? { auc: "#8B5CF6", f1: "#A78BFA" }
+                                  : { auc: "#10B981", f1: "#34D399" };
+                                return (
+                                  <div key={key} className="space-y-2">
+                                    <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9] uppercase">{key}</p>
+                                    <MetricBar label="AUC-ROC" value={m.auc} color={color.auc} />
+                                    <MetricBar label="F1"      value={m.f1}  color={color.f1} />
+                                    {m.params != null && (
+                                      <p className="text-[10px] text-[#94A3B8]">Parameters: {m.params.toLocaleString()}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* NB09 full comparison table */}
+                          {(outcome.sequenceModels.comparisonRows?.length ?? 0) > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-[#0F172A] mb-2">Model Comparison (NB09)</p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-[#E2E8F0]">
+                                      <th className="text-left py-1.5 pr-3 text-[#64748B] font-medium">Model</th>
+                                      <th className="text-right py-1.5 pr-3 text-[#64748B] font-medium">AUC-ROC</th>
+                                      <th className="text-right py-1.5 pr-3 text-[#64748B] font-medium">F1</th>
+                                      <th className="text-right py-1.5 text-[#64748B] font-medium">Params</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {outcome.sequenceModels.comparisonRows!.map(row => (
+                                      <tr key={row.model} className="border-b border-[#F1F5F9] last:border-0">
+                                        <td className="py-1.5 pr-3 text-[#0F172A] font-medium">{row.model}</td>
+                                        <td className="py-1.5 pr-3 text-right font-mono text-[#0F172A]">
+                                          {row.auc != null ? row.auc.toFixed(3) : "—"}
+                                        </td>
+                                        <td className="py-1.5 pr-3 text-right font-mono text-[#0F172A]">
+                                          {row.f1 != null ? row.f1.toFixed(3) : "—"}
+                                        </td>
+                                        <td className="py-1.5 text-right font-mono text-[#64748B]">
+                                          {row.params != null ? row.params.toLocaleString() : "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-[#94A3B8]">
+                          Sequence models not available — NB05–NB09 require sql_block sessions.
+                        </p>
+                      )}
                     </div>
                   )}
                   {/* Charts */}
