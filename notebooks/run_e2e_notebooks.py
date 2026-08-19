@@ -8,6 +8,7 @@ Usage:
 Args:
   --session-file   session CSV filename (in data/raw/)
   --attempt-file   attempt CSV filename (in data/raw/)
+  --event-file     block event CSV filename (in data/raw/) — optional, Phase 5 M5.4
   --batch-tag      BATCH_CODE_VAL for notebook substitution (default: auto-detect)
   --snapshot-date  SNAPSHOT_DATE for notebook substitution (default: today)
 """
@@ -22,6 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
 parser = argparse.ArgumentParser(description="Run NB02-04 for E2E validation.")
 parser.add_argument("--session-file",   default=None, help="Session CSV filename in data/raw/")
 parser.add_argument("--attempt-file",   default=None, help="Attempt CSV filename in data/raw/")
+parser.add_argument("--event-file",     default=None, help="Block event CSV filename in data/raw/ (Phase 5 M5.4)")
 parser.add_argument("--batch-tag",      default=None, help="Batch code tag for notebook substitution")
 parser.add_argument("--snapshot-date",  default=None, help="Snapshot date YYYYMMDD")
 args = parser.parse_args()
@@ -35,6 +37,7 @@ def latest_csv(prefix: str) -> str | None:
 
 SESSION_FILE   = args.session_file   or latest_csv("session")
 ATTEMPT_FILE   = args.attempt_file   or latest_csv("attempt")
+EVENT_FILE     = args.event_file     or latest_csv("event")   # optional — None if absent
 SNAPSHOT_DATE  = args.snapshot_date  or (SESSION_FILE.split("_")[1] if SESSION_FILE else "20260101")
 
 # Derive BATCH_CODE_VAL from filename if not provided:
@@ -49,6 +52,7 @@ else:
 
 print(f"Session file  : {SESSION_FILE}")
 print(f"Attempt file  : {ATTEMPT_FILE}")
+print(f"Event file    : {EVENT_FILE or '(none — block features zero-filled)'}")
 print(f"Snapshot date : {SNAPSHOT_DATE}")
 print(f"Batch tag     : {BATCH_CODE_VAL}")
 
@@ -87,6 +91,10 @@ def patch_and_run(nb_name):
             ).replace(
                 'f"notebooks/data/raw/attempt_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"',
                 'f"data/raw/attempt_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"'
+            ).replace(
+                # Phase 5 M5.4: fix event file path (NB03 EVENT_FILE)
+                'f"notebooks/data/raw/event_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"',
+                'f"data/raw/event_{SNAPSHOT_DATE}_{BATCH_CODE}.csv"'
             ).replace(
                 'Path("notebooks/data/processed")', 'Path("data/processed")'
             ).replace(

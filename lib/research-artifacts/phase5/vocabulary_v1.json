@@ -1,0 +1,20 @@
+{
+  "schema_version": "seq_v1_phase5",
+  "padding_token": 0,
+  "event_type_vocab": {
+    "session_end":    1,
+    "sql_error":      2,
+    "sql_run":        3,
+    "sql_success":    4,
+    "submit_answer":  5,
+    "block_add":      6,
+    "block_delete":   7,
+    "block_move":     8,
+    "block_submit":   9
+  },
+  "block_events_active":   ["block_add", "block_delete", "block_move"],
+  "block_events_reserved": ["block_submit"],
+  "phase": "phase5",
+  "phase4_token_compatibility": true,
+  "note": "Phase 5 M5.2: block_add=6, block_delete=7, block_move=8 are ACTIVE — emitted by BlockSqlBuilder via POST /api/student/block-event. block_submit=9 is RESERVED and not activated (PHASE5_BLOCK_EVENT_CONTRACT_v1.md §3). Token numbers are backward-compatible with phase4/vocabulary_v1.json."
+}

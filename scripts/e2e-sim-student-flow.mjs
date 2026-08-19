@@ -117,6 +117,81 @@ function deriveSeed(base, ...parts) {
   return s;
 }
 
+// ── Block journey simulation ──────────────────────────────────────────────────
+// Inline port of lib/block-journey-generator.ts — no TypeScript build needed.
+// Must stay in sync with the TS module for determinism guarantees.
+
+const SQL_BLOCK_VOCAB          = ["BLK_SELECT","BLK_FROM","BLK_WHERE","BLK_JOIN","BLK_GROUP_BY","BLK_HAVING","BLK_ORDER_BY","BLK_LIMIT"];
+const SQL_BLOCK_CORRECT_SEQ    = ["BLK_SELECT","BLK_FROM","BLK_WHERE"];
+
+function pseudoUuid(rng) {
+  const h = () => Math.floor(rng() * 0x10000).toString(16).padStart(4, "0");
+  const v = ["8","9","a","b"][Math.floor(rng() * 4)];
+  return `${h()}${h()}-${h()}-4${h().slice(1)}-${v}${h().slice(1)}-${h()}${h()}${h()}`;
+}
+
+/**
+ * Generates a block event sequence for one sql_block session.
+ * Returns array of { event_type, block_id, block_instance_id, position, duration_from_start }.
+ */
+function generateBlockJourney(isAtRisk, rng, maxDurationSec = 600) {
+  const events    = [];
+  const workspace = [];
+  const startFrac = 0.05 + rng() * 0.15;
+  const endFrac   = 0.60 + rng() * 0.30;
+  let   curSec    = Math.floor(startFrac * maxDurationSec);
+  const timeEnd   = Math.floor(endFrac   * maxDurationSec);
+
+  function adv(lo, hi) {
+    curSec = Math.min(curSec + lo + Math.floor(rng() * (hi - lo)), timeEnd);
+    return curSec;
+  }
+  function addBlk(blockId) {
+    const iid = pseudoUuid(rng);
+    workspace.push({ block_id: blockId, iid });
+    events.push({ event_type: "block_add", block_id: blockId, block_instance_id: iid, position: null, duration_from_start: adv(3, 15) });
+  }
+  function delBlk(idx) {
+    const item = workspace[idx];
+    if (!item) return;
+    workspace.splice(idx, 1);
+    events.push({ event_type: "block_delete", block_id: item.block_id, block_instance_id: item.iid, position: null, duration_from_start: adv(2, 10) });
+  }
+  function moveBlk(fi, ti) {
+    if (fi === ti || workspace.length < 2) return;
+    const [item] = workspace.splice(fi, 1);
+    workspace.splice(ti, 0, item);
+    events.push({ event_type: "block_move", block_id: item.block_id, block_instance_id: item.iid, position: ti, duration_from_start: adv(2, 8) });
+  }
+
+  if (!isAtRisk) {
+    for (const bid of SQL_BLOCK_CORRECT_SEQ) addBlk(bid);
+    if (workspace.length >= 2 && rng() < 0.3) {
+      const last = workspace.length - 1;
+      moveBlk(last, last - 1);
+      if (rng() < 0.7) moveBlk(last - 1, last);
+    }
+  } else {
+    const targetAdds = 4 + Math.floor(rng() * 5);
+    const wrongPool  = SQL_BLOCK_VOCAB.filter(b => !SQL_BLOCK_CORRECT_SEQ.includes(b));
+    for (let i = 0; i < targetAdds; i++) {
+      if (wrongPool.length > 0 && rng() < 0.4) addBlk(wrongPool[Math.floor(rng() * wrongPool.length)]);
+      else addBlk(SQL_BLOCK_CORRECT_SEQ[Math.floor(rng() * SQL_BLOCK_CORRECT_SEQ.length)]);
+    }
+    const nDel = 1 + Math.floor(rng() * Math.min(3, Math.max(1, workspace.length - 1)));
+    for (let d = 0; d < nDel && workspace.length > 1; d++) delBlk(Math.floor(rng() * workspace.length));
+    const nMov = 1 + Math.floor(rng() * 2);
+    for (let m = 0; m < nMov && workspace.length >= 2; m++) {
+      const fi = Math.floor(rng() * workspace.length);
+      const ti = Math.floor(rng() * workspace.length);
+      if (fi !== ti) moveBlk(fi, ti);
+    }
+  }
+
+  // Return workspace state (final block_ids) alongside events
+  return { events, finalBlockIds: workspace.map(w => w.block_id) };
+}
+
 // ── Behavior profiles ─────────────────────────────────────────────────────────
 // Each set family drives distinct, measurable simulation behavior.
 //
@@ -182,7 +257,7 @@ const { data: batch } = await admin.from("mst_experiment_batches")
 if (!batch) throw new Error(`Batch ${BATCH_CODE} not found — run e2e-sim-create-test-data.mjs first`);
 
 let taskQuery = admin.from("mst_tasks")
-  .select("task_id, task_code, expected_sql, scoring_rubric_json, difficulty_level")
+  .select("task_id, task_code, task_type, expected_sql, scoring_rubric_json, difficulty_level")
   .eq("is_active", true);
 if (REAL_TASK_IDS.length > 0) {
   taskQuery = taskQuery.in("task_id", REAL_TASK_IDS);
@@ -253,12 +328,13 @@ let timeoutCount      = 0;
 const requestDurations = [];
 let slowestMs = 0;
 let slowestEndpoint = "";
-const endpointCounts   = { login: 0, "run-answer": 0, "submit-answer": 0 };
-const endpointTimeouts = { login: 0, "run-answer": 0, "submit-answer": 0 };
+const endpointCounts   = { login: 0, "run-answer": 0, "submit-answer": 0, "block-event": 0 };
+const endpointTimeouts = { login: 0, "run-answer": 0, "submit-answer": 0, "block-event": 0 };
 
 function endpointKey(path) {
   if (path.includes("run-answer"))   return "run-answer";
   if (path.includes("submit-answer")) return "submit-answer";
+  if (path.includes("block-event"))  return "block-event";
   return "login";
 }
 
@@ -465,32 +541,82 @@ async function simulateOneStudent(code, jwt, profileId, isAtRisk, isMissing, stu
       }
       console.log(`${prefix} — session ${si + 1}/${numSessions} (profile=${CURRENT_PROFILE.name} runs=${sessionRuns})`);
 
-      for (let r = 0; r < sessionRuns; r++) {
-        const isFinalRun = isLastSession && r === sessionRuns - 1;
-        const answer     = (isFinalRun && !isAtRisk) ? task.correct : task.wrong;
-        const run = await apiPost("/api/student/run-answer", {
-          session_id: sessionId, task_id: task.task_id, answer_text: answer,
-        }, jwt, `run-s${si + 1}-r${r + 1}`, ctx);
-        if (run.ok) results.runs++;
-        else results.errors.push(`run ${code} ${taskLabel}: ${run.status}`);
-        console.log(`${prefix} Run (s${si + 1} r${r + 1}/${sessionRuns}) ${run.ok ? "✓" : "✗"}${isFinalRun ? (isAtRisk ? " [wrong-final]" : " [correct]") : ""}`);
-        await new Promise(res => setTimeout(res, CURRENT_PROFILE.runDelayMs));
-      }
+      const isSqlBlock = (task.task_type ?? "sql_text") === "sql_block";
 
-      if (isLastSession && !isMissing) {
-        const sub = await apiPost("/api/student/submit-answer", {
-          session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
-          answer_text: isAtRisk ? task.wrong : task.correct,
-        }, jwt, "submit", ctx);
-        if (sub.ok) results.submits++;
-        else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
-        console.log(`${prefix} Submit ${sub.ok ? "✓" : "✗"}`);
-        await new Promise(res => setTimeout(res, CURRENT_PROFILE.submitDelayMs));
-      } else if (isLastSession && isMissing) {
-        results.skipped++;
+      if (!isSqlBlock) {
+        // ── Text-mode task (sql_text, stored_procedure): run-answer × N → submit ──
+        for (let r = 0; r < sessionRuns; r++) {
+          const isFinalRun = isLastSession && r === sessionRuns - 1;
+          const answer     = (isFinalRun && !isAtRisk) ? task.correct : task.wrong;
+          const run = await apiPost("/api/student/run-answer", {
+            session_id: sessionId, task_id: task.task_id, answer_text: answer,
+          }, jwt, `run-s${si + 1}-r${r + 1}`, ctx);
+          if (run.ok) results.runs++;
+          else results.errors.push(`run ${code} ${taskLabel}: ${run.status}`);
+          console.log(`${prefix} Run (s${si + 1} r${r + 1}/${sessionRuns}) ${run.ok ? "✓" : "✗"}${isFinalRun ? (isAtRisk ? " [wrong-final]" : " [correct]") : ""}`);
+          await new Promise(res => setTimeout(res, CURRENT_PROFILE.runDelayMs));
+        }
+
+        if (isLastSession && !isMissing) {
+          const sub = await apiPost("/api/student/submit-answer", {
+            session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
+            answer_text: isAtRisk ? task.wrong : task.correct,
+          }, jwt, "submit", ctx);
+          if (sub.ok) results.submits++;
+          else results.errors.push(`submit ${code} ${taskLabel}: ${sub.status}`);
+          console.log(`${prefix} Submit ${sub.ok ? "✓" : "✗"}`);
+          await new Promise(res => setTimeout(res, CURRENT_PROFILE.submitDelayMs));
+        } else if (isLastSession && isMissing) {
+          results.skipped++;
+        } else {
+          await new Promise(res => setTimeout(res, 50));
+        }
+
       } else {
-        // Minimal gap before next session
-        await new Promise(res => setTimeout(res, 50));
+        // ── Block-mode task (sql_block): block event journey → submit ─────────────
+        // Generates synthetic block events and POSTs them to /api/student/block-event.
+        // Skips run-answer calls (block UI does not separate run from submit in the same way).
+        const blockRng = mulberry32(deriveSeed(SIMULATION_SEED, studentIdx, ti, si, 0xB10C));
+        const { events: blockEvents, finalBlockIds } = generateBlockJourney(isAtRisk, blockRng);
+
+        console.log(`${prefix} Block journey: ${blockEvents.length} events (${isAtRisk ? "at-risk" : "passing"})`);
+
+        for (let ei = 0; ei < blockEvents.length; ei++) {
+          const ev = blockEvents[ei];
+          const evBody = {
+            session_id:        sessionId,
+            task_id:           task.task_id,
+            event_type:        ev.event_type,
+            block_id:          ev.block_id,
+            block_instance_id: ev.block_instance_id,
+            duration_from_start: ev.duration_from_start,
+            ...(ev.position !== null ? { position: ev.position } : {}),
+          };
+          const evRes = await apiPost("/api/student/block-event", evBody, jwt, `blk-ev-${ei + 1}`, ctx);
+          if (!evRes.ok) {
+            results.errors.push(`block-event ${code} ${taskLabel} ev${ei + 1}: ${evRes.status}`);
+          }
+          await new Promise(res => setTimeout(res, 30)); // short gap between events
+        }
+
+        if (isLastSession && !isMissing) {
+          const answerBlockIds = isAtRisk
+            ? finalBlockIds
+            : (finalBlockIds.length > 0 ? finalBlockIds : ["BLK_SELECT", "BLK_FROM", "BLK_WHERE"]);
+          const sub = await apiPost("/api/student/submit-answer", {
+            session_id: sessionId, task_id: task.task_id, batch_id: batch.batch_id,
+            answer_text: "",
+            answer_json: { mode: "sql_block", block_ids: answerBlockIds },
+          }, jwt, "submit-block", ctx);
+          if (sub.ok) results.submits++;
+          else results.errors.push(`submit-block ${code} ${taskLabel}: ${sub.status}`);
+          console.log(`${prefix} Submit (block) ${sub.ok ? "✓" : "✗"} block_ids=${answerBlockIds.length}`);
+          await new Promise(res => setTimeout(res, CURRENT_PROFILE.submitDelayMs));
+        } else if (isLastSession && isMissing) {
+          results.skipped++;
+        } else {
+          await new Promise(res => setTimeout(res, 50));
+        }
       }
     }
   }
@@ -570,5 +696,5 @@ console.log(`[STATS] ${JSON.stringify({
 })}`);
 console.log(`  p50=${p50}ms  p95=${p95}ms  slowest=${slowestMs}ms (${slowestEndpoint})`);
 console.log(`  total=${totalDurationSec}s  timeouts=${timeoutCount}`);
-console.log(`  endpoint counts: run-answer=${endpointCounts["run-answer"]}  submit-answer=${endpointCounts["submit-answer"]}  login=${endpointCounts["login"]}`);
+console.log(`  endpoint counts: run-answer=${endpointCounts["run-answer"]}  submit-answer=${endpointCounts["submit-answer"]}  block-event=${endpointCounts["block-event"]}  login=${endpointCounts["login"]}`);
 console.log("✅ Flow complete.");
