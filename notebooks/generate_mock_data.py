@@ -24,11 +24,15 @@ rng  = np.random.default_rng(SEED)
 random.seed(SEED)
 
 # ── Output paths ──────────────────────────────────────────────────────────────
-OUT_DIR      = Path("notebooks/data/raw")
+# Use script-relative path so the script works from any CWD
+# (project root OR notebooks/).
+OUT_DIR = Path(__file__).resolve().parent / "data" / "raw"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-SESSION_FILE = OUT_DIR / "session_20260710_MOCK001.csv"
-ATTEMPT_FILE = OUT_DIR / "attempt_20260710_MOCK001.csv"
-EVENT_FILE   = OUT_DIR / "event_20260710_MOCK001.csv"
+SESSION_FILE  = OUT_DIR / "session_20260710_MOCK001.csv"
+ATTEMPT_FILE  = OUT_DIR / "attempt_20260710_MOCK001.csv"
+EVENT_FILE    = OUT_DIR / "event_20260710_MOCK001.csv"
+SEQUENCE_FILE = OUT_DIR / "sequence_20260710_MOCK001.csv"   # Phase 5 M5.6
+OUTCOME_FILE  = OUT_DIR / "outcome_20260710_MOCK001.csv"    # Phase 5 M5.6
 
 # ── Dataset constants ─────────────────────────────────────────────────────────
 N_LEARNERS     = 80
@@ -277,6 +281,9 @@ df_attempt = pd.DataFrame(attempt_rows)
 
 # ── Save sessions + attempts ──────────────────────────────────────────────────
 df_session.to_csv(SESSION_FILE, index=False)
+# Phase 5 M5.6: add canonical aliases so NB05 can join on batch_code / task_code
+df_attempt["batch_code"] = df_attempt["batch_id"]
+df_attempt["task_code"]  = df_attempt["task_id"]
 df_attempt.to_csv(ATTEMPT_FILE, index=False)
 
 # ── Phase 5 M5.2: Block event journeys for sql_block sessions ─────────────────
@@ -489,6 +496,169 @@ df_event = pd.DataFrame(event_rows) if event_rows else pd.DataFrame(columns=[
 ])
 df_event.to_csv(EVENT_FILE, index=False)
 
+# ── Phase 5 M5.6: Sequence CSV (NB05 input) ──────────────────────────────────
+# Produces vw_dataset_sequence_level-compatible rows for all sessions:
+#   sql_text  → sql_run / sql_error / sql_success / submit_answer / session_end
+#   sql_block → block_add / block_delete / block_move / submit_answer / session_end
+
+# Lookup: (academy_member_id, task_id) → sorted block events
+_blk_ev: dict[tuple, list[dict]] = {}
+if not df_event.empty:
+    for (_lid, _tid), _grp in df_event.groupby(["academy_member_id", "task_id"]):
+        _blk_ev[(_lid, _tid)] = _grp.sort_values("event_order").to_dict("records")
+
+# Lookup: (academy_member_id, task_id) → sorted attempts
+_att: dict[tuple, list[dict]] = {}
+for _, _att_row in df_attempt.iterrows():
+    _k = (_att_row["academy_member_id"], _att_row["task_id"])
+    _att.setdefault(_k, []).append(_att_row)
+
+_ev_ctr = 0
+
+def _mk_ev(etype: str, d: float, sess_lid: str, sess_tid: str, sess_batch: str,
+           sess_ttype: str, sess_id: str, sess_status: str, sess_start_str: str,
+           sess_start_dt, sess_mode: str) -> dict:
+    global _ev_ctr
+    _ev_ctr += 1
+    ts = (sess_start_dt + timedelta(seconds=d)).strftime("%Y-%m-%dT%H:%M:%S")
+    return {
+        "academy_member_id":   sess_lid,
+        "batch_code":          sess_batch,
+        "task_code":           sess_tid,
+        "task_type":           sess_ttype,
+        "session_id":          sess_id,
+        "session_status":      sess_status,
+        "session_started_at":  sess_start_str,
+        "event_id":            f"mock-ev-{_ev_ctr:08d}",
+        "event_order":         0,  # per-session counter assigned below
+        "event_type":          etype,
+        "event_value":         "",
+        "duration_from_start": round(d, 1),
+        "event_time":          ts,
+        "metadata_json":       "{}",
+        "set_family":          "assignment",
+        "learning_mode":       sess_mode,
+    }
+
+seq_rows: list[dict] = []
+
+for _si, _sess in df_session.iterrows():
+    _lid    = _sess["academy_member_id"]
+    _tid    = _sess["task_id"]
+    _ttype  = _sess["task_type"]
+    _batch  = _sess["batch_id"]
+    _dur    = float(_sess["session_duration_sec"]) if pd.notna(_sess["session_duration_sec"]) else 300.0
+    _sub_at = _sess["submitted_at"]
+    _is_sub = pd.notna(_sub_at)
+
+    _sess_id  = f"mock-ses-{_lid}-{_tid}-{_si:05d}"
+    _mode     = "block_based" if _ttype == "sql_block" else "text_based"
+    _status   = "completed" if _is_sub else "incomplete"
+
+    if _is_sub:
+        _sub_dt   = datetime.strptime(str(_sub_at), "%Y-%m-%d %H:%M:%S")
+        _start_dt = _sub_dt - timedelta(seconds=_dur)
+    else:
+        _start_dt = BASE_DATE + timedelta(days=int(_si) % 60, hours=8 + int(_si) % 12)
+
+    _start_str = _start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    def _mke(et: str, d: float) -> dict:
+        return _mk_ev(et, d, _lid, _tid, _batch, _ttype,
+                      _sess_id, _status, _start_str, _start_dt, _mode)
+
+    _sess_evs: list[dict] = []
+    if _ttype == "sql_block":
+        _bevs  = _blk_ev.get((_lid, _tid), [])
+        _last  = 5.0
+        for _bev in _bevs:
+            _d = float(_bev["duration_from_start"])
+            _sess_evs.append(_mke(_bev["event_type"], _d))
+            _last = max(_last, _d)
+        if _is_sub:
+            _sess_evs.append(_mke("submit_answer", _last + 5.0))
+        _sess_evs.append(_mke("session_end", min(_last + 10.0, _dur)))
+    else:
+        _atts = sorted(_att.get((_lid, _tid), []),
+                       key=lambda _a: int(_a.get("attempt_no", 0)))
+        _n = len(_atts)
+        for _i, _a in enumerate(_atts):
+            _d = _dur * (0.10 + 0.75 * (_i / max(_n, 1)))
+            _sess_evs.append(_mke("sql_run", _d))
+            _sess_evs.append(_mke("sql_success" if _a.get("is_correct") else "sql_error", _d + 1.5))
+        if _is_sub:
+            _sess_evs.append(_mke("submit_answer", _dur * 0.90))
+        _sess_evs.append(_mke("session_end", _dur))
+
+    # Assign per-session event_order (1-based, sequential)
+    for _o, _r in enumerate(_sess_evs, start=1):
+        _r["event_order"] = _o
+    seq_rows.extend(_sess_evs)
+
+_SEQ_COLS = [
+    "academy_member_id","batch_code","task_code","task_type","session_id",
+    "session_status","session_started_at","event_id","event_order","event_type",
+    "event_value","duration_from_start","event_time","metadata_json",
+    "set_family","learning_mode",
+]
+df_sequence = pd.DataFrame(seq_rows, columns=_SEQ_COLS) if seq_rows else pd.DataFrame(columns=_SEQ_COLS)
+df_sequence.to_csv(SEQUENCE_FILE, index=False)
+
+# ── Phase 5 M5.6: Outcome CSV (NB05 target labels) ───────────────────────────
+# One row per submitted session: total_2c3l_score + at_risk proxy label.
+# label_source="auto_generated" / label_validity="pilot_only" mark this as mock.
+
+df_session["_eff"]     = df_session["review_score"].combine_first(df_session["auto_score"])
+df_session["_at_risk"] = (
+    df_session["submitted_at"].isna() |
+    (df_session["_eff"] < df_session["max_score"] * 0.6)
+).astype(int)
+
+_C1 = "c1_correctness_result"
+_C2 = "c2_semantic_consistency"
+_L1 = "l1_logical_reasoning"
+_L2 = "l2_learning_process"
+_L3 = "l3_difficulty_complexity"
+
+outcome_rows: list[dict] = []
+for _oi, (_orig_i, _s) in enumerate(df_session[df_session["submitted_at"].notna()].iterrows()):
+    _eff  = float(_s["_eff"]) if pd.notna(_s["_eff"]) else 50.0
+    _max  = float(_s["max_score"]) if float(_s["max_score"]) > 0 else 100.0
+    _pct  = _eff / _max * 100
+
+    def _sv(col: str, default: float) -> float:
+        v = _s.get(col)
+        return float(v) if v is not None and pd.notna(v) else default
+
+    _total = round((_sv(_C1, _pct / 100)
+                  + _sv(_C2, _pct / 100 * 0.95)
+                  + _sv(_L1, _pct / 100 * 0.90)
+                  + _sv(_L2, 0.70)
+                  + _sv(_L3, 0.60)) / 5.0 * 100, 2)
+
+    outcome_rows.append({
+        "participant_code":   _s["academy_member_id"],
+        "batch_code":         _s["batch_id"],
+        "task_code":          _s["task_id"],
+        "task_type":          _s["task_type"],
+        "submission_id":      f"mock-sub-{_s['academy_member_id']}-{_s['task_id']}-{_oi:05d}",
+        "submitted_at":       _s["submitted_at"],
+        "total_2c3l_score":   _total,
+        "at_risk":            int(_s["_at_risk"]),
+        "label_source":       "auto_generated",
+        "label_validity":     "pilot_only",
+        "is_teacher_reviewed": bool(pd.notna(_s.get("review_score"))),
+    })
+
+_OUT_COLS = [
+    "participant_code","batch_code","task_code","task_type","submission_id",
+    "submitted_at","total_2c3l_score","at_risk","label_source","label_validity",
+    "is_teacher_reviewed",
+]
+df_outcome = (pd.DataFrame(outcome_rows, columns=_OUT_COLS)
+              if outcome_rows else pd.DataFrame(columns=_OUT_COLS))
+df_outcome.to_csv(OUTCOME_FILE, index=False)
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 df_session["effective_score"] = df_session["review_score"].combine_first(df_session["auto_score"])
 df_session["at_risk"] = (
@@ -543,9 +713,23 @@ print(f"    block_add                : {add_count}")
 print(f"    block_delete             : {del_count}")
 print(f"    block_move               : {move_count}")
 print()
+n_seq_rows  = len(df_sequence)
+n_out_rows  = len(df_outcome)
+seq_etypes  = df_sequence["event_type"].value_counts().sort_index() if n_seq_rows else {}
+print(f"  Sequence event rows        : {n_seq_rows:,}")
+for et, cnt in (seq_etypes.items() if hasattr(seq_etypes, "items") else []):
+    print(f"    {et:<28}: {cnt}")
+print(f"  Outcome rows (submitted)   : {n_out_rows:,}")
+if n_out_rows:
+    _risk_dist = df_outcome["at_risk"].value_counts().sort_index()
+    print(f"    at_risk=0                : {_risk_dist.get(0, 0)}")
+    print(f"    at_risk=1                : {_risk_dist.get(1, 0)}")
+print()
 print("  Output files:")
 print(f"    {SESSION_FILE}")
 print(f"    {ATTEMPT_FILE}")
 print(f"    {EVENT_FILE}")
+print(f"    {SEQUENCE_FILE}")
+print(f"    {OUTCOME_FILE}")
 print("=" * 58)
 print("NOTE: synthetic mock data only — do NOT commit to git")
