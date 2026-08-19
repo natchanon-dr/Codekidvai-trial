@@ -235,6 +235,43 @@ const sequenceRows = seqRaw.map(r => ({
 const sequenceFile = path.join(OUT_DIR, `sequence_${TODAY}_${BATCH_TAG}.csv`);
 fs.writeFileSync(sequenceFile, "﻿" + toCsv(sequenceRows), "utf8");
 
+// ── 6.5: Build block event CSV (Phase 5 M5.4) ────────────────────────────────
+// Filters sequence rows for block event types and extracts structured columns
+// matching the format produced by generate_mock_data.py (NB03 EVENT_FILE).
+const BLOCK_EVENT_TYPES = new Set(["block_add", "block_delete", "block_move"]);
+const blockSeqRaw = seqRaw.filter(r => BLOCK_EVENT_TYPES.has(r.event_type));
+console.log(`  ${blockSeqRaw.length} block event rows (block_add / block_delete / block_move)`);
+
+const eventRows = blockSeqRaw.map(r => {
+  const meta = r.metadata_json ?? {};
+  // Resolve position: add → position_after_add, move → to_position, delete → deleted_from_position
+  const position =
+    meta.position_after_add    ??
+    meta.to_position           ??
+    meta.deleted_from_position ??
+    null;
+  return {
+    session_id:          r.session_id,
+    academy_member_id:   r.participant_code,
+    batch_id:            BATCH_CODE,
+    task_id:             r.task_code,   // NB03 joins on task_id = task_code
+    event_type:          r.event_type,
+    block_id:            meta.block_code ?? meta.block_id ?? "",
+    block_instance_id:   meta.block_instance_id ?? "",
+    position:            position ?? "",
+    event_order:         r.event_order,
+    duration_from_start: r.duration_from_start ?? 0,
+  };
+});
+
+const eventFile = path.join(OUT_DIR, `event_${TODAY}_${BATCH_TAG}.csv`);
+if (eventRows.length > 0) {
+  fs.writeFileSync(eventFile, "﻿" + toCsv(eventRows), "utf8");
+  console.log(`  Wrote event CSV: ${eventFile} (${eventRows.length} rows)`);
+} else {
+  console.log(`  No block events found — event CSV not written (Phase 4 or text-only batch)`);
+}
+
 // ── 7. Fetch rubric scores and build outcome CSV ──────────────────────────────
 console.log(`Fetching rubric scores for ${BATCH_CODE}...`);
 
@@ -385,6 +422,7 @@ console.log(`
   Session CSV   : ${sessionFile} (${sessionRows.length} rows)
   Attempt CSV   : ${attemptFile} (${attemptRows.length} rows)
   Sequence CSV  : ${sequenceFile} (${sequenceRows.length} rows)
+  Event CSV     : ${eventRows.length > 0 ? eventFile + ` (${eventRows.length} rows)` : "(not written — no block events)"}
   Outcome CSV   : ${outcomeFile} (${outcomeRows.length} rows)
 
   Session schema vs NB01:
