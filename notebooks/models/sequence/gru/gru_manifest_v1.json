@@ -1,9 +1,9 @@
 {
   "schema_version": "gru_v1",
-  "created_at_utc": "2026-07-21T13:34:40.167242+00:00",
+  "created_at_utc": "2026-08-19T06:30:13.230486+00:00",
   "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
-  "m2_manifest_sha": "d5acd8c97967061d",
-  "m4_manifest_sha": "2de9e55c17198dd9",
+  "m2_manifest_sha": "4ac9b85a6f403ce6",
+  "m4_manifest_sha": "2f6a498ebb5e3bb6",
   "backend": "pytorch",
   "experiments_run": [
     "EXP-A",
@@ -17,29 +17,29 @@
     55
   ],
   "dataset_stats": {
-    "train_learners": 8,
-    "test_learners": 2,
-    "train_sequences": 72,
-    "test_sequences": 18,
+    "train_learners": 64,
+    "test_learners": 16,
+    "train_sequences": 420,
+    "test_sequences": 117,
     "tensor_shape_train": [
-      72,
-      6,
+      420,
+      24,
       10
     ],
     "tensor_shape_test": [
-      18,
-      6,
+      117,
+      24,
       10
     ],
     "n_features": 10,
-    "max_seq_len": 6,
+    "max_seq_len": 24,
     "train_class_dist": {
-      "0": 45,
-      "1": 27
+      "0": 150,
+      "1": 270
     },
     "test_class_dist": {
-      "0": 9,
-      "1": 9
+      "0": 53,
+      "1": 64
     },
     "label_source": "proxy_behavioral",
     "label_validity": "pilot_only"
@@ -65,22 +65,22 @@
       42,
       55
     ],
-    "accuracy_mean": 1.0,
-    "accuracy_std": 0.0,
-    "precision_mean": 1.0,
-    "precision_std": 0.0,
-    "recall_mean": 1.0,
-    "recall_std": 0.0,
-    "f1_mean": 1.0,
-    "f1_std": 0.0,
-    "roc_auc_mean": 1.0,
-    "roc_auc_std": 0.0,
-    "train_time_sec_mean": 2.71544,
-    "train_time_sec_std": 0.223016,
-    "inf_time_per_seq_sec_mean": 3e-05,
-    "inf_time_per_seq_sec_std": 2e-06,
-    "epochs_trained_mean": 200.0,
-    "epochs_trained_std": 0.0,
+    "accuracy_mean": 0.605128,
+    "accuracy_std": 0.022549,
+    "precision_mean": 0.754719,
+    "precision_std": 0.03989,
+    "recall_mean": 0.4125,
+    "recall_std": 0.021195,
+    "f1_mean": 0.533318,
+    "f1_std": 0.026427,
+    "roc_auc_mean": 0.636439,
+    "roc_auc_std": 0.011868,
+    "train_time_sec_mean": 9.00604,
+    "train_time_sec_std": 4.8561,
+    "inf_time_per_seq_sec_mean": 2.7e-05,
+    "inf_time_per_seq_sec_std": 5e-06,
+    "epochs_trained_mean": 32.4,
+    "epochs_trained_std": 16.811901,
     "trainable_params_mean": 4257.0,
     "trainable_params_std": 0.0
   },
@@ -93,22 +93,22 @@
       42,
       55
     ],
-    "accuracy_mean": 0.9,
-    "accuracy_std": 0.2,
-    "precision_mean": 0.9,
-    "precision_std": 0.2,
-    "recall_mean": 1.0,
-    "recall_std": 0.0,
-    "f1_mean": 0.933333,
-    "f1_std": 0.133333,
-    "roc_auc_mean": 1.0,
-    "roc_auc_std": 0.0,
-    "train_time_sec_mean": 2.30452,
-    "train_time_sec_std": 1.02526,
-    "inf_time_per_seq_sec_mean": 3e-05,
-    "inf_time_per_seq_sec_std": 3e-06,
-    "epochs_trained_mean": 163.2,
-    "epochs_trained_std": 73.6,
+    "accuracy_mean": 0.589744,
+    "accuracy_std": 0.009363,
+    "precision_mean": 0.69444,
+    "precision_std": 0.029049,
+    "recall_mean": 0.45625,
+    "recall_std": 0.071535,
+    "f1_mean": 0.545653,
+    "f1_std": 0.041633,
+    "roc_auc_mean": 0.650767,
+    "roc_auc_std": 0.009287,
+    "train_time_sec_mean": 12.071,
+    "train_time_sec_std": 4.178693,
+    "inf_time_per_seq_sec_mean": 3.3e-05,
+    "inf_time_per_seq_sec_std": 9e-06,
+    "epochs_trained_mean": 44.4,
+    "epochs_trained_std": 15.041277,
     "trainable_params_mean": 4275.0,
     "trainable_params_std": 0.0
   },
@@ -126,11 +126,11 @@
     "gru_model_v1.pt": "models\\sequence\\gru\\gru_model_v1.pt"
   },
   "artifact_checksums": {
-    "gru_config_v1.json": "a6ad6d74bbeee736",
-    "gru_history_v1.json": "bad9e9a9bfa40a72",
-    "gru_predictions_v1.parquet": "206d9c7b9b5b9736",
-    "gru_metrics_v1.json": "b8ec7b7e66dece61",
-    "gru_model_v1.pt": "f23d6745981d3d3a"
+    "gru_config_v1.json": "0d3728fca3942461",
+    "gru_history_v1.json": "5e204d9f9afbdfa0",
+    "gru_predictions_v1.parquet": "0d722a35b4ebec0f",
+    "gru_metrics_v1.json": "b6b30044c69a0e9d",
+    "gru_model_v1.pt": "1a9a112a2540b811"
   },
   "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral labels. Thesis requires teacher-reviewed labels and >=60 participants. Do NOT claim GRU superiority over LSTM based on this pilot."
 }

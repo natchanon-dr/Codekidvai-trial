@@ -1,6 +1,6 @@
 {
   "schema_version": "lstm_v1",
-  "created_at_utc": "2026-07-21T13:22:49.462980+00:00",
+  "created_at_utc": "2026-08-19T06:27:53.386585+00:00",
   "phase3_source_sha": "193b18949e40e6bd3bbfb70034a5772ce51d1b7e",
   "seeds": [
     11,
@@ -19,7 +19,7 @@
   "backend": "pytorch",
   "architecture": "pack_padded -> LSTM -> Dropout -> Linear(sigmoid)",
   "n_features": 10,
-  "max_seq_len": 6,
+  "max_seq_len": 24,
   "n_tag_features": 18,
   "label_source": "proxy_behavioral",
   "label_validity": "pilot_only",
