@@ -8,7 +8,9 @@ import { startLearningSession, markAssignmentInProgress } from "@/services/sessi
 import { logLearningEvent, calculateDurationFromStart } from "@/services/event-service";
 import { runAnswerOnServer, submitAnswerOnServer } from "@/services/student-answer-api-service";
 import { leaveSessionOnServer } from "@/services/student-session-api-service";
-import type { LearningSession, Profile } from "@/types/dataset";
+import { getBlocksForStudentTask } from "@/services/student-block-service";
+import BlockSqlBuilder from "@/components/BlockSqlBuilder";
+import type { LearningSession, Profile, StudentBlock, BlockEventType } from "@/types/dataset";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,11 @@ export default function StudentTaskPage() {
   const [policy, setPolicy] = useState<BatchPolicy | null>(null);
   const [session, setSession] = useState<LearningSession | null>(null);
   const [answer, setAnswer] = useState("");
+  // sql_block: available blocks fetched from mst_blocks via get_blocks_for_student_task
+  const [taskBlocks, setTaskBlocks] = useState<StudentBlock[]>([]);
+  // sql_block: ordered list of mst_blocks.block_id values currently selected in
+  // the workspace; passed to answer_json.block_ids on run and submit.
+  const [blockIds, setBlockIds] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [runFeedback, setRunFeedback] = useState<RunFeedback | null>(null);
@@ -153,6 +160,14 @@ export default function StudentTaskPage() {
     await markAssignmentInProgress({ task_id: t.task_id, profile_id: p.profile_id });
     await logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "session_start", event_value: "start_task", duration_from_start: 0 });
     await logLearningEvent({ session_id: s.session_id, profile_id: p.profile_id, task_id: t.task_id, event_type: "question_view", event_value: t.task_code, duration_from_start: 0 });
+
+    // sql_block: fetch the available blocks now that the session exists.
+    // get_blocks_for_student_task (hardened in migration 027) requires an active
+    // session for the task, so this fetch must happen after startLearningSession.
+    if (t.task_type === "sql_block") {
+      const blocks = await getBlocksForStudentTask(t.task_id);
+      setTaskBlocks(blocks);
+    }
 
     sessionRef.current = s; taskRef.current = t; profileRef.current = p;
     setTask(t); setExtra(extraData ?? null); setPolicy(batchData ?? null); setSession(s);
@@ -211,12 +226,68 @@ export default function StudentTaskPage() {
     }, 1000);
   }, []);
 
+  // sql_block: onSqlChange receives both the generated SQL text and the ordered
+  // block_id list. We update answer (for display and run/submit payloads) and
+  // blockIds (for answer_json.block_ids). No debounced sql_edit — the
+  // individual block_add/delete/move events capture the workspace changes.
+  const handleBlockSqlChange = useCallback((sql: string, selectedBlockIds: string[]) => {
+    setAnswer(sql);
+    setBlockIds(selectedBlockIds);
+    setRunFeedback(null);
+  }, []);
+
+  // sql_block: fire-and-forget POST to /api/student/block-event.
+  // Errors are logged to the console but are never surfaced to the student —
+  // the workspace interaction must never be blocked by a logging failure.
+  const handleBlockEvent = useCallback((
+    eventType: "block_add" | "block_delete" | "block_move",
+    _value: string,
+    metadata?: Record<string, unknown>,
+  ) => {
+    const s = sessionRef.current;
+    const t = taskRef.current;
+    const p = profileRef.current;
+    if (!s || !t || !p) return;
+
+    const blockInstanceId = typeof metadata?.block_instance_id === "string"
+      ? metadata.block_instance_id : "";
+    const blockId = typeof metadata?.block_id === "string"
+      ? metadata.block_id : "";
+    const position = (eventType as BlockEventType) === "block_move" && typeof metadata?.to_index === "number"
+      ? metadata.to_index : null;
+    const duration = calculateDurationFromStart(s.started_at);
+
+    supabase.auth.getSession()
+      .then(({ data: { session: authSession } }) => {
+        const token = authSession?.access_token;
+        if (!token) return;
+        return fetch("/api/student/block-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            session_id: s.session_id,
+            task_id: t.task_id,
+            event_type: eventType,
+            block_instance_id: blockInstanceId,
+            block_id: blockId,
+            position,
+            duration_from_start: duration,
+          }),
+        });
+      })
+      .catch((e: unknown) => console.warn("[block-event] failed to record event:", e));
+  }, []);
+
   async function handleRun() {
     if (!task || !session || !profileRef.current) return;
     setRunning(true);
     try {
       await logLearningEvent({ session_id: session.session_id, profile_id: profileRef.current.profile_id, task_id: task.task_id, event_type: "sql_run", event_value: answer.substring(0, 500), duration_from_start: calculateDurationFromStart(session.started_at) });
-      const result = await runAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, answer_text: answer, answer_json: { mode: "sql_text" } });
+      // sql_block: pass the ordered block_id array so the server scorer can use it
+      const answerJson = task.task_type === "sql_block"
+        ? { mode: "sql_block", block_ids: blockIds }
+        : { mode: "sql_text" };
+      const result = await runAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, answer_text: answer, answer_json: answerJson });
       setRunFeedback({ is_correct: result.is_correct, score: result.score, error_message: result.error_message ?? null });
     } catch (e) {
       setRunFeedback({ is_correct: false, score: 0, error_message: e instanceof Error ? e.message : "เกิดข้อผิดพลาด กรุณาลองใหม่" });
@@ -228,7 +299,11 @@ export default function StudentTaskPage() {
     setSubmitting(true);
     try {
       await logLearningEvent({ session_id: session.session_id, profile_id: profileRef.current.profile_id, task_id: task.task_id, event_type: "submit_answer", event_value: answer.substring(0, 500), duration_from_start: calculateDurationFromStart(session.started_at) });
-      await submitAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, batch_id: task.batch_id, answer_text: answer, answer_json: { mode: "sql_text" } });
+      // sql_block: answer_json.block_ids is the canonical field read by scoreTask
+      const answerJson = task.task_type === "sql_block"
+        ? { mode: "sql_block", block_ids: blockIds }
+        : { mode: "sql_text" };
+      await submitAnswerOnServer({ session_id: session.session_id, task_id: task.task_id, batch_id: task.batch_id, answer_text: answer, answer_json: answerJson });
       localStorage.setItem(`last_answer_${task.task_id}`, answer);
       setRunFeedback(null);
       setSubmitted(true);
@@ -485,13 +560,29 @@ export default function StudentTaskPage() {
             </div>
           )}
 
-          {/* SQL Editor */}
+          {/* SQL Editor / Block Builder */}
           <div className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden shadow-sm">
             <div className="bg-[#FFF7ED] border-b border-[#FED7AA] px-4 py-2.5 flex items-center justify-between">
-              <h2 className="text-[#0F172A] font-bold text-sm">SQL Editor</h2>
-              <span className="text-xs text-[#64748B] font-mono bg-[#F3F4F6] px-2 py-0.5 rounded">sql_text</span>
+              <h2 className="text-[#0F172A] font-bold text-sm">
+                {task.task_type === "sql_block" ? "Block SQL Builder" : "SQL Editor"}
+              </h2>
+              <span className="text-xs text-[#64748B] font-mono bg-[#F3F4F6] px-2 py-0.5 rounded">
+                {task.task_type}
+              </span>
             </div>
             <div className="p-4">
+              {task.task_type === "sql_block" ? (
+                /* sql_block: drag-and-drop block workspace.
+                   onSqlChange → updates answer (SQL text) + blockIds (ordered block_id list).
+                   onBlockEvent → fire-and-forget POST to /api/student/block-event
+                                  with server-authoritative, atomically allocated event_order. */
+                <BlockSqlBuilder
+                  blocks={taskBlocks}
+                  disabled={submitted || submitting}
+                  onSqlChange={handleBlockSqlChange}
+                  onBlockEvent={handleBlockEvent}
+                />
+              ) : (
               <textarea
                 value={answer}
                 onChange={(e) => handleSqlChange(e.target.value)}
@@ -503,6 +594,7 @@ export default function StudentTaskPage() {
                 autoCapitalize="off"
                 autoCorrect="off"
               />
+              )}
               <div className={`mt-3 flex gap-2.5 ${submitted ? "hidden" : ""}`}>
                 <button
                   onClick={handleRun}
