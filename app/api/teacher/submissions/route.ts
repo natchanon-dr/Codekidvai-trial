@@ -82,15 +82,28 @@ type ReviewUpdateBody = {
 
 function getBatchFamily(batch: BatchRow | undefined): BatchFamily | null {
   if (!batch) return null;
+  // NOTE: batch_type === "exam_set" and batch_type === "lab_set" are dead code —
+  // mst_experiment_batches.batch_type CHECK is ('pilot','main','practice'); those
+  // values never exist in the database. Removed to prevent confusion.
+  //
+  // NOTE: set_type_id === 2 is a legacy numeric signal whose schema origin is
+  // unknown — it is not defined in any migration file. Left in place but treat
+  // as untrusted until the column origin is confirmed.
+  //
+  // The canonical source for activity type is tb_class_sets.family (keyed on
+  // (class_id, batch_id)). Replacing the heuristics below with a canonical
+  // join requires class_id context and is tracked as a separate issue.
   if (
     batch.set_type_id === 2 ||
-    batch.batch_type === "exam_set" ||
     batch.batch_code?.startsWith("SX") ||
     batch.batch_code?.startsWith("SE") ||
     batch.batch_code?.startsWith("X") ||
     batch.batch_code?.startsWith("E")
   ) return "exam";
-  if (batch.batch_type === "lab_set" || batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return null;
+  // Lab batches are intentionally excluded from the teacher review interface
+  // (assignment_sets and exam_sets only). Batches matching lab-prefix heuristics
+  // return null and are skipped in the response.
+  if (batch.batch_code?.startsWith("SL") || batch.batch_code?.startsWith("L")) return null;
   return "assignment";
 }
 
