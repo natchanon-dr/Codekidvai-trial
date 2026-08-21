@@ -246,14 +246,21 @@ async function runStep(
       ];
       if (sequenceFile) {
         nbArgs.push("--sequence-file", sequenceFile);
-        log(send, `[train] sequence CSV: ${sequenceFile}`);
+        log(send, `[${step}] sequence CSV: ${sequenceFile}`);
       }
       if (outcomeFile) {
         nbArgs.push("--outcome-file", outcomeFile);
-        log(send, `[train] outcome CSV: ${outcomeFile}`);
+        log(send, `[${step}] outcome CSV: ${outcomeFile}`);
       }
       if (!sequenceFile) {
-        log(send, "[train] No sequence_*.csv found — NB05-NB09 will be skipped (sql_text-only batch)");
+        log(send, `[${step}] No sequence_*.csv found — NB05-NB09 will be skipped (sql_text-only batch)`);
+      }
+      // Phase 5 M5.14: in run-all the evaluate step runs immediately after train, so
+      // NB05-NB09 (LSTM/GRU training, ~30 s) would execute twice unnecessarily.
+      // Skip them here; the train step already wrote all sequence model artifacts.
+      if (step === "evaluate") {
+        nbArgs.push("--skip-nb05", "--skip-nb06", "--skip-nb07", "--skip-nb08", "--skip-nb09");
+        log(send, "[evaluate] --skip-nb05..09 added — sequence models already trained in train step");
       }
 
       await runProcess(send, step, "python", nbArgs, NB_DIR, signal);
