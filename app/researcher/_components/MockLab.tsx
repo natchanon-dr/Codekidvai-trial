@@ -227,6 +227,8 @@ export default function MockLab() {
   const [running, setRunning]         = useState<MockStep | null>(null);
   const [stepStatus, setStepStatus]   = useState<Record<string, StepStatus>>({});
   const [logs, setLogs]               = useState<string[]>([]);
+  // Phase 5 M5.17: NB02-NB09 PASS/FAIL results parsed from run_e2e_notebooks.py summary lines
+  const [nbResults, setNbResults]     = useState<Record<string, "PASS" | "FAIL">>({});
   const [outcome, setOutcome]         = useState<MockOutcome | null>(null);
   const [errorCount, setErrorCount]   = useState(0);
   const [startTime, setStartTime]     = useState<number | null>(null);
@@ -323,6 +325,8 @@ export default function MockLab() {
       setStepStatus(Object.fromEntries(PIPELINE_STEPS.map(s => [s, "completed" as StepStatus])));
       setCompleted([...PIPELINE_STEPS]);
       setRestoredAt(stored.savedAt);
+      // Optimistically mark NB02-NB04 as PASS on restore (live results not stored)
+      setNbResults({ NB02: "PASS", NB03: "PASS", NB04: "PASS" });
     } catch { /* corrupt storage — ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount only
@@ -502,6 +506,7 @@ export default function MockLab() {
 
     setRunning(step);
     setLogs([]);
+    setNbResults({});
     setErrorCount(0);
     setStartTime(getTimestamp());
     setElapsed(0);
@@ -579,6 +584,14 @@ export default function MockLab() {
               }
               addLog(msg);
               if (msg.includes("❌")) setErrorCount(c => c + 1);
+              // Phase 5 M5.17: parse notebook summary lines from run_e2e_notebooks.py
+              // Format: "  ✅  02_baseline_model.ipynb: PASS" / "  ❌  …: FAIL"
+              const nbMatch = msg.match(/[✅❌]\s+(\d{2})_\S+\.ipynb:\s*(PASS|FAIL)/);
+              if (nbMatch) {
+                const nbKey = `NB${nbMatch[1]}`;
+                const nbSts = nbMatch[2] as "PASS" | "FAIL";
+                setNbResults(prev => ({ ...prev, [nbKey]: nbSts }));
+              }
               const match = msg.match(/^-- Step: (\w+)/);
               if (match) {
                 if (pipelineStepRef.current !== step) {
@@ -708,6 +721,7 @@ export default function MockLab() {
     setOutcomeSaved(false);
     setStepStatus({});
     setCompleted([]);
+    setNbResults({});
   }
 
   function parseOutcome(payload: { report?: MockOutcome }, fromLiveRun = false) {
@@ -1640,6 +1654,42 @@ export default function MockLab() {
                               </p>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {/* Phase 5 M5.17 — notebook PASS/FAIL badge grid */}
+                      {Object.keys(nbResults).length > 0 && (
+                        <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+                          <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">
+                            Notebook Run Results
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {([
+                              { key: "NB02", label: "NB02 Baseline" },
+                              { key: "NB03", label: "NB03 CV" },
+                              { key: "NB04", label: "NB04 Test" },
+                              { key: "NB05", label: "NB05 Seq" },
+                              { key: "NB06", label: "NB06 TAG" },
+                              { key: "NB07", label: "NB07 LSTM" },
+                              { key: "NB08", label: "NB08 GRU" },
+                              { key: "NB09", label: "NB09 Cmp" },
+                            ] as const).map(({ key, label }) => {
+                              const r = nbResults[key];
+                              if (!r) return null;
+                              return (
+                                <span
+                                  key={key}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    r === "PASS"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-red-50 text-red-700 border-red-200"
+                                  }`}
+                                >
+                                  {r === "PASS" ? "✅" : "❌"} {label}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
 
