@@ -266,16 +266,23 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
     };
   }).filter((m) => m.name !== "");
 
-  // ── Optional: sequence_manifest + seed stability JSONs ───────────────────
+  // ── Optional: sequence_manifest + seed stability + vocab + TAG + config ───
   async function tryJson(p: string): Promise<Record<string, unknown> | null> {
     try { return JSON.parse(await fsAsync.readFile(p, "utf-8")); }
     catch { return null; }
   }
-  const [seqManifest, lstmMetrics, gruMetrics] = await Promise.all([
-    tryJson(path.join(NB_DIR, "data", "sequences", "sequence_manifest_v1.json")),
-    tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_metrics_v1.json")),
-    tryJson(path.join(NB_DIR, "models", "sequence", "gru",  "gru_metrics_v1.json")),
-  ]);
+  const [seqManifest, lstmMetrics, gruMetrics, vocabJson, scalerJson, tagJson, lstmCfg, gruCfg] =
+    await Promise.all([
+      tryJson(path.join(NB_DIR, "data", "sequences", "sequence_manifest_v1.json")),
+      tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_metrics_v1.json")),
+      tryJson(path.join(NB_DIR, "models", "sequence", "gru",  "gru_metrics_v1.json")),
+      // Phase 5 M5.19: vocabulary, scaler, TAG manifest, model configs
+      tryJson(path.join(NB_DIR, "data", "sequences", "vocabulary_v1.json")),
+      tryJson(path.join(NB_DIR, "data", "sequences", "scaler_v1.json")),
+      tryJson(path.join(NB_DIR, "data", "tag",       "tag_manifest_v1.json")),
+      tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_config_v1.json")),
+      tryJson(path.join(NB_DIR, "models", "sequence", "gru",  "gru_config_v1.json")),
+    ]);
 
   // ── PNG charts as base64 data URLs ────────────────────────────────────────
   async function tryPng(relPath: string): Promise<string | null> {
@@ -360,10 +367,68 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       dataset_stats:  ds,
       data_warning:   mf.data_warning ?? "PILOT ONLY — Mock pipeline artifacts.",
     } : null,
-    event_vocabulary:     null,
-    feature_scaler:       null,
-    tag_structure:        null,
-    model_sequence_config: null,
+    // Phase 5 M5.19: fill previously-null sections from local disk JSONs
+    event_vocabulary: vocabJson ? {
+      schema_version:      (vocabJson["schema_version"] as string) ?? "seq_v1",
+      padding_token:       (vocabJson["padding_token"]  as number) ?? 0,
+      event_type_vocab:    (vocabJson["event_type_vocab"] as Record<string, number>) ?? {},
+      block_events_reserved: (vocabJson["block_events_reserved"] as string[]) ?? [],
+      note:                (vocabJson["note"] as string) ?? "",
+      active_event_count:  Object.keys((vocabJson["event_type_vocab"] as Record<string,number>) ?? {}).length,
+      total_vocab_entries: Object.keys((vocabJson["event_type_vocab"] as Record<string,number>) ?? {}).length + 1,
+    } : null,
+    feature_scaler: scalerJson ? {
+      schema_version: (scalerJson["schema_version"] as string) ?? "seq_v1",
+      feature_names:  (scalerJson["feature_names"] as string[]) ?? [],
+      n_samples_seen: (scalerJson["n_samples_seen_"] as number) ?? 0,
+      fit_split:      "train",
+    } : null,
+    tag_structure: tagJson ? {
+      schema_version:      (tagJson["schema_version"] as string) ?? "tag_v1",
+      created_at_utc:      (tagJson["created_at_utc"] as string) ?? "",
+      transition_types:    (tagJson["transition_types"] as string[]) ?? [],
+      transition_type_count: ((tagJson["transition_types"] as string[]) ?? []).length,
+      graph_feature_names: (tagJson["graph_feature_names"] as string[]) ?? [],
+      graph_feature_count: ((tagJson["graph_feature_names"] as string[]) ?? []).length,
+      dataset_stats:       (tagJson["dataset_stats"] as Record<string, unknown>) ?? {},
+      data_warning:        (tagJson["data_warning"] as string) ?? "",
+    } : null,
+    model_sequence_config: (lstmCfg && gruCfg) ? {
+      lstm: {
+        cell_type:              "LSTM",
+        hidden_size:            (lstmCfg["lstm_units"]         as number) ?? 32,
+        dropout:                (lstmCfg["dropout_rate"]       as number) ?? 0.2,
+        learning_rate:          (lstmCfg["learning_rate"]      as number) ?? 0.001,
+        batch_size:             (lstmCfg["batch_size"]         as number) ?? 16,
+        max_epochs:             (lstmCfg["max_epochs"]         as number) ?? 200,
+        early_stop_patience:    (lstmCfg["early_stop_patience"] as number) ?? 15,
+        optimizer:              "Adam",
+        input_features_exp_a:   (lstmCfg["n_features"]        as number) ?? 10,
+        input_features_exp_b:   ((lstmCfg["n_features"] as number ?? 10) + (lstmCfg["n_tag_features"] as number ?? 18)),
+        max_sequence_length:    (lstmCfg["max_seq_len"]        as number) ?? 24,
+        tag_features_exp_b:     (lstmCfg["n_tag_features"]     as number) ?? 18,
+        trainable_params_exp_a: summary.model_configs.lstm.trainable_params_exp_a,
+        trainable_params_exp_b: summary.model_configs.lstm.trainable_params_exp_b,
+        architecture:           (lstmCfg["architecture"] as string) ?? "LSTM",
+      },
+      gru: {
+        cell_type:              "GRU",
+        hidden_size:            (gruCfg["lstm_units"]          as number) ?? 32,
+        dropout:                (gruCfg["dropout_rate"]        as number) ?? 0.2,
+        learning_rate:          (gruCfg["learning_rate"]       as number) ?? 0.001,
+        batch_size:             (gruCfg["batch_size"]          as number) ?? 16,
+        max_epochs:             (gruCfg["max_epochs"]          as number) ?? 200,
+        early_stop_patience:    (gruCfg["early_stop_patience"] as number) ?? 15,
+        optimizer:              "Adam",
+        input_features_exp_a:   (gruCfg["n_features"]         as number) ?? 10,
+        input_features_exp_b:   ((gruCfg["n_features"] as number ?? 10) + (gruCfg["n_tag_features"] as number ?? 18)),
+        max_sequence_length:    (gruCfg["max_seq_len"]         as number) ?? 24,
+        tag_features_exp_b:     (gruCfg["n_tag_features"]      as number) ?? 18,
+        trainable_params_exp_a: summary.model_configs.gru.trainable_params_exp_a,
+        trainable_params_exp_b: summary.model_configs.gru.trainable_params_exp_b,
+        architecture:           (gruCfg["architecture"] as string) ?? "GRU",
+      },
+    } : null,
     model_comparison: {
       primary_seed:            42,
       all_seeds:               [11, 22, 33, 42, 55],
@@ -377,12 +442,19 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
     validation: null,
     artifact_versions: {
       phase4_ui_summary: { schema_version: "local_disk_v1" },
-      sequence_manifest: mf ? { schema_version: mf.schema_version, created_at_utc: mf.created_at_utc } : null,
+      sequence_manifest: mf ? { schema_version: mf.schema_version, created_at_utc: mf.created_at_utc, phase3_source_sha: "" } : null,
+      vocabulary: vocabJson ? { schema_version: (vocabJson["schema_version"] as string) ?? "seq_v1" } : null,
+      scaler:     scalerJson ? { schema_version: (scalerJson["schema_version"] as string) ?? "seq_v1" } : null,
+      tag_manifest: tagJson ? {
+        schema_version:     (tagJson["schema_version"]    as string) ?? "tag_v1",
+        created_at_utc:     (tagJson["created_at_utc"]    as string) ?? "",
+        phase3_source_sha:  (tagJson["phase3_source_sha"] as string) ?? "",
+        m2_manifest_sha:    (tagJson["m2_manifest_sha"]   as string) ?? "",
+        artifact_checksums: (tagJson["artifact_checksums"] as Record<string, string>) ?? {},
+      } : null,
     },
     limitations: [
       "Local disk artifacts — only available when the mock pipeline has been run on this server",
-      "Event vocabulary and feature scaler not loaded (offline parquet artifacts)",
-      "TAG structure details not loaded in this fallback path",
       "Confirmatory analysis — unsupported: confirmatory_analysis_allowed=false",
       "Statistical significance testing — unsupported: proxy labels only",
     ],
