@@ -178,13 +178,20 @@ def patch_and_run(nb_name):
             .replace('Path("notebooks/data/features")', 'Path("data/features")')
             .replace('"notebooks/data/features"',       '"data/features"')
         )
-        # Pattern 6: NB10/NB11 ATTEMPT_CSV single-space pin override
-        # NB10 + NB11 use: ATTEMPT_CSV : str | None = None  (single space before colon)
+        # Pattern 6: NB10/NB11 single-space pin overrides
+        # NB10 + NB11 use single space: ATTEMPT_CSV : str | None = None
+        # NB10 also uses:               SESSION_CSV : str | None = None
         if ATTEMPT_FILE and 'ATTEMPT_CSV : str | None = None' in patched:
             _abs_att = str(ABS_RAW_DIR / ATTEMPT_FILE).replace("\\", "/")
             patched = patched.replace(
                 'ATTEMPT_CSV : str | None = None',
                 f'ATTEMPT_CSV : str | None = "{_abs_att}"'
+            )
+        if SESSION_FILE and 'SESSION_CSV : str | None = None' in patched:
+            _abs_ses = str(ABS_RAW_DIR / SESSION_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'SESSION_CSV : str | None = None',
+                f'SESSION_CSV : str | None = "{_abs_ses}"'
             )
         if patched != src:
             cell["source"] = [patched]
