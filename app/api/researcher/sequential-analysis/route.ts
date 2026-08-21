@@ -70,7 +70,7 @@ export function resolveArtifact(
   datasetCode: string,
 ): {
   availability: ArtifactAvailability;
-  source: "result_version" | "static_fallback" | null;
+  source: "result_version" | "static_fallback" | "local_disk" | null;
   isComparable: boolean;
   reason: string | null;
 } {
@@ -94,11 +94,16 @@ export function resolveArtifact(
         reason: null,
       };
     }
+    // Phase 5 M5.11 — non-pilot completed runs are marked "available" with source
+    // "local_disk" so the UI enables the Eye/Compare buttons.  The detail endpoint
+    // (handleDetailMode) does the actual disk I/O and returns 404 if no artifacts exist.
+    // This is intentionally optimistic: a completed run likely has local disk artifacts
+    // when the researcher has run the mock pipeline on this server.
     return {
-      availability: "unavailable",
-      source: null,
-      isComparable: false,
-      reason: "No artifact available for this completed run.",
+      availability: "available",
+      source: "local_disk",
+      isComparable: true,
+      reason: null,
     };
   }
 
