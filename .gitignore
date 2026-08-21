@@ -51,6 +51,12 @@ notebooks/data/**
 !notebooks/data/.gitkeep
 !notebooks/data/raw/
 !notebooks/data/raw/.gitkeep
+!notebooks/data/features/
+!notebooks/data/features/.gitkeep
+# Phase 5 E — commit manifest JSONs so researchers see results without running pipeline
+!notebooks/data/features/complexity_manifest_v1.json
+!notebooks/data/features/cluster_manifest_v1.json
+!notebooks/data/features/embeddings_manifest_v1.json
 notebooks/models/*.pkl
 notebooks/models/*.joblib
 

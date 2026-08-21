@@ -230,8 +230,10 @@ function buildStaticPayload() {
 
 async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
   const fsAsync = await import("node:fs/promises");
-  const NB_DIR  = path.join(process.cwd(), "notebooks");
-  const RPT_DIR = path.join(process.cwd(), "reports", "phase4");
+  const NB_DIR     = path.join(process.cwd(), "notebooks");
+  const RPT_DIR    = path.join(process.cwd(), "reports", "phase4");
+  // Phase 5 E: notebooks write charts to notebooks/reports/phase4/ when run via runner
+  const NB_RPT_DIR = path.join(NB_DIR, "reports", "phase4");
 
   // Require comparison CSV as minimum viable artifact
   const compPath = path.join(NB_DIR, "models", "sequence", "comparison", "model_comparison_v1.csv");
@@ -288,13 +290,19 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
     ]);
 
   // ── PNG charts as base64 data URLs ────────────────────────────────────────
+  // Checks RPT_DIR (project root reports/phase4/) first, then NB_RPT_DIR
+  // (notebooks/reports/phase4/) for Phase 5 E charts written by the runner.
   async function tryPng(relPath: string): Promise<string | null> {
-    try {
-      const buf = await fsAsync.readFile(path.join(RPT_DIR, relPath));
-      return `data:image/png;base64,${buf.toString("base64")}`;
-    } catch { return null; }
+    for (const dir of [RPT_DIR, NB_RPT_DIR]) {
+      try {
+        const buf = await fsAsync.readFile(path.join(dir, relPath));
+        return `data:image/png;base64,${buf.toString("base64")}`;
+      } catch { /* try next */ }
+    }
+    return null;
   }
-  const [seqLenPng, tagHeatPng, tagCohortPng, lstmCurvesPng, gruCurvesPng, compRocPng, compCmPng] =
+  const [seqLenPng, tagHeatPng, tagCohortPng, lstmCurvesPng, gruCurvesPng, compRocPng, compCmPng,
+         nb10Png, nb11Png, nb12Png] =
     await Promise.all([
       tryPng("seq_length_dist.png"),
       tryPng("tag_transition_heatmap.png"),
@@ -303,15 +311,22 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       tryPng(path.join("gru",        "gru_training_curves.png")),
       tryPng(path.join("comparison", "comparison_roc_curves.png")),
       tryPng(path.join("comparison", "comparison_confusion_matrices.png")),
+      // Phase 5 E — behavioral proxy feature charts (NB10–NB12)
+      tryPng("nb10_complexity_distributions.png"),
+      tryPng("nb11_error_clusters.png"),
+      tryPng("nb12_svd_variance.png"),
     ]);
   const charts = [
-    seqLenPng    && { key: "seq_length_dist",          title: "Sequence Length Distribution",          path: seqLenPng },
-    tagHeatPng   && { key: "tag_transition_heatmap",    title: "Block Transition Heatmap (TAG)",        path: tagHeatPng },
-    tagCohortPng && { key: "tag_cohort_graphs",         title: "Cohort TAG Graphs",                     path: tagCohortPng },
-    lstmCurvesPng && { key: "lstm_training_curves",     title: "LSTM Training Curves",                  path: lstmCurvesPng },
-    gruCurvesPng  && { key: "gru_training_curves",      title: "GRU Training Curves",                   path: gruCurvesPng },
-    compRocPng   && { key: "comparison_roc_curves",     title: "Model Comparison — ROC Curves",         path: compRocPng },
-    compCmPng    && { key: "comparison_confusion_matrices", title: "Model Comparison — Confusion Matrices", path: compCmPng },
+    seqLenPng    && { key: "seq_length_dist",              title: "Sequence Length Distribution",              path: seqLenPng },
+    tagHeatPng   && { key: "tag_transition_heatmap",        title: "Block Transition Heatmap (TAG)",            path: tagHeatPng },
+    tagCohortPng && { key: "tag_cohort_graphs",             title: "Cohort TAG Graphs",                         path: tagCohortPng },
+    lstmCurvesPng && { key: "lstm_training_curves",         title: "LSTM Training Curves",                      path: lstmCurvesPng },
+    gruCurvesPng  && { key: "gru_training_curves",          title: "GRU Training Curves",                       path: gruCurvesPng },
+    compRocPng   && { key: "comparison_roc_curves",         title: "Model Comparison — ROC Curves",             path: compRocPng },
+    compCmPng    && { key: "comparison_confusion_matrices", title: "Model Comparison — Confusion Matrices",     path: compCmPng },
+    nb10Png      && { key: "nb10_complexity_distributions", title: "NB10 — Attempt Complexity Distributions",  path: nb10Png },
+    nb11Png      && { key: "nb11_error_clusters",           title: "NB11 — Error Cluster Distribution",        path: nb11Png },
+    nb12Png      && { key: "nb12_svd_variance",             title: "NB12 — SVD Explained Variance",            path: nb12Png },
   ].filter(Boolean);
 
   // ── dataset_summary from sequence_manifest.dataset_stats ─────────────────

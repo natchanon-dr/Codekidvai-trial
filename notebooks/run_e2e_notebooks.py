@@ -1,4 +1,4 @@
-"""Run notebooks 02-09 for E2E mock validation.
+"""Run notebooks 02-12 for E2E mock validation.
 
 Usage:
   python run_e2e_notebooks.py                              # uses last CSV in data/raw/
@@ -18,6 +18,9 @@ Args:
   --skip-nb07       skip NB07 LSTM model
   --skip-nb08       skip NB08 GRU model
   --skip-nb09       skip NB09 model comparison
+  --skip-nb10       skip NB10 attempt complexity features (Phase 5 E)
+  --skip-nb11       skip NB11 error clustering (Phase 5 E)
+  --skip-nb12       skip NB12 solution embeddings (Phase 5 E)
 """
 import json, subprocess, os, sys, argparse
 from pathlib import Path
@@ -27,7 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description="Run NB02-09 for E2E validation.")
+parser = argparse.ArgumentParser(description="Run NB02-12 for E2E validation.")
 parser.add_argument("--session-file",    default=None, help="Session CSV filename in data/raw/")
 parser.add_argument("--attempt-file",    default=None, help="Attempt CSV filename in data/raw/")
 parser.add_argument("--event-file",      default=None, help="Block event CSV filename in data/raw/ (Phase 5 M5.4)")
@@ -40,6 +43,9 @@ parser.add_argument("--skip-nb06",       action="store_true", help="Skip NB06 TA
 parser.add_argument("--skip-nb07",       action="store_true", help="Skip NB07 LSTM model (Phase 5 M5.7)")
 parser.add_argument("--skip-nb08",       action="store_true", help="Skip NB08 GRU model (Phase 5 M5.7)")
 parser.add_argument("--skip-nb09",       action="store_true", help="Skip NB09 model comparison (Phase 5 M5.7)")
+parser.add_argument("--skip-nb10",       action="store_true", help="Skip NB10 attempt complexity features (Phase 5 E)")
+parser.add_argument("--skip-nb11",       action="store_true", help="Skip NB11 error clustering (Phase 5 E)")
+parser.add_argument("--skip-nb12",       action="store_true", help="Skip NB12 solution embeddings (Phase 5 E)")
 args = parser.parse_args()
 
 # ── Auto-detect latest CSV if not specified ───────────────────────────────────
@@ -167,6 +173,26 @@ def patch_and_run(nb_name):
             .replace('Path("notebooks/data/sequences")', 'Path("data/sequences")')
             .replace('"notebooks/data/sequences"',       '"data/sequences"')
         )
+        # Phase 5 E: fix data/features path if it contains notebooks/ prefix
+        patched = (patched
+            .replace('Path("notebooks/data/features")', 'Path("data/features")')
+            .replace('"notebooks/data/features"',       '"data/features"')
+        )
+        # Pattern 6: NB10/NB11 single-space pin overrides
+        # NB10 + NB11 use single space: ATTEMPT_CSV : str | None = None
+        # NB10 also uses:               SESSION_CSV : str | None = None
+        if ATTEMPT_FILE and 'ATTEMPT_CSV : str | None = None' in patched:
+            _abs_att = str(ABS_RAW_DIR / ATTEMPT_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'ATTEMPT_CSV : str | None = None',
+                f'ATTEMPT_CSV : str | None = "{_abs_att}"'
+            )
+        if SESSION_FILE and 'SESSION_CSV : str | None = None' in patched:
+            _abs_ses = str(ABS_RAW_DIR / SESSION_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'SESSION_CSV : str | None = None',
+                f'SESSION_CSV : str | None = "{_abs_ses}"'
+            )
         if patched != src:
             cell["source"] = [patched]
 
@@ -210,7 +236,10 @@ def patch_and_run(nb_name):
            "LSTM","lstm","GRU","gru","EXP","epoch","val_auc","early","seed","history",
            "train_auc","model","saved","manifest",
            # NB09 comparison
-           "comparison","dummy","Dummy","rank"]
+           "comparison","dummy","Dummy","rank",
+           # NB10–NB12 Phase 5 E
+           "complexity","cluster","embedding","silhouette","SVD","variance",
+           "sql_complexity","error_clusters","solution_embeddings","features","parquet"]
     for line in "\n".join(output_lines).split("\n"):
         s = line.strip()
         if s and any(k in s for k in KEY):
@@ -287,6 +316,45 @@ elif not Path(NB09).exists():
     print(f"\n[skip] {NB09} — notebook not found")
 else:
     results[NB09] = patch_and_run(NB09)
+
+# ── Phase 5 E: NB10 attempt complexity features ───────────────────────────────
+# Prereq: NB03 must have produced data/processed/ features.
+NB10     = "10_attempt_complexity_features.ipynb"
+_nb03_ok = results.get("03_feature_engineering.ipynb", False)
+if args.skip_nb10:
+    print(f"\n[skip] {NB10} — --skip-nb10 flag set")
+elif not _nb03_ok:
+    print(f"\n[skip] {NB10} — NB03 did not pass (processed features required)")
+elif not Path(NB10).exists():
+    print(f"\n[skip] {NB10} — notebook not found")
+else:
+    results[NB10] = patch_and_run(NB10)
+
+# ── Phase 5 E: NB11 error semantic clustering ─────────────────────────────────
+# Prereq: NB10 must have produced data/features/sql_complexity_v1.parquet.
+NB11     = "11_error_clustering.ipynb"
+_nb10_ok = results.get(NB10, False)
+if args.skip_nb11:
+    print(f"\n[skip] {NB11} — --skip-nb11 flag set")
+elif not _nb10_ok:
+    print(f"\n[skip] {NB11} — NB10 did not pass (complexity features required)")
+elif not Path(NB11).exists():
+    print(f"\n[skip] {NB11} — notebook not found")
+else:
+    results[NB11] = patch_and_run(NB11)
+
+# ── Phase 5 E: NB12 solution progression embeddings ──────────────────────────
+# Prereq: NB10 complexity parquet (required); NB11 cluster parquet (optional — merged if present).
+NB12     = "12_solution_embeddings.ipynb"
+_nb11_ok = results.get(NB11, False)
+if args.skip_nb12:
+    print(f"\n[skip] {NB12} — --skip-nb12 flag set")
+elif not _nb10_ok:
+    print(f"\n[skip] {NB12} — NB10 did not pass (complexity features required)")
+elif not Path(NB12).exists():
+    print(f"\n[skip] {NB12} — notebook not found")
+else:
+    results[NB12] = patch_and_run(NB12)
 
 print("\n── Notebook Run Summary ──")
 for nb, ok in results.items():

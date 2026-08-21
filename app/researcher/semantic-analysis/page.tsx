@@ -6,102 +6,121 @@ import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 
 // ---------------------------------------------------------------------------
-// Static content — Semantic Analysis research design
-// Actual NLP/embedding notebooks are Phase 5 E scope.
+// Types
 // ---------------------------------------------------------------------------
 
-const ANALYSIS_LAYERS = [
-  {
-    id: "code_quality",
-    label: "SQL / Block Code Quality",
-    color: "bg-violet-100 text-violet-700 border-violet-200",
-    dot: "bg-violet-500",
-    description:
-      "Automated static analysis of learner-submitted SQL queries and block programs for correctness, efficiency, and idiom adherence.",
-    signals: [
-      { name: "query_complexity_score",   desc: "Estimated number of clauses, joins, and sub-queries" },
-      { name: "select_star_usage",        desc: "Whether SELECT * is used instead of explicit columns" },
-      { name: "alias_consistency",        desc: "Consistent table alias usage across query" },
-      { name: "where_clause_present",     desc: "Boolean — does query filter results appropriately" },
-      { name: "block_nesting_depth",      desc: "Max nesting depth of block program structure" },
-    ],
-    status: "phase5e",
-  },
-  {
-    id: "error_semantics",
-    label: "Error Message Semantics",
-    color: "bg-rose-100 text-rose-700 border-rose-200",
-    dot: "bg-rose-500",
-    description:
-      "Semantic clustering of error messages encountered by learners to identify systematic misconceptions.",
-    signals: [
-      { name: "error_cluster_id",         desc: "DBSCAN cluster label for this error type" },
-      { name: "error_semantic_similarity", desc: "Cosine similarity to canonical error prototype" },
-      { name: "misconception_tag",        desc: "Human-interpretable label: syntax / logic / schema / join" },
-      { name: "error_novelty_score",      desc: "How far this error is from previously seen errors (IQR)" },
-    ],
-    status: "phase5e",
-  },
-  {
-    id: "solution_embedding",
-    label: "Solution Embedding Space",
-    color: "bg-sky-100 text-sky-700 border-sky-200",
-    dot: "bg-sky-500",
-    description:
-      "Dense vector representations of learner solutions using a code-aware encoder, enabling similarity search and progression tracking.",
-    signals: [
-      { name: "solution_embedding_384d",  desc: "384-dim vector (code-optimised Sentence-BERT)" },
-      { name: "cosine_sim_to_reference",  desc: "Similarity to teacher reference solution" },
-      { name: "solution_cluster",         desc: "K-means cluster label (k=5 per task)" },
-      { name: "drift_from_prev_attempt",  desc: "Cosine distance between consecutive attempts" },
-    ],
-    status: "phase5e",
-  },
-  {
-    id: "progression",
-    label: "Semantic Progression",
-    color: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    dot: "bg-emerald-500",
-    description:
-      "Tracking how learner solution semantics evolve over a session — moving toward or away from correct answers.",
-    signals: [
-      { name: "trajectory_slope",         desc: "Linear regression slope of similarity over attempts" },
-      { name: "plateau_detected",         desc: "Boolean — learner stuck in local minimum ≥ 3 attempts" },
-      { name: "breakthrough_attempt",     desc: "Attempt index at which similarity crossed 0.8 threshold" },
-      { name: "final_semantic_quality",   desc: "Cosine similarity of last attempt to reference" },
-    ],
-    status: "phase5e",
-  },
-] as const;
+interface NotebooksReady { nb10: boolean; nb11: boolean; nb12: boolean }
 
-const NLP_STACK = [
-  { tool: "sentence-transformers",   role: "Code-aware embeddings (microsoft/codebert-base)" },
-  { tool: "scikit-learn DBSCAN",     role: "Error message semantic clustering" },
-  { tool: "sqlparse",                role: "SQL AST parsing for complexity features" },
-  { tool: "numpy cosine_similarity", role: "Pairwise solution similarity computation" },
-  { tool: "umap-learn",              role: "2-D projection for visualisation (research only)" },
-] as const;
+interface ComplexityStats {
+  total_rows: number;
+  unique_learners: number;
+  unique_tasks: number;
+  complexity_score_mean: number;
+  complexity_score_min: number;
+  complexity_score_max: number;
+  avg_attempt_count: number;
+  has_error_pct: number;
+  missing_session_rows?: number;
+}
 
-const PHASE_PLAN = [
-  { phase: "Phase 5 E-1", task: "Select and freeze embedding model (CodeBERT vs MiniLM)" },
-  { phase: "Phase 5 E-2", task: "NB10: SQL/block complexity features notebook" },
-  { phase: "Phase 5 E-3", task: "NB11: Error semantic clustering notebook" },
-  { phase: "Phase 5 E-4", task: "NB12: Solution embedding + progression notebook" },
-  { phase: "Phase 5 E-5", task: "API endpoint + researcher visualisation page (live data)" },
-] as const;
+interface ClusterStats {
+  total_attempt_rows: number;
+  error_rows: number;
+  n_clusters_actual: number;
+  silhouette_score: number | null;
+  top_terms_per_cluster: Record<string, string[]>;
+  summary_rows: number;
+}
+
+interface EmbeddingStats {
+  n_learner_task_rows: number;
+  n_features_input: number;
+  n_components_actual: number;
+  cumulative_var_pct: number;
+  top3_var_pct: number[];
+  within_task_similarity: Record<string, number>;
+}
+
+interface SemanticPayload {
+  status: "ready" | "partial" | "unavailable";
+  notebooks_ready: NotebooksReady;
+  complexity: { schema_version: string; dataset_stats: ComplexityStats; created_at_utc: string; parameters: Record<string, unknown> } | null;
+  clustering: { schema_version: string; dataset_stats: ClusterStats;   created_at_utc: string; parameters: Record<string, unknown> } | null;
+  embeddings: { schema_version: string; dataset_stats: EmbeddingStats; created_at_utc: string; parameters: Record<string, unknown> } | null;
+  generated_at: string | null;
+  label_validity_note: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function fmt2(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toFixed(2);
+}
+function fmtPct(n: number | null | undefined) {
+  if (n == null) return "—";
+  return `${n.toFixed(1)} %`;
+}
+function fmtInt(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString();
+}
+
+function NbBadge({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+        ready
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : "bg-slate-50 text-slate-400 border-slate-200"
+      }`}
+    >
+      <span aria-hidden="true">{ready ? "✓" : "○"}</span> {label}
+    </span>
+  );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="bg-[#FFF7ED] rounded-xl border border-[#FED7AA] px-4 py-3 space-y-0.5">
+      <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide font-semibold">{label}</p>
+      <p className="text-xl font-bold text-[#0F172A]">{value}</p>
+      {sub && <p className="text-[11px] text-[#64748B]">{sub}</p>}
+    </div>
+  );
+}
+
+function ScoreBar({ value, max = 100 }: { value: number; max?: number }) {
+  const pct = Math.min((value / max) * 100, 100);
+  const color =
+    pct >= 65 ? "bg-emerald-500" :
+    pct >= 45 ? "bg-amber-400" : "bg-rose-400";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
+        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[11px] font-mono text-[#64748B] w-12 text-right">{value.toFixed(1)}</span>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function SemanticAnalysisPage() {
-  const router = useRouter();
-  const profileRef = useRef<HTMLDivElement>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  const router          = useRouter();
+  const profileRef      = useRef<HTMLDivElement>(null);
+  const [profileOpen, setProfileOpen]   = useState(false);
+  const [displayName, setDisplayName]   = useState<string | null>(null);
+  const [email, setEmail]               = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading]   = useState(true);
+  const [data, setData]                 = useState<SemanticPayload | null>(null);
+  const [dataError, setDataError]       = useState<string | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -123,7 +142,16 @@ export default function SemanticAnalysisPage() {
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
-      setLoading(false);
+      setAuthLoading(false);
+
+      // Fetch semantic analysis data
+      const res = await fetch("/api/researcher/semantic-analysis");
+      if (res.ok) {
+        const json = await res.json() as SemanticPayload;
+        setData(json);
+      } else {
+        setDataError("Could not load semantic analysis data.");
+      }
     }
     init();
   }, [router]);
@@ -142,13 +170,18 @@ export default function SemanticAnalysisPage() {
     router.push("/auth/login");
   }
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">
         Loading…
       </div>
     );
   }
+
+  const nb = data?.notebooks_ready ?? { nb10: false, nb11: false, nb12: false };
+  const isReady    = data?.status === "ready";
+  const isPartial  = data?.status === "partial";
+  const readyCount = [nb.nb10, nb.nb11, nb.nb12].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
@@ -199,108 +232,246 @@ export default function SemanticAnalysisPage() {
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
         <ResearcherBreadcrumb current="Semantic Analysis" />
 
-        {/* Title */}
+        {/* Title + status badges */}
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex-1 min-w-0 space-y-1">
             <h1 className="text-2xl font-bold text-[#0F172A]">Semantic Analysis</h1>
             <p className="text-sm text-[#64748B]">
-              NLP-based analysis of learner solutions, error messages, and code semantics.
-              Analysis layers and NLP stack defined for Phase 5 E implementation.
+              Behavioral proxy features (NB10–NB12): attempt complexity, error clustering,
+              and solution embeddings derived from attempt metadata.
             </p>
           </div>
-          <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-500 border-slate-200">
-            Phase 5 E — Not yet implemented
-          </span>
+          <div className="shrink-0 flex flex-wrap gap-1.5 items-center">
+            <NbBadge label="NB10 Complexity"  ready={nb.nb10} />
+            <NbBadge label="NB11 Clustering"  ready={nb.nb11} />
+            <NbBadge label="NB12 Embeddings"  ready={nb.nb12} />
+          </div>
         </div>
 
-        {/* Phase 5 E notice */}
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 space-y-2">
-          <p className="text-sm font-bold text-amber-700 flex items-center gap-2">
-            <span aria-hidden="true">⚠</span> Pending Phase 5 E — Semantic Notebooks (NB10–NB12)
-          </p>
-          <p className="text-xs text-amber-600 leading-relaxed">
-            Semantic analysis requires NLP embedding notebooks that are not yet built.
-            This page documents the planned analysis layers, signal taxonomy, and NLP stack
-            to be implemented in Phase 5 E. Live data will appear here once NB10–NB12 are complete.
-          </p>
+        {/* Status banner */}
+        {dataError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+            ⚠ {dataError}
+          </div>
+        ) : !isReady && !isPartial ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 space-y-2">
+            <p className="text-sm font-bold text-amber-700 flex items-center gap-2">
+              <span aria-hidden="true">⚠</span> Awaiting Phase 5 E notebook runs (NB10–NB12)
+            </p>
+            <p className="text-xs text-amber-600 leading-relaxed">
+              Run the E2E pipeline to generate semantic feature artifacts:{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded">
+                python run_e2e_notebooks.py
+              </code>
+            </p>
+          </div>
+        ) : isPartial ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-4 text-sm text-sky-700">
+            <span className="font-bold">Partial data</span> — {readyCount}/3 notebooks have artifacts.
+            Run the full E2E pipeline to complete all three.
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-700 flex items-center gap-2">
+            <span aria-hidden="true">✓</span>
+            <span>All 3 notebooks have artifacts.
+              {data?.generated_at && (
+                <> Generated {new Date(data.generated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.</>
+              )}
+            </span>
+          </div>
+        )}
+
+        {/* Research constraint */}
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-3 flex flex-wrap gap-3 items-center text-xs text-[#64748B]">
+          <span className="font-semibold text-[#0F172A]">Research Constraints:</span>
+          <span className="font-mono bg-slate-100 px-1.5 rounded">label_validity=pilot_only</span>
+          <span className="font-mono bg-slate-100 px-1.5 rounded">proxy_behavioral=true</span>
+          <span className="font-mono bg-slate-100 px-1.5 rounded">sklearn/scipy only</span>
+          <span className="font-mono bg-slate-100 px-1.5 rounded">no_sql_text</span>
         </div>
 
-        {/* Analysis layers */}
-        <div className="space-y-4">
-          <h2 className="text-sm font-bold text-[#0F172A] uppercase tracking-wide">
-            Planned Analysis Layers
-          </h2>
+        {/* ── NB10: Complexity Features ─────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb10 ? "bg-emerald-500" : "bg-slate-300"}`} />
+            <span className="text-sm font-bold text-[#0F172A]">NB10 — Attempt Complexity Features</span>
+            {nb.nb10 && data?.complexity && (
+              <span className="ml-auto text-[10px] font-mono text-slate-400">
+                {data.complexity.schema_version}
+              </span>
+            )}
+          </div>
 
-          {ANALYSIS_LAYERS.map((layer) => (
-            <section
-              key={layer.id}
-              className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden opacity-80"
-            >
-              <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${layer.dot}`} />
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${layer.color}`}>
-                  {layer.label}
-                </span>
-                <span className="ml-auto text-[10px] font-bold text-slate-400 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded-full">
-                  Phase 5 E
-                </span>
-              </div>
-
-              <div className="px-6 py-4 space-y-3">
-                <p className="text-sm text-[#475569]">{layer.description}</p>
-                <div className="divide-y divide-[#F8FAFC]">
-                  {layer.signals.map((s) => (
-                    <div key={s.name} className="flex items-start gap-3 py-1.5">
-                      <span className="font-mono text-[11px] text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-1.5 py-0.5 rounded shrink-0 mt-0.5 whitespace-nowrap">
-                        {s.name}
-                      </span>
-                      <span className="text-xs text-[#64748B]">{s.desc}</span>
-                    </div>
-                  ))}
+          <div className="px-6 py-5 space-y-4">
+            {nb.nb10 && data?.complexity ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatCard label="Learner×Task rows"   value={fmtInt(data.complexity.dataset_stats.total_rows)} />
+                  <StatCard label="Unique learners"      value={fmtInt(data.complexity.dataset_stats.unique_learners)} />
+                  <StatCard label="Unique tasks"         value={fmtInt(data.complexity.dataset_stats.unique_tasks)} />
+                  <StatCard label="Has-error rate"       value={fmtPct(data.complexity.dataset_stats.has_error_pct)} />
                 </div>
-              </div>
-            </section>
-          ))}
-        </div>
 
-        {/* NLP stack */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-3">
-          <h2 className="text-sm font-bold text-[#0F172A]">Planned NLP Stack</h2>
-          <div className="divide-y divide-[#F1F5F9]">
-            {NLP_STACK.map((item) => (
-              <div key={item.tool} className="flex items-start gap-4 py-2.5">
-                <span className="font-mono text-[11px] text-[#0F172A] bg-[#F1F5F9] px-2 py-0.5 rounded shrink-0 whitespace-nowrap">
-                  {item.tool}
-                </span>
-                <span className="text-xs text-[#475569]">{item.role}</span>
-              </div>
-            ))}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-[#64748B]">Complexity Score (0–100)</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { label: "Mean", v: data.complexity.dataset_stats.complexity_score_mean },
+                      { label: "Min",  v: data.complexity.dataset_stats.complexity_score_min },
+                      { label: "Max",  v: data.complexity.dataset_stats.complexity_score_max },
+                    ].map(({ label, v }) => (
+                      <div key={label} className="grid grid-cols-[5rem_1fr] items-center gap-3">
+                        <span className="text-xs text-[#64748B]">{label}</span>
+                        <ScoreBar value={v} max={100} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-xs text-[#94A3B8]">
+                  Avg attempt count: <strong>{fmt2(data.complexity.dataset_stats.avg_attempt_count)}</strong>
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                Awaiting NB10 run — no <code>sql_complexity_v1.parquet</code> found.
+              </p>
+            )}
           </div>
         </section>
 
-        {/* Implementation plan */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-3">
-          <h2 className="text-sm font-bold text-[#0F172A]">Phase 5 E Implementation Plan</h2>
-          <div className="space-y-2">
-            {PHASE_PLAN.map((item, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-slate-200 text-[10px] font-bold text-slate-400 shrink-0 mt-0.5">
-                  {i + 1}
-                </span>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-2">
-                    {item.phase}
-                  </span>
-                  <span className="text-sm text-[#475569]">{item.task}</span>
+        {/* ── NB11: Error Clustering ────────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb11 ? "bg-rose-500" : "bg-slate-300"}`} />
+            <span className="text-sm font-bold text-[#0F172A]">NB11 — Error Semantic Clustering</span>
+            {nb.nb11 && data?.clustering && (
+              <span className="ml-auto text-[10px] font-mono text-slate-400">
+                {data.clustering.schema_version}
+              </span>
+            )}
+          </div>
+
+          <div className="px-6 py-5 space-y-4">
+            {nb.nb11 && data?.clustering ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatCard label="Total attempts"  value={fmtInt(data.clustering.dataset_stats.total_attempt_rows)} />
+                  <StatCard label="Error rows"      value={fmtInt(data.clustering.dataset_stats.error_rows)} />
+                  <StatCard label="Clusters (k)"    value={String(data.clustering.dataset_stats.n_clusters_actual ?? "—")} />
+                  <StatCard
+                    label="Silhouette score"
+                    value={
+                      data.clustering.dataset_stats.silhouette_score != null
+                        ? fmt2(data.clustering.dataset_stats.silhouette_score as number)
+                        : "—"
+                    }
+                  />
                 </div>
-              </div>
-            ))}
+
+                {/* Top terms per cluster */}
+                {data.clustering.dataset_stats.top_terms_per_cluster &&
+                  Object.keys(data.clustering.dataset_stats.top_terms_per_cluster).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-[#64748B]">Top terms per cluster</p>
+                    <div className="divide-y divide-[#F8FAFC]">
+                      {Object.entries(
+                        data.clustering.dataset_stats.top_terms_per_cluster as Record<string, string[]>
+                      ).map(([cid, terms]) => (
+                        <div key={cid} className="flex items-start gap-3 py-1.5">
+                          <span className="font-mono text-[10px] bg-rose-50 border border-rose-200 text-rose-700 px-1.5 py-0.5 rounded shrink-0">
+                            C{cid}
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {terms.map((t) => (
+                              <span key={t} className="font-mono text-[10px] bg-[#F1F5F9] px-1.5 rounded text-[#475569]">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                Awaiting NB11 run — no <code>error_clusters_v1.parquet</code> found.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* ── NB12: Solution Embeddings ─────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb12 ? "bg-sky-500" : "bg-slate-300"}`} />
+            <span className="text-sm font-bold text-[#0F172A]">NB12 — Solution Progression Embeddings</span>
+            {nb.nb12 && data?.embeddings && (
+              <span className="ml-auto text-[10px] font-mono text-slate-400">
+                {data.embeddings.schema_version}
+              </span>
+            )}
+          </div>
+
+          <div className="px-6 py-5 space-y-4">
+            {nb.nb12 && data?.embeddings ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatCard label="Learner×Task rows"    value={fmtInt(data.embeddings.dataset_stats.n_learner_task_rows)} />
+                  <StatCard label="Input features"       value={fmtInt(data.embeddings.dataset_stats.n_features_input)} />
+                  <StatCard label="SVD components"       value={String(data.embeddings.dataset_stats.n_components_actual)} />
+                  <StatCard
+                    label="Cumulative variance"
+                    value={fmtPct(data.embeddings.dataset_stats.cumulative_var_pct)}
+                    sub="TruncatedSVD(32)"
+                  />
+                </div>
+
+                {/* Top-3 component variance */}
+                {Array.isArray(data.embeddings.dataset_stats.top3_var_pct) && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-[#64748B]">Top-3 component variance (%)</p>
+                    {(data.embeddings.dataset_stats.top3_var_pct as number[]).map((v, i) => (
+                      <div key={i} className="grid grid-cols-[5rem_1fr] items-center gap-3">
+                        <span className="text-xs text-[#64748B]">Component {i + 1}</span>
+                        <ScoreBar value={v} max={100} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Within-task similarity */}
+                {data.embeddings.dataset_stats.within_task_similarity &&
+                  Object.keys(data.embeddings.dataset_stats.within_task_similarity).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-[#64748B]">Within-task cosine similarity</p>
+                    <div className="divide-y divide-[#F8FAFC]">
+                      {Object.entries(
+                        data.embeddings.dataset_stats.within_task_similarity as Record<string, number>
+                      ).map(([taskId, sim]) => (
+                        <div key={taskId} className="grid grid-cols-[8rem_1fr] items-center gap-3 py-1">
+                          <span className="text-xs font-mono text-[#64748B]">Task {taskId}</span>
+                          <ScoreBar value={sim * 100} max={100} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                Awaiting NB12 run — no <code>solution_embeddings_v1.npz</code> found.
+              </p>
+            )}
           </div>
         </section>
 
         {/* Footer */}
         <p className="text-center text-[11px] text-[#94A3B8] pb-4">
-          Read-only · Semantic analysis design v1.0 · Live data pending Phase 5 E (NB10–NB12)
+          Read-only · Semantic analysis v1.0 · Behavioral proxies only (no SQL text) ·{" "}
+          {data?.label_validity_note ?? "label_validity=pilot_only"}
         </p>
       </main>
     </div>

@@ -1,0 +1,47 @@
+{
+  "schema_version": "cluster_v1",
+  "created_at_utc": "2026-08-21T09:26:40.493085+00:00",
+  "input_files": {
+    "attempt_csv": "C:\\CKV-Project\\Codekidvai-trial\\notebooks\\data\\raw\\attempt_20260727_MAQT0001.csv",
+    "attempt_sha": "c8e8f0aa84a9bd5d"
+  },
+  "parameters": {
+    "n_clusters": 5,
+    "random_state": 42,
+    "error_column": "error_type",
+    "tfidf_max_features": 200
+  },
+  "dataset_stats": {
+    "total_attempt_rows": 1000,
+    "error_rows": 720,
+    "n_clusters_actual": 5,
+    "silhouette_score": 1.0,
+    "top_terms_per_cluster": {
+      "0": [
+        "answer_mismatch",
+        "rubric_not_met"
+      ],
+      "1": [
+        "rubric_not_met",
+        "answer_mismatch"
+      ],
+      "2": [
+        "answer_mismatch",
+        "rubric_not_met"
+      ],
+      "3": [
+        "answer_mismatch",
+        "rubric_not_met"
+      ],
+      "4": [
+        "answer_mismatch",
+        "rubric_not_met"
+      ]
+    },
+    "summary_rows": 85
+  },
+  "data_warning": "PILOT ONLY \u2014 proxy_behavioral labels, label_validity=pilot_only.",
+  "artifacts": {
+    "error_clusters": "data\\features\\error_clusters_v1.parquet"
+  }
+}
