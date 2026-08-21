@@ -41,6 +41,7 @@ function buildOutcomeRow(
   submissionId: string,
   submittedAt: string | null,
   rubricRows: RubricScoreRow[],
+  reviewStatus?: string,
 ): Record<string, unknown> {
   const byKey = new Map(rubricRows.map((r) => [r.criterion_key, r]));
   const criteriaCount = CANONICAL_KEYS.filter((k) => byKey.has(k)).length;
@@ -67,8 +68,13 @@ function buildOutcomeRow(
   const atRisk  = total2c3l !== null ? (total2c3l < 65 ? 1 : 0) : null;
   const grade   = total2c3l !== null ? deriveGrade(total2c3l) : null;
 
+  const isTeacherReviewed = reviewStatus === "completed";
   const labelSource   = criteriaCount === 0 ? "no_rubric" : "auto_generated";
-  const labelValidity = criteriaCount === 0 ? "invalid"   : "pilot_only";
+  const labelValidity = criteriaCount === 0
+    ? "invalid"
+    : isTeacherReviewed
+    ? "teacher_reviewed"
+    : "pilot_only";
 
   return {
     participant_code: participantCode,
@@ -87,7 +93,7 @@ function buildOutcomeRow(
     at_risk:            atRisk,
     label_source:       labelSource,
     label_validity:     labelValidity,
-    is_teacher_reviewed: false,
+    is_teacher_reviewed: isTeacherReviewed,
     criteria_count:     criteriaCount,
   };
 }
@@ -121,7 +127,7 @@ async function exportOutcome(
   // 2. Fetch submissions
   let subQ = supabaseAdmin
     .from("trn_submissions")
-    .select("submission_id, profile_id, task_id, batch_id, submitted_at");
+    .select("submission_id, profile_id, task_id, batch_id, submitted_at, review_status");
   if (batchIds.length > 0) subQ = subQ.in("batch_id", batchIds);
   const { data: subs, error: subErr } = await subQ;
   if (subErr) throw new Error(subErr.message);
@@ -131,6 +137,7 @@ async function exportOutcome(
     task_id: string;
     batch_id: string;
     submitted_at: string | null;
+    review_status: string | null;
   }[];
   if (submissions.length === 0) return [];
 
@@ -218,6 +225,7 @@ async function exportOutcome(
       s.submission_id,
       s.submitted_at,
       rubricBySubmission.get(s.submission_id) ?? [],
+      s.review_status ?? undefined,
     ),
   );
 }
