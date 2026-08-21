@@ -98,8 +98,7 @@ const NAV_ITEMS: NavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z" />
       </svg>
     ),
-    available: false,
-    disabledLabel: "Coming Soon",
+    available: true,
   },
   // 7
   {
@@ -112,8 +111,7 @@ const NAV_ITEMS: NavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
       </svg>
     ),
-    available: false,
-    disabledLabel: "Coming Soon",
+    available: true,
   },
   // 8
   {
