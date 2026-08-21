@@ -1,7 +1,7 @@
 model,feature_set,accuracy,precision,recall,f1,roc_auc,pr_auc,train_time_s,inf_time_s,parameters,n_classes_in_test,roc_auc_note,label_source,label_validity
-Dummy,most_frequent_strategy,0.5,0.0,0.0,0.0,0.5,0.5,0.0002,1.391e-05,,2,computed,proxy_behavioral,pilot_only
-Logistic Regression,flat_behavioral,1.0,1.0,1.0,1.0,1.0,1.0,0.0022,5.6e-06,18.0,2,computed,proxy_behavioral,pilot_only
-Random Forest,flat_behavioral,1.0,1.0,1.0,1.0,1.0,1.0,0.0573,0.00020518,2.0,2,computed,proxy_behavioral,pilot_only
-TAG-based Logistic Regression,tag_graph_features,1.0,1.0,1.0,1.0,1.0,1.0,0.0024,5.45e-06,22.0,2,computed,proxy_behavioral,pilot_only
-LSTM,sequence_tensors,1.0,1.0,1.0,1.0,1.0,1.0,2.8237,2.8e-05,5665.0,2,computed,proxy_behavioral,pilot_only
-GRU,sequence_tensors,1.0,1.0,1.0,1.0,1.0,1.0,2.7551,2.6e-05,4257.0,2,computed,proxy_behavioral,pilot_only
+Dummy,most_frequent_strategy,0.5470085470085471,0.5470085470085471,1.0,0.7071823204419889,0.5,0.5470085470085471,0.0003,1.79e-06,,2,computed,proxy_behavioral,pilot_only
+Logistic Regression,flat_behavioral,0.6239316239316239,0.7631578947368421,0.453125,0.5686274509803921,0.6164504716981132,0.7190742939809069,0.0062,3.29e-06,18.0,2,computed,proxy_behavioral,pilot_only
+Random Forest,flat_behavioral,0.6068376068376068,0.640625,0.640625,0.640625,0.6674528301886792,0.7504013030605132,0.1065,4.636e-05,2.0,2,computed,proxy_behavioral,pilot_only
+TAG-based Logistic Regression,tag_graph_features,0.6068376068376068,0.75,0.421875,0.54,0.6413620283018868,0.7110828970449407,0.0093,1.84e-06,22.0,2,computed,proxy_behavioral,pilot_only
+LSTM,sequence_tensors,0.6153846153846154,0.8064516129032258,0.390625,0.5263157894736842,0.6379716981132075,0.7368952191377316,5.7077,2.4e-05,5665.0,2,computed,proxy_behavioral,pilot_only
+GRU,sequence_tensors,0.6153846153846154,0.7878787878787878,0.40625,0.5360824742268041,0.6468160377358491,0.7375776169457122,8.1831,2.2e-05,4257.0,2,computed,proxy_behavioral,pilot_only

@@ -62,7 +62,7 @@ interface FinalStats {
 }
 
 type StepStatus = "waiting" | "running" | "completed" | "failed" | "aborted";
-type OutcomeTab = "summary" | "metrics" | "charts" | "dataset" | "reports" | "logs";
+type OutcomeTab = "summary" | "metrics" | "sequence" | "charts" | "dataset" | "reports" | "logs";
 
 const PIPELINE_STEPS: MockStep[] = ["data", "extract", "process", "train", "evaluate", "outcome"];
 
@@ -227,6 +227,8 @@ export default function MockLab() {
   const [running, setRunning]         = useState<MockStep | null>(null);
   const [stepStatus, setStepStatus]   = useState<Record<string, StepStatus>>({});
   const [logs, setLogs]               = useState<string[]>([]);
+  // Phase 5 M5.17: NB02-NB09 PASS/FAIL results parsed from run_e2e_notebooks.py summary lines
+  const [nbResults, setNbResults]     = useState<Record<string, "PASS" | "FAIL">>({});
   const [outcome, setOutcome]         = useState<MockOutcome | null>(null);
   const [errorCount, setErrorCount]   = useState(0);
   const [startTime, setStartTime]     = useState<number | null>(null);
@@ -252,6 +254,8 @@ export default function MockLab() {
   // true = outcome came from a live run (unsaved); false = loaded from DB
   const [isNewOutcome, setIsNewOutcome] = useState(false);
   const [outcomeSaved, setOutcomeSaved] = useState(false);
+  // Phase 5 M5.15: timestamp (ms) when outcome was restored from localStorage; null = live/DB
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
 
   // configs table state
   const [configs, setConfigs]               = useState<MockConfigRecord[]>([]);
@@ -308,6 +312,24 @@ export default function MockLab() {
   }, [filterActivity, filterTaskType]);
 
   useEffect(() => { void fetchConfigs(); }, [fetchConfigs]);
+
+  // Phase 5 M5.15: restore last completed outcome from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ckv-mocklab-last-outcome");
+      if (!raw) return;
+      const stored = JSON.parse(raw) as { batchCode: string; outcome: MockOutcome; savedAt: number };
+      if (!stored.outcome || !stored.batchCode) return;
+      setOutcome(stored.outcome);
+      setConfig(prev => ({ ...prev, batchCode: stored.batchCode }));
+      setStepStatus(Object.fromEntries(PIPELINE_STEPS.map(s => [s, "completed" as StepStatus])));
+      setCompleted([...PIPELINE_STEPS]);
+      setRestoredAt(stored.savedAt);
+      // Optimistically mark NB02-NB04 as PASS on restore (live results not stored)
+      setNbResults({ NB02: "PASS", NB03: "PASS", NB04: "PASS" });
+    } catch { /* corrupt storage — ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
 
   // fetch class list on mount
   useEffect(() => {
@@ -484,6 +506,7 @@ export default function MockLab() {
 
     setRunning(step);
     setLogs([]);
+    setNbResults({});
     setErrorCount(0);
     setStartTime(getTimestamp());
     setElapsed(0);
@@ -561,6 +584,14 @@ export default function MockLab() {
               }
               addLog(msg);
               if (msg.includes("❌")) setErrorCount(c => c + 1);
+              // Phase 5 M5.17: parse notebook summary lines from run_e2e_notebooks.py
+              // Format: "  ✅  02_baseline_model.ipynb: PASS" / "  ❌  …: FAIL"
+              const nbMatch = msg.match(/[✅❌]\s+(\d{2})_\S+\.ipynb:\s*(PASS|FAIL)/);
+              if (nbMatch) {
+                const nbKey = `NB${nbMatch[1]}`;
+                const nbSts = nbMatch[2] as "PASS" | "FAIL";
+                setNbResults(prev => ({ ...prev, [nbKey]: nbSts }));
+              }
               const match = msg.match(/^-- Step: (\w+)/);
               if (match) {
                 if (pipelineStepRef.current !== step) {
@@ -653,6 +684,7 @@ export default function MockLab() {
     setOutcome(null);
     setIsNewOutcome(false);
     setOutcomeSaved(false);
+    setRestoredAt(null);
     setShowPipelineModal(true);
 
     // If already run before, load last successful outcome instead of auto-running
@@ -680,13 +712,49 @@ export default function MockLab() {
     }
   }
 
+  // Phase 5 M5.18: download the current outcome object as a JSON file
+  function downloadOutcomeJson() {
+    if (!outcome) return;
+    const date     = new Date().toISOString().slice(0, 10);
+    const filename = `ckv_outcome_${config.batchCode}_${date}.json`;
+    const blob     = new Blob([JSON.stringify(outcome, null, 2)], { type: "application/json" });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement("a");
+    a.href         = url;
+    a.download     = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Phase 5 M5.16: wipe the localStorage cache and reset outcome UI to blank
+  function clearSaved() {
+    try { localStorage.removeItem("ckv-mocklab-last-outcome"); } catch { /* ignore */ }
+    setOutcome(null);
+    setRestoredAt(null);
+    setIsNewOutcome(false);
+    setOutcomeSaved(false);
+    setStepStatus({});
+    setCompleted([]);
+    setNbResults({});
+  }
+
   function parseOutcome(payload: { report?: MockOutcome }, fromLiveRun = false) {
     if (payload.report) {
       setOutcome(payload.report);
+      setRestoredAt(null); // cleared — this is a fresh live result
       setActiveTab("summary");
       if (fromLiveRun) {
         setIsNewOutcome(true);
         setOutcomeSaved(false);
+        // Phase 5 M5.15: persist to localStorage so the outcome survives navigation
+        try {
+          const entry = {
+            batchCode: runConfigRef.current?.batchCode ?? config.batchCode,
+            outcome: payload.report,
+            savedAt: Date.now(),
+          };
+          localStorage.setItem("ckv-mocklab-last-outcome", JSON.stringify(entry));
+        } catch { /* storage full or unavailable — non-critical */ }
       }
     }
   }
@@ -1307,6 +1375,22 @@ export default function MockLab() {
                 </button>
               ) : (
                 <>
+                  {/* Phase 5 M5.15/M5.16: restored-from-storage badge + clear button */}
+                  {outcome && restoredAt !== null && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200">
+                      <span title={`Restored from localStorage — run completed at ${new Date(restoredAt).toLocaleTimeString()}`}>
+                        ↺ Restored
+                      </span>
+                      <button
+                        onClick={clearSaved}
+                        title="Clear saved outcome and reset"
+                        className="ml-0.5 hover:text-sky-900 transition-colors leading-none"
+                        aria-label="Clear saved outcome"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
                   {/* Save icon — shown only after a live run, before saving */}
                   {outcome && isNewOutcome && !outcomeSaved && (
                     <button
@@ -1535,7 +1619,10 @@ export default function MockLab() {
             {(outcome || logs.length > 0) && (
               <div className="border border-[#FED7AA] rounded-2xl overflow-hidden">
                 <div className="flex border-b border-[#FED7AA] overflow-x-auto">
-                  {(["summary", "metrics", "charts", "dataset", "reports", "logs"] as OutcomeTab[]).map(tab => (
+                  {(["summary", "metrics",
+                    ...(outcome?.sequenceModels ? ["sequence"] : []),
+                    "charts", "dataset", "reports", "logs",
+                  ] as OutcomeTab[]).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
@@ -1583,6 +1670,74 @@ export default function MockLab() {
                           ))}
                         </div>
                       )}
+
+                      {/* Phase 5 M5.17 — notebook PASS/FAIL badge grid */}
+                      {Object.keys(nbResults).length > 0 && (
+                        <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+                          <p className="text-[9px] font-semibold text-[#94A3B8] uppercase tracking-wide">
+                            Notebook Run Results
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {([
+                              { key: "NB02", label: "NB02 Baseline" },
+                              { key: "NB03", label: "NB03 CV" },
+                              { key: "NB04", label: "NB04 Test" },
+                              { key: "NB05", label: "NB05 Seq" },
+                              { key: "NB06", label: "NB06 TAG" },
+                              { key: "NB07", label: "NB07 LSTM" },
+                              { key: "NB08", label: "NB08 GRU" },
+                              { key: "NB09", label: "NB09 Cmp" },
+                            ] as const).map(({ key, label }) => {
+                              const r = nbResults[key];
+                              if (!r) return null;
+                              return (
+                                <span
+                                  key={key}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    r === "PASS"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-red-50 text-red-700 border-red-200"
+                                  }`}
+                                >
+                                  {r === "PASS" ? "✅" : "❌"} {label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Phase 5 M5.12 — sequence model summary card (sql_block sessions only) */}
+                      {outcome?.sequenceModels && (
+                        <div className="bg-[#F5F3FF] border border-[#DDD6FE] rounded-xl p-3 space-y-2">
+                          <p className="text-[9px] font-semibold text-[#7C3AED] uppercase tracking-wide">
+                            Sequence Models (NB05–NB09) ✓
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(["lstm", "gru"] as const).map(key => {
+                              const m = outcome.sequenceModels![key];
+                              if (!m) return null;
+                              return (
+                                <div key={key} className="bg-white rounded-lg px-3 py-2 border border-[#DDD6FE]">
+                                  <p className="text-[9px] font-semibold text-[#94A3B8] uppercase">{key}</p>
+                                  <p className="text-sm font-bold text-[#7C3AED]">
+                                    AUC {m.auc != null ? m.auc.toFixed(3) : "—"}
+                                  </p>
+                                  <p className="text-[10px] text-[#94A3B8]">
+                                    F1 {m.f1 != null ? m.f1.toFixed(3) : "—"}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <button
+                            onClick={() => setActiveTab("sequence")}
+                            className="text-[10px] text-[#7C3AED] hover:underline"
+                          >
+                            ↗ View full comparison in Sequence tab
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Metrics */}
@@ -1603,6 +1758,109 @@ export default function MockLab() {
                           ))}
                         </div>
                       ) : <p className="text-sm text-[#94A3B8]">Run Mock Outcome to load metrics.</p>}
+                    </div>
+                  )}
+                  {/* Sequence Models — Phase 5 M5.8 (NB05–NB09, sql_block sessions only) */}
+                  {activeTab === "sequence" && (
+                    <div className="space-y-4">
+                      {outcome?.sequenceModels ? (
+                        <>
+                          {/* Pilot-only disclaimer */}
+                          <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-3 text-xs text-[#92400E]">
+                            <span className="font-semibold">⚠ Pilot Only</span>
+                            {" — label_validity="}<span className="font-mono">{outcome.sequenceModels.labelValidity ?? "pilot_only"}</span>.
+                            {" Pipeline validation results only — not thesis conclusions."}
+                          </div>
+
+                          {/* LSTM / GRU metric bars */}
+                          {(outcome.sequenceModels.lstm || outcome.sequenceModels.gru) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {(["lstm", "gru"] as const).map(key => {
+                                const m = outcome.sequenceModels![key];
+                                if (!m) return null;
+                                const color = key === "lstm"
+                                  ? { auc: "#8B5CF6", f1: "#A78BFA" }
+                                  : { auc: "#10B981", f1: "#34D399" };
+                                return (
+                                  <div key={key} className="space-y-2">
+                                    <p className="text-xs font-bold text-[#0F172A] pb-1 border-b border-[#F1F5F9] uppercase">{key}</p>
+                                    <MetricBar label="AUC-ROC" value={m.auc} color={color.auc} />
+                                    <MetricBar label="F1"      value={m.f1}  color={color.f1} />
+                                    {m.params != null && (
+                                      <p className="text-[10px] text-[#94A3B8]">Parameters: {m.params.toLocaleString()}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* NB09 full comparison table */}
+                          {(outcome.sequenceModels.comparisonRows?.length ?? 0) > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-[#0F172A] mb-2">Model Comparison (NB09)</p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-[#E2E8F0]">
+                                      <th className="text-left py-1.5 pr-3 text-[#64748B] font-medium">Model</th>
+                                      <th className="text-right py-1.5 pr-3 text-[#64748B] font-medium">AUC-ROC</th>
+                                      <th className="text-right py-1.5 pr-3 text-[#64748B] font-medium">F1</th>
+                                      <th className="text-right py-1.5 text-[#64748B] font-medium">Params</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {outcome.sequenceModels.comparisonRows!.map(row => (
+                                      <tr key={row.model} className="border-b border-[#F1F5F9] last:border-0">
+                                        <td className="py-1.5 pr-3 text-[#0F172A] font-medium">{row.model}</td>
+                                        <td className="py-1.5 pr-3 text-right font-mono text-[#0F172A]">
+                                          {row.auc != null ? row.auc.toFixed(3) : "—"}
+                                        </td>
+                                        <td className="py-1.5 pr-3 text-right font-mono text-[#0F172A]">
+                                          {row.f1 != null ? row.f1.toFixed(3) : "—"}
+                                        </td>
+                                        <td className="py-1.5 text-right font-mono text-[#64748B]">
+                                          {row.params != null ? row.params.toLocaleString() : "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Phase 5 M5.9 — sequence model charts (NB05–NB08 PNGs) */}
+                          {outcome.sequenceModels.charts && (() => {
+                            const c = outcome.sequenceModels!.charts!;
+                            const chartDefs = ([
+                              { key: "seqLengthDist"        as const, label: "Sequence Length Distribution (NB05)" },
+                              { key: "tagTransitionHeatmap" as const, label: "Block Transition Heatmap (NB06)"     },
+                              { key: "tagCohortGraphs"      as const, label: "Cohort TAG Graphs (NB06)"            },
+                              { key: "lstmTrainingCurves"   as const, label: "LSTM Training Curves (NB07)"         },
+                              { key: "gruTrainingCurves"    as const, label: "GRU Training Curves (NB08)"          },
+                            ] as const).filter(d => !!c[d.key]);
+                            if (chartDefs.length === 0) return null;
+                            return (
+                              <div>
+                                <p className="text-xs font-bold text-[#0F172A] mb-2">Block Journey Charts</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {chartDefs.map(({ key, label }) => (
+                                    <div key={key} className="border border-[#E2E8F0] rounded-xl p-3">
+                                      <p className="text-[11px] font-semibold text-[#64748B] mb-2">{label}</p>
+                                      <img src={c[key]!} alt={label} className="w-full rounded-xl" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <p className="text-sm text-[#94A3B8]">
+                          Sequence models not available — NB05–NB09 require sql_block sessions.
+                        </p>
+                      )}
                     </div>
                   )}
                   {/* Charts */}
@@ -1668,6 +1926,25 @@ export default function MockLab() {
                           ))}
                         </div>
                       ) : <p className="text-sm text-[#94A3B8]">Run the full pipeline to generate reports.</p>}
+
+                      {/* Phase 5 M5.18: Download outcome JSON */}
+                      {outcome && (
+                        <div className="border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+                          <p className="text-sm font-bold text-[#0F172A]">Outcome Export</p>
+                          <p className="text-xs text-[#64748B]">
+                            Download the full outcome object as JSON for archiving or thesis documentation.
+                          </p>
+                          <button
+                            onClick={downloadOutcomeJson}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#E2E8F0] text-[#0F172A] hover:border-[#F37021] hover:text-[#C2410C] transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Download JSON
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Logs */}

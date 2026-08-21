@@ -1,6 +1,6 @@
 {
   "schema_version": "comparison_v1",
-  "created_at_utc": "2026-07-21T14:00:58.207041+00:00",
+  "created_at_utc": "2026-08-19T06:30:32.047802+00:00",
   "label_source": "proxy_behavioral",
   "label_validity": "pilot_only",
   "primary_seed": 42,
@@ -20,11 +20,25 @@
     "GRU"
   ],
   "test_learners": [
-    "MOCK_VALID3_20260715_S002",
-    "MOCK_VALID3_20260715_S009"
+    "S0001",
+    "S0005",
+    "S0011",
+    "S0013",
+    "S0019",
+    "S0023",
+    "S0029",
+    "S0031",
+    "S0032",
+    "S0034",
+    "S0036",
+    "S0046",
+    "S0050",
+    "S0068",
+    "S0069",
+    "S0071"
   ],
-  "test_seq_count": 18,
-  "train_seq_count": 72,
+  "test_seq_count": 117,
+  "train_seq_count": 420,
   "n_test_classes": 2,
   "roc_auc_status": "computed",
   "flat_feature_names": [
@@ -70,23 +84,23 @@
     "numpy_ver": "2.4.6",
     "batch_size": "N/A (sklearn)",
     "warmup": "none (sklearn)",
-    "n_inference_samples": 18,
+    "n_inference_samples": 117,
     "note": "Timing from Python time.perf_counter(). sklearn and PyTorch use different frameworks -- do not imply strict computational superiority."
   },
   "validation_checks": 18,
   "validation_passed": 18,
   "input_checksums": {
-    "m2_manifest": "d5acd8c97967061d",
-    "tensors": "686d557d819c982d",
-    "split": "435b3418cdd1f410",
-    "seq_index": "58813f211248545c",
-    "canonical_events": "95e9dd5faa54a9c4",
-    "tag_features": "f3cda661e3de47a8",
-    "tag_manifest": "3ad8e035f2e73f4e",
-    "lstm_predictions": "d43bbb2189ab2690",
-    "lstm_manifest": "2de9e55c17198dd9",
-    "gru_predictions": "206d9c7b9b5b9736",
-    "gru_manifest": "3d00a84900f77287"
+    "m2_manifest": "4ac9b85a6f403ce6",
+    "tensors": "a3a2f5a650f68b5a",
+    "split": "95f57f745e3e3564",
+    "seq_index": "29db27232b63eebd",
+    "canonical_events": "b48b3bc3dd8a6a31",
+    "tag_features": "e6043e56fa077e10",
+    "tag_manifest": "84c8b9e64d634474",
+    "lstm_predictions": "6e82bf2126ab1643",
+    "lstm_manifest": "2f6a498ebb5e3bb6",
+    "gru_predictions": "0d722a35b4ebec0f",
+    "gru_manifest": "4130def2a2e411b8"
   },
   "artifacts": {
     "model_comparison_v1.parquet": "models\\sequence\\comparison\\model_comparison_v1.parquet",
@@ -95,10 +109,10 @@
     "comparison_predictions_v1.parquet": "models\\sequence\\comparison\\comparison_predictions_v1.parquet"
   },
   "artifact_checksums": {
-    "model_comparison_v1.parquet": "2ee6355a806f5081",
-    "model_comparison_v1.csv": "2422c7aeec10e300",
-    "model_comparison_v1.md": "60c4e900cb54d87b",
-    "comparison_predictions_v1.parquet": "effb093a8ff54c75"
+    "model_comparison_v1.parquet": "997abaaba13898e5",
+    "model_comparison_v1.csv": "7c5971604f76b0a9",
+    "model_comparison_v1.md": "d7a349bf15ab1eae",
+    "comparison_predictions_v1.parquet": "d5df634b924c59f7"
   },
   "data_warning": "PILOT ONLY -- 10 learners, proxy_behavioral labels. Not final thesis results. No confirmatory hypothesis testing. BSSA integration deferred to Phase 5."
 }

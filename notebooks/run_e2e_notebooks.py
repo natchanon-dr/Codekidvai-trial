@@ -1,4 +1,4 @@
-"""Run notebooks 02-04 for E2E mock validation.
+"""Run notebooks 02-09 for E2E mock validation.
 
 Usage:
   python run_e2e_notebooks.py                              # uses last CSV in data/raw/
@@ -6,11 +6,18 @@ Usage:
   python run_e2e_notebooks.py --batch-tag SIM_E2E --snapshot-date 20260710
 
 Args:
-  --session-file   session CSV filename (in data/raw/)
-  --attempt-file   attempt CSV filename (in data/raw/)
-  --event-file     block event CSV filename (in data/raw/) — optional, Phase 5 M5.4
-  --batch-tag      BATCH_CODE_VAL for notebook substitution (default: auto-detect)
-  --snapshot-date  SNAPSHOT_DATE for notebook substitution (default: today)
+  --session-file    session CSV filename (in data/raw/)
+  --attempt-file    attempt CSV filename (in data/raw/)
+  --event-file      block event CSV filename (in data/raw/) — optional, Phase 5 M5.4
+  --sequence-file   sequence CSV filename (in data/raw/) — NB05, Phase 5 M5.6
+  --outcome-file    outcome CSV filename (in data/raw/) — NB05, Phase 5 M5.6
+  --batch-tag       BATCH_CODE_VAL for notebook substitution (default: auto-detect)
+  --snapshot-date   SNAPSHOT_DATE for notebook substitution (default: today)
+  --skip-nb05       skip NB05 (useful when sequence/outcome CSVs are absent)
+  --skip-nb06       skip NB06 TAG builder
+  --skip-nb07       skip NB07 LSTM model
+  --skip-nb08       skip NB08 GRU model
+  --skip-nb09       skip NB09 model comparison
 """
 import json, subprocess, os, sys, argparse
 from pathlib import Path
@@ -20,16 +27,24 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description="Run NB02-04 for E2E validation.")
-parser.add_argument("--session-file",   default=None, help="Session CSV filename in data/raw/")
-parser.add_argument("--attempt-file",   default=None, help="Attempt CSV filename in data/raw/")
-parser.add_argument("--event-file",     default=None, help="Block event CSV filename in data/raw/ (Phase 5 M5.4)")
-parser.add_argument("--batch-tag",      default=None, help="Batch code tag for notebook substitution")
-parser.add_argument("--snapshot-date",  default=None, help="Snapshot date YYYYMMDD")
+parser = argparse.ArgumentParser(description="Run NB02-09 for E2E validation.")
+parser.add_argument("--session-file",    default=None, help="Session CSV filename in data/raw/")
+parser.add_argument("--attempt-file",    default=None, help="Attempt CSV filename in data/raw/")
+parser.add_argument("--event-file",      default=None, help="Block event CSV filename in data/raw/ (Phase 5 M5.4)")
+parser.add_argument("--sequence-file",   default=None, help="Sequence CSV filename in data/raw/ (Phase 5 M5.6)")
+parser.add_argument("--outcome-file",    default=None, help="Outcome CSV filename in data/raw/ (Phase 5 M5.6)")
+parser.add_argument("--batch-tag",       default=None, help="Batch code tag for notebook substitution")
+parser.add_argument("--snapshot-date",   default=None, help="Snapshot date YYYYMMDD")
+parser.add_argument("--skip-nb05",       action="store_true", help="Skip NB05 even if sequence/outcome CSVs exist")
+parser.add_argument("--skip-nb06",       action="store_true", help="Skip NB06 TAG builder (Phase 5 M5.7)")
+parser.add_argument("--skip-nb07",       action="store_true", help="Skip NB07 LSTM model (Phase 5 M5.7)")
+parser.add_argument("--skip-nb08",       action="store_true", help="Skip NB08 GRU model (Phase 5 M5.7)")
+parser.add_argument("--skip-nb09",       action="store_true", help="Skip NB09 model comparison (Phase 5 M5.7)")
 args = parser.parse_args()
 
 # ── Auto-detect latest CSV if not specified ───────────────────────────────────
-RAW_DIR = Path("data/raw")
+RAW_DIR     = Path("data/raw")
+ABS_RAW_DIR = RAW_DIR.resolve()   # absolute — used in Pattern 5 to make paths kernel-CWD-independent
 
 def latest_csv(prefix: str) -> str | None:
     files = sorted(RAW_DIR.glob(f"{prefix}_*.csv"), reverse=True)
@@ -37,7 +52,9 @@ def latest_csv(prefix: str) -> str | None:
 
 SESSION_FILE   = args.session_file   or latest_csv("session")
 ATTEMPT_FILE   = args.attempt_file   or latest_csv("attempt")
-EVENT_FILE     = args.event_file     or latest_csv("event")   # optional — None if absent
+EVENT_FILE     = args.event_file     or latest_csv("event")      # optional — None if absent
+SEQUENCE_FILE  = args.sequence_file  or latest_csv("sequence")   # Phase 5 M5.6
+OUTCOME_FILE   = args.outcome_file   or latest_csv("outcome")    # Phase 5 M5.6
 SNAPSHOT_DATE  = args.snapshot_date  or (SESSION_FILE.split("_")[1] if SESSION_FILE else "20260101")
 
 # Derive BATCH_CODE_VAL from filename if not provided:
@@ -53,6 +70,8 @@ else:
 print(f"Session file  : {SESSION_FILE}")
 print(f"Attempt file  : {ATTEMPT_FILE}")
 print(f"Event file    : {EVENT_FILE or '(none — block features zero-filled)'}")
+print(f"Sequence file : {SEQUENCE_FILE or '(none — NB05 will be skipped)'}")
+print(f"Outcome file  : {OUTCOME_FILE or '(none — NB05 will be skipped)'}")
 print(f"Snapshot date : {SNAPSHOT_DATE}")
 print(f"Batch tag     : {BATCH_CODE_VAL}")
 
@@ -102,17 +121,52 @@ def patch_and_run(nb_name):
             ).replace(
                 'Path("notebooks/data")', 'Path("data")'
             )
-        # Pattern 3: NB04 notebook/ prefix
+        # Pattern 3: strip "notebooks/" prefix from data/processed, models, reports paths.
+        # Handles both Path("notebooks/X") and string literals "notebooks/X" (with/without
+        # trailing slash, which determines whether a closing quote appears right after "X").
         patched = (patched
             .replace('Path("notebooks/data/processed")', 'Path("data/processed")')
             .replace('Path("notebooks/models")',         'Path("models")')
             .replace('Path("notebooks/reports")',        'Path("reports")')
+            # String literals — must replace trailing-slash form first (more specific)
+            .replace('"notebooks/data/processed/',      '"data/processed/')
+            .replace('"notebooks/models/',              '"models/')
+            .replace('"notebooks/reports/',             '"reports/')
+            # Then match exact directory strings (no trailing slash / closing-quote form)
             .replace('"notebooks/data/processed"',      '"data/processed"')
             .replace('"notebooks/models"',              '"models"')
             .replace('"notebooks/reports"',             '"reports"')
         )
         # Pattern 4: Windows joblib crash
         patched = patched.replace('n_jobs=-1', 'n_jobs=1')
+        # Pattern 5: NB05 CSV pin overrides — replace None with filenames so the
+        # notebook skips auto-detect and uses the exact files we generated.
+        # NB05 cfg-01 uses: SEQUENCE_CSV : str | None = None  (typed annotation)
+        # Use absolute paths so NB05 works regardless of where nbconvert sets the kernel CWD.
+        # ABS_RAW_DIR is resolved once from the runner's CWD (notebooks/).
+        if SEQUENCE_FILE and 'SEQUENCE_CSV : str | None = None' in patched:
+            _abs_seq = str(ABS_RAW_DIR / SEQUENCE_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'SEQUENCE_CSV : str | None = None',
+                f'SEQUENCE_CSV : str | None = "{_abs_seq}"'
+            )
+        if ATTEMPT_FILE and 'ATTEMPT_CSV  : str | None = None' in patched:
+            _abs_att = str(ABS_RAW_DIR / ATTEMPT_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'ATTEMPT_CSV  : str | None = None',
+                f'ATTEMPT_CSV  : str | None = "{_abs_att}"'
+            )
+        if OUTCOME_FILE and 'OUTCOME_CSV  : str | None = None' in patched:
+            _abs_out = str(ABS_RAW_DIR / OUTCOME_FILE).replace("\\", "/")
+            patched = patched.replace(
+                'OUTCOME_CSV  : str | None = None',
+                f'OUTCOME_CSV  : str | None = "{_abs_out}"'
+            )
+        # Phase 5 M5.6: fix NB05 data/sequences output path if it contains notebooks/ prefix
+        patched = (patched
+            .replace('Path("notebooks/data/sequences")', 'Path("data/sequences")')
+            .replace('"notebooks/data/sequences"',       '"data/sequences"')
+        )
         if patched != src:
             cell["source"] = [patched]
 
@@ -123,7 +177,8 @@ def patch_and_run(nb_name):
 
     result = subprocess.run(
         ["jupyter", "nbconvert", "--to", "notebook", "--execute",
-         "--ExecutePreprocessor.timeout=300", "--output", out, tmp],
+         "--ExecutePreprocessor.timeout=300",
+         "--output", out, tmp],
         capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
 
@@ -146,7 +201,16 @@ def patch_and_run(nb_name):
     status = "PASS" if result.returncode == 0 else "FAIL"
     print(f"\n=== {nb_name} [{status}] rc={result.returncode} ===")
     KEY = ["PASS","FAIL","ERROR","gate","AUC","F1","missing","Missing","[OK]",
-           "LEAKAGE","SPLIT","logistic","random_forest","majority","WARNING","baseline","imbalance"]
+           "LEAKAGE","SPLIT","logistic","random_forest","majority","WARNING","baseline","imbalance",
+           "sequence","tensor","vocab","token","NB05","sequence_tensors","Loaded","sequences",
+           "sessions","events","outcome",
+           # NB06 TAG builder
+           "TAG","tag","nodes","edges","graph","transition","cohort","feature",
+           # NB07/NB08 LSTM/GRU
+           "LSTM","lstm","GRU","gru","EXP","epoch","val_auc","early","seed","history",
+           "train_auc","model","saved","manifest",
+           # NB09 comparison
+           "comparison","dummy","Dummy","rank"]
     for line in "\n".join(output_lines).split("\n"):
         s = line.strip()
         if s and any(k in s for k in KEY):
@@ -158,6 +222,71 @@ def patch_and_run(nb_name):
 results = {}
 for nb in ["02_data_quality_check.ipynb", "03_feature_engineering.ipynb", "04_baseline_model_lr_rf.ipynb"]:
     results[nb] = patch_and_run(nb)
+
+# Phase 5 M5.6: run NB05 if sequence + outcome CSVs are available
+NB05 = "05_sequence_dataset.ipynb"
+if args.skip_nb05:
+    print(f"\n[skip] {NB05} — --skip-nb05 flag set")
+elif not SEQUENCE_FILE:
+    print(f"\n[skip] {NB05} — no sequence_*.csv found in data/raw/ (run generate_mock_data.py first)")
+elif not OUTCOME_FILE:
+    print(f"\n[skip] {NB05} — no outcome_*.csv found in data/raw/ (run generate_mock_data.py first)")
+elif not Path(NB05).exists():
+    print(f"\n[skip] {NB05} — notebook not found in notebooks/")
+else:
+    results[NB05] = patch_and_run(NB05)
+
+# ── Phase 5 M5.7: NB06 TAG builder ───────────────────────────────────────────
+# Prereq: NB05 must have produced data/sequences/ artifacts.
+NB06     = "06_tag_builder.ipynb"
+_nb05_ok = results.get(NB05, False)
+if args.skip_nb06:
+    print(f"\n[skip] {NB06} — --skip-nb06 flag set")
+elif not _nb05_ok:
+    print(f"\n[skip] {NB06} — NB05 did not pass (sequence artifacts required)")
+elif not Path(NB06).exists():
+    print(f"\n[skip] {NB06} — notebook not found")
+else:
+    results[NB06] = patch_and_run(NB06)
+
+# ── Phase 5 M5.7: NB07 LSTM model ────────────────────────────────────────────
+# Prereq: NB05 tensors (required) + NB06 TAG features (optional — EXP-B only).
+NB07     = "07_lstm_model.ipynb"
+_nb06_ok = results.get(NB06, False)
+if args.skip_nb07:
+    print(f"\n[skip] {NB07} — --skip-nb07 flag set")
+elif not _nb05_ok:
+    print(f"\n[skip] {NB07} — NB05 did not pass (sequence tensors required)")
+elif not Path(NB07).exists():
+    print(f"\n[skip] {NB07} — notebook not found")
+else:
+    results[NB07] = patch_and_run(NB07)
+
+# ── Phase 5 M5.7: NB08 GRU model ─────────────────────────────────────────────
+# Prereq: NB07 LSTM artifacts (cross-contract audit at startup).
+NB08     = "08_gru_model.ipynb"
+_nb07_ok = results.get(NB07, False)
+if args.skip_nb08:
+    print(f"\n[skip] {NB08} — --skip-nb08 flag set")
+elif not _nb07_ok:
+    print(f"\n[skip] {NB08} — NB07 did not pass (LSTM artifacts required)")
+elif not Path(NB08).exists():
+    print(f"\n[skip] {NB08} — notebook not found")
+else:
+    results[NB08] = patch_and_run(NB08)
+
+# ── Phase 5 M5.7: NB09 model comparison ──────────────────────────────────────
+# Prereq: NB07 + NB08 predictions (LSTM required; GRU expected).
+NB09     = "09_model_comparison.ipynb"
+_nb08_ok = results.get(NB08, False)
+if args.skip_nb09:
+    print(f"\n[skip] {NB09} — --skip-nb09 flag set")
+elif not _nb07_ok:
+    print(f"\n[skip] {NB09} — NB07 did not pass (LSTM artifacts required)")
+elif not Path(NB09).exists():
+    print(f"\n[skip] {NB09} — notebook not found")
+else:
+    results[NB09] = patch_and_run(NB09)
 
 print("\n── Notebook Run Summary ──")
 for nb, ok in results.items():

@@ -12,7 +12,7 @@ export type SelectedRunRef = {
   runNumber: string;
   datasetCode: string;
   datasetName: string;
-  artifactSource: "result_version" | "static_fallback" | null;
+  artifactSource: "result_version" | "static_fallback" | "local_disk" | null;
 };
 
 type Props = {
@@ -22,7 +22,7 @@ type Props = {
 };
 
 type ArtifactData = {
-  artifact_source?: "result_version" | "static_fallback";
+  artifact_source?: "result_version" | "static_fallback" | "local_disk";
   dataset_summary?: {
     total_learners: number;
     total_sequences: number;
@@ -107,7 +107,6 @@ type ArtifactData = {
 type RunResult =
   | { state: "loading" }
   | { state: "error"; message: string }
-  | { state: "notimpl" }
   | { state: "ok"; data: ArtifactData };
 
 // ---------------------------------------------------------------------------
@@ -161,7 +160,6 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
           const res = await fetch(url, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (res.status === 501) return { state: "notimpl" };
           if (!res.ok) {
             const j = await res.json().catch(() => ({ error: "Request failed" }));
             return { state: "error", message: (j as { error?: string }).error ?? "Failed" };
@@ -239,6 +237,11 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                     Pilot &#8212; static artifact
                   </span>
                 )}
+                {ref.artifactSource === "local_disk" && (
+                  <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                    Local disk
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -253,9 +256,6 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <div key={selected[i].runId} className={`${colWidth} px-4 py-3 space-y-3`}>
                   {result.state === "loading" && <CellLoading />}
                   {result.state === "error" && <CellError message={result.message} />}
-                  {result.state === "notimpl" && (
-                    <CellError message="Result artifact loading not yet implemented." />
-                  )}
                   {result.state === "ok" && (
                     <>
                       <MetaRow label="Dataset Code" value={selected[i].datasetCode} />
@@ -282,7 +282,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <div key={selected[i].runId} className={`${colWidth} px-4 py-3 space-y-3`}>
                   {result.state === "loading" && <CellLoading />}
                   {result.state === "error" && <CellError message={result.message} />}
-                  {result.state === "notimpl" && <CellError message="Not implemented." />}
+
                   {result.state === "ok" && result.data.dataset_summary && (
                     <>
                       <MetaRow label="Total Learners" value={result.data.dataset_summary.total_learners} />
@@ -323,7 +323,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <div key={selected[i].runId} className={`${colWidth} px-4 py-3 space-y-3`}>
                   {result.state === "loading" && <CellLoading />}
                   {result.state === "error" && <CellError message={result.message} />}
-                  {result.state === "notimpl" && <CellError message="Not implemented." />}
+
                   {result.state === "ok" && result.data.tag_structure && (
                     <>
                       <MetaRow label="Total Sequences" value={result.data.tag_structure.dataset_stats.total_sequences} />
@@ -351,7 +351,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <div key={selected[i].runId} className={`${colWidth} px-4 py-3 space-y-3`}>
                   {result.state === "loading" && <CellLoading />}
                   {result.state === "error" && <CellError message={result.message} />}
-                  {result.state === "notimpl" && <CellError message="Not implemented." />}
+
                   {result.state === "ok" && result.data.validation && (
                     <>
                       <MetaRow
@@ -402,7 +402,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                   <div key={selected[i].runId} className={`${colWidth} px-3 py-3 space-y-3`}>
                     {result.state === "loading" && <CellLoading />}
                     {result.state === "error" && <CellError message={result.message} />}
-                    {result.state === "notimpl" && <CellError message="Not implemented." />}
+
                     {result.state === "ok" && !result.data.model_comparison && (
                       <p className="text-xs text-[#94A3B8] italic">No model comparison data.</p>
                     )}
@@ -499,7 +499,7 @@ export function SequentialCompareModal({ selected, onClose, token }: Props) {
                 <div key={selected[i].runId} className={`${colWidth} px-3 py-3 space-y-3`}>
                   {result.state === "loading" && <CellLoading />}
                   {result.state === "error" && <CellError message={result.message} />}
-                  {result.state === "notimpl" && <CellError message="Not implemented." />}
+
                   {result.state === "ok" && (!result.data.charts || result.data.charts.length === 0) && (
                     <p className="text-xs text-[#94A3B8] italic">No chart data.</p>
                   )}

@@ -13,183 +13,183 @@
         42,
         55
       ],
-      "accuracy_mean": 1.0,
-      "accuracy_std": 0.0,
-      "precision_mean": 1.0,
-      "precision_std": 0.0,
-      "recall_mean": 1.0,
-      "recall_std": 0.0,
-      "f1_mean": 1.0,
-      "f1_std": 0.0,
-      "roc_auc_mean": 1.0,
-      "roc_auc_std": 0.0,
-      "train_time_sec_mean": 3.2645,
-      "train_time_sec_std": 0.875916,
-      "inf_time_per_seq_sec_mean": 6e-05,
-      "inf_time_per_seq_sec_std": 4.8e-05,
-      "epochs_trained_mean": 200.0,
-      "epochs_trained_std": 0.0,
+      "accuracy_mean": 0.618803,
+      "accuracy_std": 0.008716,
+      "precision_mean": 0.785554,
+      "precision_std": 0.037288,
+      "recall_mean": 0.421875,
+      "recall_std": 0.043075,
+      "f1_mean": 0.546274,
+      "f1_std": 0.029053,
+      "roc_auc_mean": 0.640802,
+      "roc_auc_std": 0.006554,
+      "train_time_sec_mean": 6.72118,
+      "train_time_sec_std": 1.345219,
+      "inf_time_per_seq_sec_mean": 3.2e-05,
+      "inf_time_per_seq_sec_std": 8e-06,
+      "epochs_trained_mean": 24.0,
+      "epochs_trained_std": 4.516636,
       "per_seed": [
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6153846153846154,
+          "precision": 0.7317073170731707,
+          "recall": 0.46875,
+          "f1": 0.5714285714285714,
+          "roc_auc": 0.6294221698113208,
           "confusion_matrix": [
             [
-              9,
-              0
+              42,
+              11
             ],
             [
-              0,
-              9
+              34,
+              30
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 2.6095,
-          "inf_time_per_seq_sec": 5.4e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 5.4086,
+          "inf_time_per_seq_sec": 2.5e-05,
+          "epochs_trained": 20,
           "seed": 11,
           "experiment": "seq_only",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 318,
+          "n_val_seqs": 102,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.2822580337524414,
+            0.8195876479148865
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6239316239316239,
+          "precision": 0.75,
+          "recall": 0.46875,
+          "f1": 0.5769230769230769,
+          "roc_auc": 0.6465212264150944,
           "confusion_matrix": [
             [
-              9,
-              0
+              43,
+              10
             ],
             [
-              0,
-              9
+              34,
+              30
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 4.9678,
-          "inf_time_per_seq_sec": 0.000155,
-          "epochs_trained": 200,
+          "train_time_sec": 5.7672,
+          "inf_time_per_seq_sec": 4.4e-05,
+          "epochs_trained": 20,
           "seed": 22,
           "experiment": "seq_only",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 314,
+          "n_val_seqs": 106,
+          "n_test_seqs": 117,
           "class_weight": [
-            1.0,
-            1.0
+            1.2661290168762207,
+            0.8263157606124878
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6068376068376068,
+          "precision": 0.8214285714285714,
+          "recall": 0.359375,
+          "f1": 0.5,
+          "roc_auc": 0.6471108490566038,
           "confusion_matrix": [
             [
-              9,
-              0
+              48,
+              5
             ],
             [
-              0,
-              9
+              41,
+              23
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 3.2128,
-          "inf_time_per_seq_sec": 3.6e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 8.427,
+          "inf_time_per_seq_sec": 3.9e-05,
+          "epochs_trained": 30,
           "seed": 33,
           "experiment": "seq_only",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 310,
+          "n_val_seqs": 110,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.6000000238418579,
-            3.0
+            1.476190447807312,
+            0.7560975551605225
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6153846153846154,
+          "precision": 0.8064516129032258,
+          "recall": 0.390625,
+          "f1": 0.5263157894736842,
+          "roc_auc": 0.6379716981132075,
           "confusion_matrix": [
             [
-              9,
-              0
+              47,
+              6
             ],
             [
-              0,
-              9
+              39,
+              25
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 2.8237,
-          "inf_time_per_seq_sec": 2.8e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 5.7077,
+          "inf_time_per_seq_sec": 2.4e-05,
+          "epochs_trained": 21,
           "seed": 42,
           "experiment": "seq_only",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 320,
+          "n_val_seqs": 100,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.3559322357177734,
+            0.7920792102813721
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6324786324786325,
+          "precision": 0.8181818181818182,
+          "recall": 0.421875,
+          "f1": 0.5567010309278351,
+          "roc_auc": 0.6429834905660378,
           "confusion_matrix": [
             [
-              9,
-              0
+              47,
+              6
             ],
             [
-              0,
-              9
+              37,
+              27
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 2.7087,
+          "train_time_sec": 8.2954,
           "inf_time_per_seq_sec": 2.9e-05,
-          "epochs_trained": 200,
+          "epochs_trained": 29,
           "seed": 55,
           "experiment": "seq_only",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 318,
+          "n_val_seqs": 102,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.394736886024475,
+            0.779411792755127
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
@@ -206,183 +206,183 @@
         42,
         55
       ],
-      "accuracy_mean": 0.9,
-      "accuracy_std": 0.2,
-      "precision_mean": 0.9,
-      "precision_std": 0.2,
-      "recall_mean": 1.0,
-      "recall_std": 0.0,
-      "f1_mean": 0.933333,
-      "f1_std": 0.133333,
-      "roc_auc_mean": 0.814815,
-      "roc_auc_std": 0.37037,
-      "train_time_sec_mean": 2.81202,
-      "train_time_sec_std": 1.323789,
-      "inf_time_per_seq_sec_mean": 3.9e-05,
-      "inf_time_per_seq_sec_std": 1.2e-05,
-      "epochs_trained_mean": 163.2,
-      "epochs_trained_std": 73.6,
+      "accuracy_mean": 0.588034,
+      "accuracy_std": 0.018251,
+      "precision_mean": 0.690418,
+      "precision_std": 0.058681,
+      "recall_mean": 0.48125,
+      "recall_std": 0.12319,
+      "f1_mean": 0.553391,
+      "f1_std": 0.056336,
+      "roc_auc_mean": 0.630837,
+      "roc_auc_std": 0.019976,
+      "train_time_sec_mean": 8.71954,
+      "train_time_sec_std": 3.864153,
+      "inf_time_per_seq_sec_mean": 3.6e-05,
+      "inf_time_per_seq_sec_std": 6e-06,
+      "epochs_trained_mean": 32.2,
+      "epochs_trained_std": 14.246403,
       "per_seed": [
         {
-          "accuracy": 0.5,
-          "precision": 0.5,
-          "recall": 1.0,
-          "f1": 0.6666666666666666,
-          "roc_auc": 0.0740740740740741,
+          "accuracy": 0.5726495726495726,
+          "precision": 0.6666666666666666,
+          "recall": 0.4375,
+          "f1": 0.5283018867924528,
+          "roc_auc": 0.5955188679245282,
           "confusion_matrix": [
             [
-              0,
-              9
+              39,
+              14
             ],
             [
-              0,
-              9
+              36,
+              28
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 0.2334,
+          "train_time_sec": 6.0869,
           "inf_time_per_seq_sec": 3.6e-05,
-          "epochs_trained": 16,
+          "epochs_trained": 22,
           "seed": 11,
           "experiment": "seq_tag",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 318,
+          "n_val_seqs": 102,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.2822580337524414,
+            0.8195876479148865
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.5811965811965812,
+          "precision": 0.5974025974025974,
+          "recall": 0.71875,
+          "f1": 0.6524822695035462,
+          "roc_auc": 0.640625,
           "confusion_matrix": [
             [
-              9,
-              0
+              22,
+              31
             ],
             [
-              0,
-              9
+              18,
+              46
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 3.6236,
-          "inf_time_per_seq_sec": 6.3e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 4.2095,
+          "inf_time_per_seq_sec": 2.6e-05,
+          "epochs_trained": 16,
           "seed": 22,
           "experiment": "seq_tag",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 314,
+          "n_val_seqs": 106,
+          "n_test_seqs": 117,
           "class_weight": [
-            1.0,
-            1.0
+            1.2661290168762207,
+            0.8263157606124878
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.5811965811965812,
+          "precision": 0.7419354838709677,
+          "recall": 0.359375,
+          "f1": 0.4842105263157895,
+          "roc_auc": 0.65625,
           "confusion_matrix": [
             [
-              9,
-              0
+              45,
+              8
             ],
             [
-              0,
-              9
+              41,
+              23
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 3.081,
-          "inf_time_per_seq_sec": 3e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 14.7148,
+          "inf_time_per_seq_sec": 3.3e-05,
+          "epochs_trained": 53,
           "seed": 33,
           "experiment": "seq_tag",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 310,
+          "n_val_seqs": 110,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.6000000238418579,
-            3.0
+            1.476190447807312,
+            0.7560975551605225
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.5811965811965812,
+          "precision": 0.6829268292682927,
+          "recall": 0.4375,
+          "f1": 0.5333333333333333,
+          "roc_auc": 0.6291273584905661,
           "confusion_matrix": [
             [
-              9,
-              0
+              40,
+              13
             ],
             [
-              0,
-              9
+              36,
+              28
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 3.9214,
-          "inf_time_per_seq_sec": 2.9e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 6.971,
+          "inf_time_per_seq_sec": 4.4e-05,
+          "epochs_trained": 25,
           "seed": 42,
           "experiment": "seq_tag",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 320,
+          "n_val_seqs": 100,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.3559322357177734,
+            0.7920792102813721
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",
           "roc_auc_note": "computed"
         },
         {
-          "accuracy": 1.0,
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "roc_auc": 1.0,
+          "accuracy": 0.6239316239316239,
+          "precision": 0.7631578947368421,
+          "recall": 0.453125,
+          "f1": 0.5686274509803921,
+          "roc_auc": 0.6326650943396226,
           "confusion_matrix": [
             [
-              9,
-              0
+              44,
+              9
             ],
             [
-              0,
-              9
+              35,
+              29
             ]
           ],
           "n_classes_in_test": 2,
-          "train_time_sec": 3.2007,
-          "inf_time_per_seq_sec": 3.7e-05,
-          "epochs_trained": 200,
+          "train_time_sec": 11.6155,
+          "inf_time_per_seq_sec": 4.2e-05,
+          "epochs_trained": 45,
           "seed": 55,
           "experiment": "seq_tag",
-          "n_sub_train_seqs": 54,
-          "n_val_seqs": 18,
-          "n_test_seqs": 18,
+          "n_sub_train_seqs": 318,
+          "n_val_seqs": 102,
+          "n_test_seqs": 117,
           "class_weight": [
-            0.75,
-            1.5
+            1.394736886024475,
+            0.779411792755127
           ],
           "label_validity": "pilot_only",
           "label_source": "proxy_behavioral",

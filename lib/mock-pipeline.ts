@@ -37,6 +37,22 @@ export type ModelMetrics = {
   f1: number | null;
 };
 
+/** Phase 5 M5.8 — metrics for a single sequence model (LSTM or GRU). */
+export type SequenceModelMetrics = {
+  auc: number | null;
+  f1: number | null;
+  params?: number;
+};
+
+/** Phase 5 M5.9 — base64 PNG charts produced by NB05–NB08. */
+export type SequenceCharts = {
+  seqLengthDist?: string;       // NB05: sequence-length distribution
+  tagTransitionHeatmap?: string; // NB06: block-transition heatmap
+  tagCohortGraphs?: string;      // NB06: cohort TAG graphs
+  lstmTrainingCurves?: string;   // NB07: LSTM training curves
+  gruTrainingCurves?: string;    // NB08: GRU training curves
+};
+
 export type MockOutcome = {
   batchCode: string;
   dataset: {
@@ -68,6 +84,26 @@ export type MockOutcome = {
     evaluation?: string;
     metadata?: string;
     log?: string;
+  };
+  /**
+   * Phase 5 M5.8 — populated when NB05–NB09 ran successfully (sql_block sessions present).
+   * Absent when no sequence CSV was produced (sql_text-only batch).
+   */
+  sequenceModels?: {
+    lstm?: SequenceModelMetrics;
+    gru?: SequenceModelMetrics;
+    /** Full NB09 comparison table rows. */
+    comparisonRows?: Array<{
+      model: string;
+      featureSet: string;
+      auc: number | null;
+      f1: number | null;
+      params: number | null;
+    }>;
+    /** Always "pilot_only" for mock runs — surfaced for UI disclaimer. */
+    labelValidity?: string;
+    /** Phase 5 M5.9 — base64 PNG charts from NB05–NB08. */
+    charts?: SequenceCharts;
   };
 };
 

@@ -13,7 +13,7 @@ type Props = {
   runId: string;
   runNumber?: string;
   datasetCode: string;
-  artifactSource: "result_version" | "static_fallback" | null;
+  artifactSource: "result_version" | "static_fallback" | "local_disk" | null;
   onClose: () => void;
   token: string;
 };
@@ -34,22 +34,15 @@ export function AnalysisResultModal({
   const [data, setData] = useState<ArtifactPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [is501, setIs501] = useState(false);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError(null);
-      setIs501(false);
       const url = `/api/researcher/sequential-analysis?mode=detail&dataset_id=${encodeURIComponent(datasetId)}&run_id=${encodeURIComponent(runId)}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 501) {
-        setIs501(true);
-        setLoading(false);
-        return;
-      }
       if (!res.ok) {
         const j = await res.json().catch(() => ({ error: "Request failed" }));
         setError((j as { error?: string }).error ?? "Failed to load artifact.");
@@ -99,6 +92,11 @@ export function AnalysisResultModal({
                   Pilot &#8212; static artifact
                 </span>
               )}
+              {artifactSource === "local_disk" && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                  Local disk artifact
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -126,12 +124,6 @@ export function AnalysisResultModal({
             <div className="text-center py-16 text-sm text-[#64748B]">Loading artifact…</div>
           )}
 
-          {!loading && is501 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-700">
-              Result artifact loading not yet implemented for this run version.
-            </div>
-          )}
-
           {!loading && error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
               <p className="font-semibold mb-1">Error loading artifact</p>
@@ -139,7 +131,7 @@ export function AnalysisResultModal({
             </div>
           )}
 
-          {!loading && !is501 && !error && data && (
+          {!loading && !error && data && (
             <AnalysisResultView artifact={data} />
           )}
         </main>
