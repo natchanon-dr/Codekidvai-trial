@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
   // ── 1. Submissions ────────────────────────────────────────────────────────
   const { data: subs, error: subErr } = await supabaseAdmin
     .from("trn_submissions")
-    .select("submission_id, profile_id, batch_id, task_id, attempt_no, review_status");
+    .select("submission_id, profile_id, batch_id, task_id, review_status");
 
   if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 });
 
@@ -88,7 +88,6 @@ export async function GET(req: NextRequest) {
     profile_id: string;
     batch_id: string;
     task_id: string;
-    attempt_no: number;
     review_status: string;
   }[];
 
@@ -165,7 +164,7 @@ export async function GET(req: NextRequest) {
   type GroupKey = string;
   type GroupAgg = {
     profile_id: string; task_id: string; batch_id: string;
-    attempt_nos: number[]; reviewed: number;
+    submission_count: number; reviewed: number;
     submission_ids: string[];
     score_pcts: number[];
   };
@@ -176,9 +175,9 @@ export async function GET(req: NextRequest) {
     const key: GroupKey = `${s.profile_id}__${s.task_id}__${s.batch_id}`;
     const grp = groups.get(key) ?? {
       profile_id: s.profile_id, task_id: s.task_id, batch_id: s.batch_id,
-      attempt_nos: [], reviewed: 0, submission_ids: [], score_pcts: [],
+      submission_count: 0, reviewed: 0, submission_ids: [], score_pcts: [],
     };
-    grp.attempt_nos.push(s.attempt_no ?? 1);
+    grp.submission_count++;
     grp.submission_ids.push(s.submission_id);
     if (["completed", "reviewed"].includes(s.review_status ?? "")) grp.reviewed++;
 
@@ -190,14 +189,10 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 7. Build task records ─────────────────────────────────────────────────
-  type ProfileTaskMap = Map<string, BehavioralTaskRecord[]>;
-  const byProfile: Map<string, ProfileTaskMap> = new Map();
-
-  // Actually just group task records by profile_id
   const taskRecordsByProfile = new Map<string, BehavioralTaskRecord[]>();
 
   for (const [, grp] of groups) {
-    const attemptCount  = Math.max(...grp.attempt_nos, 1);
+    const attemptCount  = grp.submission_count;
     const reviewedCount = grp.reviewed;
     const correctRatio  = grp.score_pcts.length > 0
       ? grp.score_pcts.filter((s) => s >= 65).length / grp.score_pcts.length
@@ -233,7 +228,6 @@ export async function GET(req: NextRequest) {
 
   // ── 8. Build learner records ──────────────────────────────────────────────
   const learners: BehavioralLearnerRecord[] = [];
-
   for (const [profileId, taskList] of taskRecordsByProfile) {
     const prof = profileMap.get(profileId);
     const totalAttempts = taskList.reduce((a, t) => a + t.attempt_count, 0);
