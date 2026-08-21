@@ -161,7 +161,9 @@ export default function LearningOutcomesPage() {
 
       // Fetch live label status
       try {
-        const res = await fetch("/api/researcher/teacher-review");
+        const res = await fetch("/api/researcher/teacher-review", {
+          headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+        });
         if (res.ok) {
           const payload = await res.json() as { summary: ReviewSummary };
           setReviewSummary(payload.summary);

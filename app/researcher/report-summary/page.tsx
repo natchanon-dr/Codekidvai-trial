@@ -128,7 +128,9 @@ export default function ReportSummaryPage() {
 
       // Fetch summary
       try {
-        const res = await fetch("/api/researcher/research-summary");
+        const res = await fetch("/api/researcher/research-summary", {
+          headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+        });
         if (res.status === 404) {
           setFetchError("Pipeline artifacts not found. Run the mock pipeline first.");
         } else if (!res.ok) {

@@ -100,7 +100,9 @@ export default function TeacherReviewResearcherPage() {
       setParticipantCode(prof?.participant_code ?? null);
 
       try {
-        const res = await fetch("/api/researcher/teacher-review");
+        const res = await fetch("/api/researcher/teacher-review", {
+          headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+        });
         if (!res.ok) { setFetchError(`API error ${res.status}`); }
         else          { setData(await res.json() as Payload); }
       } catch { setFetchError("Failed to load data."); }

@@ -145,7 +145,9 @@ export default function SemanticAnalysisPage() {
       setAuthLoading(false);
 
       // Fetch semantic analysis data
-      const res = await fetch("/api/researcher/semantic-analysis");
+      const res = await fetch("/api/researcher/semantic-analysis", {
+        headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+      });
       if (res.ok) {
         const json = await res.json() as SemanticPayload;
         setData(json);
