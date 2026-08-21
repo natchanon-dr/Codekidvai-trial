@@ -261,18 +261,49 @@ export default function TeacherReviewResearcherPage() {
               </div>
             </section>
 
-            {/* Teacher action link */}
-            <div className="rounded-xl border border-[#FED7AA] bg-white px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[#0F172A]">Teacher Review Interface</p>
-                <p className="text-xs text-[#64748B]">Teachers mark submissions as reviewed at /teacher/submissions/review</p>
+            {/* Action links */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Teacher review */}
+              <div className="rounded-xl border border-[#FED7AA] bg-white px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A]">Teacher Review Interface</p>
+                  <p className="text-xs text-[#64748B]">Mark submissions as completed</p>
+                </div>
+                <a
+                  href="/teacher/submissions/review"
+                  className="shrink-0 px-4 py-1.5 rounded-xl bg-[#F37021] text-white text-xs font-bold hover:bg-[#d45f10] transition-colors"
+                >
+                  Open →
+                </a>
               </div>
-              <a
-                href="/teacher/submissions/review"
-                className="shrink-0 px-4 py-1.5 rounded-xl bg-[#F37021] text-white text-xs font-bold hover:bg-[#d45f10] transition-colors"
-              >
-                Open Teacher Review →
-              </a>
+
+              {/* Label CSV export */}
+              <div className="rounded-xl border border-[#FED7AA] bg-white px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A]">Export Labels CSV</p>
+                  <p className="text-xs text-[#64748B]">
+                    All labels · for ML pipeline (NB02–NB09)
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <a
+                    href="/api/researcher/label-export?validity=teacher_reviewed"
+                    download
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+                    title="Only teacher-reviewed labels"
+                  >
+                    ✓ Reviewed
+                  </a>
+                  <a
+                    href="/api/researcher/label-export"
+                    download
+                    className="px-3 py-1.5 rounded-xl border border-[#FED7AA] text-[#F37021] text-xs font-bold hover:bg-[#FFF7ED] transition-colors"
+                    title="All labels (pilot + reviewed)"
+                  >
+                    All
+                  </a>
+                </div>
+              </div>
             </div>
 
             {/* Table */}
