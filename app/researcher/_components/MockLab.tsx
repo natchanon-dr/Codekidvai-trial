@@ -1586,6 +1586,38 @@ export default function MockLab() {
                           ))}
                         </div>
                       )}
+
+                      {/* Phase 5 M5.12 — sequence model summary card (sql_block sessions only) */}
+                      {outcome?.sequenceModels && (
+                        <div className="bg-[#F5F3FF] border border-[#DDD6FE] rounded-xl p-3 space-y-2">
+                          <p className="text-[9px] font-semibold text-[#7C3AED] uppercase tracking-wide">
+                            Sequence Models (NB05–NB09) ✓
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(["lstm", "gru"] as const).map(key => {
+                              const m = outcome.sequenceModels![key];
+                              if (!m) return null;
+                              return (
+                                <div key={key} className="bg-white rounded-lg px-3 py-2 border border-[#DDD6FE]">
+                                  <p className="text-[9px] font-semibold text-[#94A3B8] uppercase">{key}</p>
+                                  <p className="text-sm font-bold text-[#7C3AED]">
+                                    AUC {m.auc != null ? m.auc.toFixed(3) : "—"}
+                                  </p>
+                                  <p className="text-[10px] text-[#94A3B8]">
+                                    F1 {m.f1 != null ? m.f1.toFixed(3) : "—"}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <button
+                            onClick={() => setActiveTab("sequence")}
+                            className="text-[10px] text-[#7C3AED] hover:underline"
+                          >
+                            ↗ View full comparison in Sequence tab
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Metrics */}
