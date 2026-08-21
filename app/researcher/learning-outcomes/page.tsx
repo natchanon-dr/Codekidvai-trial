@@ -118,6 +118,16 @@ const OUTCOME_PLAN = [
 // Page
 // ---------------------------------------------------------------------------
 
+interface ReviewSummary {
+  total_learner_batches: number;
+  teacher_reviewed: number;
+  at_risk_count: number;
+  not_risk_count: number;
+  threshold_target: number;
+  threshold_pct: number;
+  confirmatory_ready: boolean;
+}
+
 export default function LearningOutcomesPage() {
   const router = useRouter();
   const profileRef = useRef<HTMLDivElement>(null);
@@ -126,6 +136,7 @@ export default function LearningOutcomesPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -147,6 +158,16 @@ export default function LearningOutcomesPage() {
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
+
+      // Fetch live label status
+      try {
+        const res = await fetch("/api/researcher/teacher-review");
+        if (res.ok) {
+          const payload = await res.json() as { summary: ReviewSummary };
+          setReviewSummary(payload.summary);
+        }
+      } catch { /* non-fatal — page still renders with static content */ }
+
       setLoading(false);
     }
     init();
@@ -233,9 +254,17 @@ export default function LearningOutcomesPage() {
               learning progression. Live data available after Phase 5 C teacher review.
             </p>
           </div>
-          <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-amber-100 text-amber-700 border-amber-200">
-            Awaiting Phase 5 C
-          </span>
+          {reviewSummary?.confirmatory_ready ? (
+            <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-emerald-100 text-emerald-700 border-emerald-200">
+              ✓ Confirmatory threshold met
+            </span>
+          ) : (
+            <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-amber-100 text-amber-700 border-amber-200">
+              {reviewSummary
+                ? `${reviewSummary.teacher_reviewed}/${reviewSummary.threshold_target} reviewed`
+                : "Awaiting Phase 5 C"}
+            </span>
+          )}
         </div>
 
         {/* At-risk definition */}
@@ -261,6 +290,44 @@ export default function LearningOutcomesPage() {
             </div>
           </div>
         </section>
+
+        {/* Live label progress */}
+        {reviewSummary && (
+          <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#0F172A]">Label Collection Progress</h2>
+              <a href="/researcher/teacher-review" className="text-xs font-semibold text-[#F37021] hover:underline">
+                View details →
+              </a>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total learner-batches", val: reviewSummary.total_learner_batches, cls: "" },
+                { label: "Teacher-reviewed",      val: reviewSummary.teacher_reviewed,      cls: "text-emerald-700 font-bold" },
+                { label: "At-risk (reviewed)",    val: reviewSummary.at_risk_count,         cls: "text-rose-700 font-bold" },
+                { label: "Not at-risk (reviewed)",val: reviewSummary.not_risk_count,        cls: "text-sky-700 font-bold" },
+              ].map(({ label, val, cls }) => (
+                <div key={label} className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] px-4 py-3">
+                  <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className={`text-xl tabular-nums text-[#0F172A] ${cls}`}>{val}</p>
+                </div>
+              ))}
+            </div>
+            {/* Progress bar */}
+            <div>
+              <div className="flex items-center justify-between text-[11px] text-[#64748B] mb-1">
+                <span>{reviewSummary.teacher_reviewed} / {reviewSummary.threshold_target} for confirmatory</span>
+                <span className="font-semibold">{reviewSummary.threshold_pct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${reviewSummary.confirmatory_ready ? "bg-emerald-500" : "bg-[#F37021]"}`}
+                  style={{ width: `${reviewSummary.threshold_pct}%` }}
+                />
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* 2C3L rubric */}
         <div className="space-y-3">
