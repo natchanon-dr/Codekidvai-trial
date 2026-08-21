@@ -1,0 +1,77 @@
+{
+  "schema_version": "embeddings_v1",
+  "created_at_utc": "2026-08-21T09:26:50.695800+00:00",
+  "input_files": {
+    "complexity_parquet": "data\\features\\sql_complexity_v1.parquet",
+    "complexity_sha": "a09fc41795313e40",
+    "cluster_parquet": "data\\features\\error_clusters_v1.parquet",
+    "cluster_sha": "fd82436425f5df5f"
+  },
+  "parameters": {
+    "algorithm": "TruncatedSVD",
+    "n_components": 12,
+    "random_state": 42,
+    "scaler": "StandardScaler",
+    "feature_cols": [
+      "attempt_count",
+      "first_correct_attempt",
+      "correct_ratio",
+      "error_type_diversity",
+      "avg_exec_ms",
+      "max_exec_ms",
+      "has_error",
+      "error_streak_max",
+      "complexity_score",
+      "error_count",
+      "dominant_cluster",
+      "cluster_diversity"
+    ]
+  },
+  "dataset_stats": {
+    "n_learner_task_rows": 85,
+    "n_features_input": 12,
+    "n_components_actual": 12,
+    "cumulative_var_pct": 100.0,
+    "top3_var_pct": [
+      39.87,
+      20.22,
+      17.96
+    ],
+    "within_task_similarity": {
+      "AQT000001": -0.015921249985694885,
+      "AQT000002": -0.18099088966846466,
+      "AQT000004": 0.39434266090393066,
+      "AQT000005": -0.16376590728759766,
+      "AQT000006": -0.20136630535125732,
+      "AQT000007": 0.06790897250175476,
+      "AQT000008": 0.011007045395672321,
+      "AQT000009": -0.13062065839767456,
+      "AQT000010": -0.37460875511169434,
+      "AQT000011": 0.2616061270236969,
+      "AQT000012": 0.46630120277404785,
+      "AQT000013": 0.021003693342208862,
+      "AQT000014": -0.24041680991649628,
+      "AQT000015": -0.018379569053649902,
+      "AQT000016": -0.41950416564941406,
+      "AQT000017": 0.8898231387138367,
+      "AQT000018": 0.3812117576599121,
+      "AQT000019": -0.07913590967655182,
+      "AQT000020": 0.22910983860492706,
+      "AQT000021": -0.15501679480075836,
+      "AQT000022": 0.08527003973722458,
+      "AQT000023": 0.177437886595726,
+      "AQT000024": 0.009714196436107159,
+      "AQT000025": 0.12942805886268616,
+      "AQT000026": 0.5105969905853271,
+      "AQT000027": 0.32823044061660767,
+      "AQT000028": 0.17719973623752594,
+      "AQT000029": 0.09395147114992142,
+      "AQT000030": -0.12783096730709076
+    }
+  },
+  "embedding_note": "Behavioral proxy embeddings (no SQL text available). TruncatedSVD on NB10 complexity features serves as surrogate for semantic embeddings.",
+  "data_warning": "PILOT ONLY \u2014 proxy_behavioral labels, label_validity=pilot_only.",
+  "artifacts": {
+    "solution_embeddings": "data\\features\\solution_embeddings_v1.npz"
+  }
+}

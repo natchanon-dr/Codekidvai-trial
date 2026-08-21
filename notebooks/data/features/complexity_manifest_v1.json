@@ -1,0 +1,39 @@
+{
+  "schema_version": "complexity_v1",
+  "created_at_utc": "2026-08-21T09:26:23.743197+00:00",
+  "input_files": {
+    "attempt_csv": "C:\\CKV-Project\\Codekidvai-trial\\notebooks\\data\\raw\\attempt_20260727_MAQT0001.csv",
+    "attempt_sha": "c8e8f0aa84a9bd5d",
+    "session_csv": "C:\\CKV-Project\\Codekidvai-trial\\notebooks\\data\\raw\\session_20260727_MAQT0001.csv",
+    "session_sha": "fea34eaaa32fbd91"
+  },
+  "parameters": {
+    "complexity_score_formula": {
+      "attempt_component": "min(attempt_count / 10.0, 1.0) * 40",
+      "error_component": "min(error_type_diversity / 5.0, 1.0) * 30",
+      "timing_component": "min(avg_exec_ms / 5000.0, 1.0) * 30",
+      "total": "attempt_component + error_component + timing_component"
+    },
+    "thresholds": {
+      "attempt_count_max_for_normalisation": 10,
+      "error_diversity_max_for_normalisation": 5,
+      "exec_ms_max_for_normalisation": 5000
+    }
+  },
+  "dataset_stats": {
+    "total_rows": 85,
+    "unique_learners": 3,
+    "unique_tasks": 29,
+    "complexity_score_mean": 44.0665,
+    "complexity_score_min": 17.621,
+    "complexity_score_max": 50.2935,
+    "avg_attempt_count": 11.7647,
+    "has_error_pct": 100.0,
+    "missing_session_rows": 85
+  },
+  "data_warning": "TECHNICAL VALIDATION ONLY -- mock dataset. Final thesis requires >=60 participants with expert-validated labels.",
+  "artifacts": {
+    "parquet": "data\\features\\sql_complexity_v1.parquet",
+    "chart": "reports\\phase4\\nb10_complexity_distributions.png"
+  }
+}
