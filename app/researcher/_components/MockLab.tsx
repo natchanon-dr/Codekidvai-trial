@@ -252,6 +252,8 @@ export default function MockLab() {
   // true = outcome came from a live run (unsaved); false = loaded from DB
   const [isNewOutcome, setIsNewOutcome] = useState(false);
   const [outcomeSaved, setOutcomeSaved] = useState(false);
+  // Phase 5 M5.15: timestamp (ms) when outcome was restored from localStorage; null = live/DB
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
 
   // configs table state
   const [configs, setConfigs]               = useState<MockConfigRecord[]>([]);
@@ -308,6 +310,22 @@ export default function MockLab() {
   }, [filterActivity, filterTaskType]);
 
   useEffect(() => { void fetchConfigs(); }, [fetchConfigs]);
+
+  // Phase 5 M5.15: restore last completed outcome from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ckv-mocklab-last-outcome");
+      if (!raw) return;
+      const stored = JSON.parse(raw) as { batchCode: string; outcome: MockOutcome; savedAt: number };
+      if (!stored.outcome || !stored.batchCode) return;
+      setOutcome(stored.outcome);
+      setConfig(prev => ({ ...prev, batchCode: stored.batchCode }));
+      setStepStatus(Object.fromEntries(PIPELINE_STEPS.map(s => [s, "completed" as StepStatus])));
+      setCompleted([...PIPELINE_STEPS]);
+      setRestoredAt(stored.savedAt);
+    } catch { /* corrupt storage — ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
 
   // fetch class list on mount
   useEffect(() => {
@@ -683,10 +701,20 @@ export default function MockLab() {
   function parseOutcome(payload: { report?: MockOutcome }, fromLiveRun = false) {
     if (payload.report) {
       setOutcome(payload.report);
+      setRestoredAt(null); // cleared — this is a fresh live result
       setActiveTab("summary");
       if (fromLiveRun) {
         setIsNewOutcome(true);
         setOutcomeSaved(false);
+        // Phase 5 M5.15: persist to localStorage so the outcome survives navigation
+        try {
+          const entry = {
+            batchCode: runConfigRef.current?.batchCode ?? config.batchCode,
+            outcome: payload.report,
+            savedAt: Date.now(),
+          };
+          localStorage.setItem("ckv-mocklab-last-outcome", JSON.stringify(entry));
+        } catch { /* storage full or unavailable — non-critical */ }
       }
     }
   }
@@ -1307,6 +1335,15 @@ export default function MockLab() {
                 </button>
               ) : (
                 <>
+                  {/* Phase 5 M5.15: restored-from-storage badge */}
+                  {outcome && restoredAt !== null && (
+                    <span
+                      title={`Restored from localStorage — run completed at ${new Date(restoredAt).toLocaleTimeString()}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200"
+                    >
+                      ↺ Restored
+                    </span>
+                  )}
                   {/* Save icon — shown only after a live run, before saving */}
                   {outcome && isNewOutcome && !outcomeSaved && (
                     <button
