@@ -271,7 +271,7 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
     try { return JSON.parse(await fsAsync.readFile(p, "utf-8")); }
     catch { return null; }
   }
-  const [seqManifest, lstmMetrics, gruMetrics, vocabJson, scalerJson, tagJson, lstmCfg, gruCfg] =
+  const [seqManifest, lstmMetrics, gruMetrics, vocabJson, scalerJson, tagJson, lstmCfg, gruCfg, lstmManifestJson, compManifestJson] =
     await Promise.all([
       tryJson(path.join(NB_DIR, "data", "sequences", "sequence_manifest_v1.json")),
       tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_metrics_v1.json")),
@@ -282,6 +282,9 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       tryJson(path.join(NB_DIR, "data", "tag",       "tag_manifest_v1.json")),
       tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_config_v1.json")),
       tryJson(path.join(NB_DIR, "models", "sequence", "gru",  "gru_config_v1.json")),
+      // Phase 5 M5.21: lstm_manifest for test_class_dist; comparison_manifest for validation counts
+      tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_manifest_v1.json")),
+      tryJson(path.join(NB_DIR, "models", "sequence", "comparison", "comparison_manifest_v1.json")),
     ]);
 
   // ── PNG charts as base64 data URLs ────────────────────────────────────────
@@ -355,9 +358,12 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
   const tagDs = (tagJson?.["dataset_stats"] ?? {}) as TagDs;
   const leakageOk      = (tagDs.feature_leakage_check ?? "PASS") === "PASS";
   const nanOk          = (tagDs.nan_in_features ?? "NONE") === "NONE";
-  const localValidation = (tagJson || seqManifest) ? {
-    checks_run:            4,
-    checks_passed:         [true, true, leakageOk, nanOk].filter(Boolean).length,
+  // Use comparison_manifest counts when available (18/18 from NB09 full sweep)
+  const compChecksRun    = (compManifestJson?.["validation_checks"] as number) ?? null;
+  const compChecksPassed = (compManifestJson?.["validation_passed"]  as number) ?? null;
+  const localValidation = (tagJson || seqManifest || compManifestJson) ? {
+    checks_run:            compChecksRun    ?? 4,
+    checks_passed:         compChecksPassed ?? [true, true, leakageOk, nanOk].filter(Boolean).length,
     no_learner_overlap:    true,   // GroupShuffleSplit guarantee
     no_pii_in_exports:     true,   // design guarantee — no emails/names in CSV
     leakage_check_passed:  leakageOk,
@@ -450,7 +456,12 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       all_seeds:               [11, 22, 33, 42, 55],
       test_sequences:          testShape?.[0] ?? null,
       timing_note:             null,
-      test_class_distribution: null,
+      // Phase 5 M5.21: populate from lstm_manifest test_class_dist {"0": N, "1": P}
+      test_class_distribution: (() => {
+        const tcd = lstmManifestJson?.["test_class_dist"] as Record<string, number> | undefined;
+        if (!tcd) return null;
+        return { positive: tcd["1"] ?? 0, negative: tcd["0"] ?? 0 };
+      })(),
       models,
     },
     seed_stability: seedStability,

@@ -900,7 +900,9 @@ confirmatory_analysis_allowed = ${String(rc.confirmatory_analysis_allowed)}`}
           )}
           <div className="text-[10px] text-[#64748B] mb-2 flex gap-4">
             <span>Test sequences: <strong>{mcmp.test_sequences}</strong></span>
-            <span>Class: <strong>{mcmp.test_class_distribution.positive}+</strong> / <strong>{mcmp.test_class_distribution.negative}−</strong></span>
+            {mcmp.test_class_distribution && (
+              <span>Class: <strong>{mcmp.test_class_distribution.positive}+</strong> / <strong>{mcmp.test_class_distribution.negative}−</strong></span>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse min-w-[480px]">
