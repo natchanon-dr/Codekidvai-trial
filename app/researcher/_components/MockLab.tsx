@@ -671,6 +671,7 @@ export default function MockLab() {
     setOutcome(null);
     setIsNewOutcome(false);
     setOutcomeSaved(false);
+    setRestoredAt(null);
     setShowPipelineModal(true);
 
     // If already run before, load last successful outcome instead of auto-running
@@ -696,6 +697,17 @@ export default function MockLab() {
     } else {
       void runStep("run-all");
     }
+  }
+
+  // Phase 5 M5.16: wipe the localStorage cache and reset outcome UI to blank
+  function clearSaved() {
+    try { localStorage.removeItem("ckv-mocklab-last-outcome"); } catch { /* ignore */ }
+    setOutcome(null);
+    setRestoredAt(null);
+    setIsNewOutcome(false);
+    setOutcomeSaved(false);
+    setStepStatus({});
+    setCompleted([]);
   }
 
   function parseOutcome(payload: { report?: MockOutcome }, fromLiveRun = false) {
@@ -1335,13 +1347,20 @@ export default function MockLab() {
                 </button>
               ) : (
                 <>
-                  {/* Phase 5 M5.15: restored-from-storage badge */}
+                  {/* Phase 5 M5.15/M5.16: restored-from-storage badge + clear button */}
                   {outcome && restoredAt !== null && (
-                    <span
-                      title={`Restored from localStorage — run completed at ${new Date(restoredAt).toLocaleTimeString()}`}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200"
-                    >
-                      ↺ Restored
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200">
+                      <span title={`Restored from localStorage — run completed at ${new Date(restoredAt).toLocaleTimeString()}`}>
+                        ↺ Restored
+                      </span>
+                      <button
+                        onClick={clearSaved}
+                        title="Clear saved outcome and reset"
+                        className="ml-0.5 hover:text-sky-900 transition-colors leading-none"
+                        aria-label="Clear saved outcome"
+                      >
+                        ×
+                      </button>
                     </span>
                   )}
                   {/* Save icon — shown only after a live run, before saving */}
