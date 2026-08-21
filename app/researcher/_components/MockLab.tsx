@@ -712,6 +712,20 @@ export default function MockLab() {
     }
   }
 
+  // Phase 5 M5.18: download the current outcome object as a JSON file
+  function downloadOutcomeJson() {
+    if (!outcome) return;
+    const date     = new Date().toISOString().slice(0, 10);
+    const filename = `ckv_outcome_${config.batchCode}_${date}.json`;
+    const blob     = new Blob([JSON.stringify(outcome, null, 2)], { type: "application/json" });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement("a");
+    a.href         = url;
+    a.download     = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Phase 5 M5.16: wipe the localStorage cache and reset outcome UI to blank
   function clearSaved() {
     try { localStorage.removeItem("ckv-mocklab-last-outcome"); } catch { /* ignore */ }
@@ -1912,6 +1926,25 @@ export default function MockLab() {
                           ))}
                         </div>
                       ) : <p className="text-sm text-[#94A3B8]">Run the full pipeline to generate reports.</p>}
+
+                      {/* Phase 5 M5.18: Download outcome JSON */}
+                      {outcome && (
+                        <div className="border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+                          <p className="text-sm font-bold text-[#0F172A]">Outcome Export</p>
+                          <p className="text-xs text-[#64748B]">
+                            Download the full outcome object as JSON for archiving or thesis documentation.
+                          </p>
+                          <button
+                            onClick={downloadOutcomeJson}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-[#E2E8F0] text-[#0F172A] hover:border-[#F37021] hover:text-[#C2410C] transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Download JSON
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Logs */}
