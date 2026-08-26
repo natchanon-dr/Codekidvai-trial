@@ -172,10 +172,12 @@ export default function BehavioralAnalysisPage() {
   const [error,   setError]   = useState<string | null>(null);
 
   // ── Filters ───────────────────────────────────────────────────────────────
-  const [search,     setSearch]     = useState("");
-  const [riskFilter, setRiskFilter] = useState<"" | "risk" | "ok">("");
-  const [taskType,   setTaskType]   = useState("");
-  const [page,       setPage]       = useState(1);
+  const [search,           setSearch]           = useState("");
+  const [batchTypeFilter,  setBatchTypeFilter]  = useState("");
+  const [riskFilter,       setRiskFilter]       = useState<"" | "risk" | "ok">("");
+  const [taskType,         setTaskType]         = useState("");
+  const [complexityFilter, setComplexityFilter] = useState<"" | "high" | "med" | "low">("");
+  const [page,             setPage]             = useState(1);
 
   // ── Table state ───────────────────────────────────────────────────────────
   const [expandedIds,  setExpandedIds]  = useState<Set<string>>(new Set());
@@ -257,9 +259,16 @@ export default function BehavioralAnalysisPage() {
         !l.tasks.some((t) => t.task_code.toLowerCase().includes(q))
       ) return false;
     }
+    if (batchTypeFilter && l.primary_batch_type !== batchTypeFilter) return false;
     if (riskFilter === "risk" && !l.at_risk) return false;
     if (riskFilter === "ok"   &&  l.at_risk) return false;
     if (taskType && !l.tasks.some((t) => t.task_type === taskType)) return false;
+    if (complexityFilter) {
+      const c = l.avg_complexity;
+      if (complexityFilter === "high" && c < 70)  return false;
+      if (complexityFilter === "med"  && (c < 45 || c >= 70)) return false;
+      if (complexityFilter === "low"  && c >= 45) return false;
+    }
     return true;
   });
 
@@ -358,7 +367,7 @@ export default function BehavioralAnalysisPage() {
           </p>
         </div>
 
-        {/* ── Filter bar — same style as Sequential Analysis ── */}
+        {/* ── Filter bar — matches Sequential Analysis style exactly ── */}
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
 
           {/* Search */}
@@ -372,9 +381,41 @@ export default function BehavioralAnalysisPage() {
                 type="search"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Learner or task…"
+                placeholder="Code or name…"
                 className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44"
               />
+            </div>
+          </div>
+
+          {/* Batch — star/dumbbell/airplane icons (same as Sequential Analysis) */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Batch</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All batches" onClick={() => { setBatchTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Main" onClick={() => { setBatchTypeFilter(batchTypeFilter === "main" ? "" : "main"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "main" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                </svg>
+              </button>
+              <button type="button" title="Trial" onClick={() => { setBatchTypeFilter(batchTypeFilter === "trial" ? "" : "trial"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "trial" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+                  <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+                  <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+                  <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+                  <path d="M7.5 12h9" />
+                </svg>
+              </button>
+              <button type="button" title="Pilot" onClick={() => { setBatchTypeFilter(batchTypeFilter === "pilot" ? "" : "pilot"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${batchTypeFilter === "pilot" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -386,20 +427,21 @@ export default function BehavioralAnalysisPage() {
                 className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${riskFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                 All
               </button>
-              {(["risk", "ok"] as const).map((v, i, arr) => (
-                <button key={v} type="button" title={v === "risk" ? "At-Risk" : "OK"}
-                  onClick={() => { setRiskFilter(riskFilter === v ? "" : v); setPage(1); }}
-                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${riskFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                  <span className={`w-2 h-2 rounded-full ${riskFilter === v ? "bg-white" : v === "risk" ? "bg-rose-500" : "bg-emerald-500"}`} />
-                </button>
-              ))}
+              <button type="button" title="At-Risk" onClick={() => { setRiskFilter(riskFilter === "risk" ? "" : "risk"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${riskFilter === "risk" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <span className={`w-2 h-2 rounded-full ${riskFilter === "risk" ? "bg-white" : "bg-rose-500"}`} />
+              </button>
+              <button type="button" title="OK" onClick={() => { setRiskFilter(riskFilter === "ok" ? "" : "ok"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${riskFilter === "ok" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <span className={`w-2 h-2 rounded-full ${riskFilter === "ok" ? "bg-white" : "bg-emerald-500"}`} />
+              </button>
             </div>
           </div>
 
-          {/* Task Type — icon style */}
+          {/* Task Type — icon style (same as Sequential) */}
           {allTaskTypes.length > 0 && (
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Task Type</label>
+              <label className="text-xs text-[#64748B] font-medium">Task</label>
               <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
                 <button type="button" title="All task types" onClick={() => { setTaskType(""); setPage(1); }}
                   className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskType === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
@@ -416,10 +458,32 @@ export default function BehavioralAnalysisPage() {
             </div>
           )}
 
+          {/* Complexity — dot style (matches Sequential Usage dots) */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Complexity</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All complexity levels" onClick={() => { setComplexityFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${complexityFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {([
+                { v: "high" as const, cls: "bg-rose-500",    title: "High (≥70)" },
+                { v: "med"  as const, cls: "bg-amber-400",   title: "Medium (45–69)" },
+                { v: "low"  as const, cls: "bg-emerald-500", title: "Low (<45)" },
+              ]).map(({ v, cls, title }, i, arr) => (
+                <button key={v} type="button" title={title}
+                  onClick={() => { setComplexityFilter(complexityFilter === v ? "" : v); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${complexityFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <span className={`w-2 h-2 rounded-full ${complexityFilter === v ? "bg-white" : cls}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Clear All */}
-          {(search || riskFilter || taskType) && (
+          {(search || batchTypeFilter || riskFilter || taskType || complexityFilter) && (
             <button type="button"
-              onClick={() => { setSearch(""); setRiskFilter(""); setTaskType(""); setPage(1); }}
+              onClick={() => { setSearch(""); setBatchTypeFilter(""); setRiskFilter(""); setTaskType(""); setComplexityFilter(""); setPage(1); }}
               className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
               Clear All
             </button>
@@ -449,6 +513,7 @@ export default function BehavioralAnalysisPage() {
                     {[
                       { label: "Learner",     align: "left"   },
                       { label: "Name",        align: "left"   },
+                      { label: "Batch",       align: "center" },
                       { label: "Risk",        align: "center" },
                       { label: "Task Type",   align: "center" },
                       { label: "Tasks",       align: "center" },
@@ -466,7 +531,7 @@ export default function BehavioralAnalysisPage() {
                 <tbody>
                   {pagedLearners.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="text-center py-10 text-[#94A3B8] text-sm">
+                      <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">
                         {allLearners.length === 0 ? "No submission data available yet." : "No learners match the current filters."}
                       </td>
                     </tr>
@@ -500,6 +565,27 @@ export default function BehavioralAnalysisPage() {
                           {/* Display name */}
                           <td className="px-3 py-3.5 align-middle min-w-[160px]">
                             <span className="text-xs text-[#0F172A] font-medium leading-snug">{learner.display_name}</span>
+                          </td>
+                          {/* Batch type icon */}
+                          <td className="px-2 py-3.5 text-center align-middle">
+                            <span title={learner.primary_batch_type} className="inline-flex items-center justify-center text-[#64748B]">
+                              {learner.primary_batch_type === "main" ? (
+                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                  <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                                </svg>
+                              ) : learner.primary_batch_type === "trial" ? (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                  <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+                                  <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+                                  <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+                                  <path d="M7.5 12h9" />
+                                </svg>
+                              ) : (
+                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                                </svg>
+                              )}
+                            </span>
                           </td>
                           {/* Risk dot */}
                           <td className="px-2 py-3.5 text-center align-middle">
@@ -548,7 +634,7 @@ export default function BehavioralAnalysisPage() {
                         {isExpanded && (
                           visibleTasks.length === 0 ? (
                             <tr key={`${learner.profile_id}-empty`} className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
-                              <td colSpan={9} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
+                              <td colSpan={10} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
                                 No tasks match the current filter.
                               </td>
                             </tr>
@@ -581,7 +667,7 @@ export default function BehavioralAnalysisPage() {
                                   <ComplexityDot score={task.complexity_score} />
                                 </td>
                                 {/* Eye button */}
-                                <td className="px-2 py-2.5 align-middle text-center" colSpan={2}>
+                                <td className="px-2 py-2.5 align-middle text-center" colSpan={3}>
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setDetailTarget({ learner, task }); }}

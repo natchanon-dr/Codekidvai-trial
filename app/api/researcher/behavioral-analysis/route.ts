@@ -37,6 +37,7 @@ export type BehavioralTaskRecord = {
   task_type: string;
   batch_code: string;
   batch_id: string;
+  batch_type: string;
   attempt_count: number;
   reviewed_count: number;
   correct_ratio: number;
@@ -54,6 +55,7 @@ export type BehavioralLearnerRecord = {
   total_attempts: number;
   avg_complexity: number;
   at_risk: boolean;
+  primary_batch_type: string;
   tasks: BehavioralTaskRecord[];
 };
 
@@ -152,10 +154,10 @@ export async function GET(req: NextRequest) {
   const batchIds = [...new Set(submissions.map((s) => s.batch_id))];
   const { data: batches } = await supabaseAdmin
     .from("mst_experiment_batches")
-    .select("batch_id, batch_code")
+    .select("batch_id, batch_code, batch_type")
     .in("batch_id", batchIds);
 
-  type BatchRow = { batch_id: string; batch_code: string };
+  type BatchRow = { batch_id: string; batch_code: string; batch_type: string };
   const batchMap = new Map(
     (batches ?? []).map((b) => [(b as BatchRow).batch_id, b as BatchRow]),
   );
@@ -212,6 +214,7 @@ export async function GET(req: NextRequest) {
       task_type:      task?.task_type ?? "unknown",
       batch_code:     batch?.batch_code ?? grp.batch_id,
       batch_id:       grp.batch_id,
+      batch_type:     batch?.batch_type ?? "pilot",
       attempt_count:  attemptCount,
       reviewed_count: reviewedCount,
       correct_ratio:  Math.round(correctRatio * 100) / 100,
@@ -236,15 +239,23 @@ export async function GET(req: NextRequest) {
     );
     const atRisk = taskList.some((t) => t.at_risk);
 
+    // Primary batch type = most common batch_type across tasks
+    const batchTypeCounts = taskList.reduce<Record<string, number>>((acc, t) => {
+      acc[t.batch_type] = (acc[t.batch_type] ?? 0) + 1;
+      return acc;
+    }, {});
+    const primaryBatchType = Object.entries(batchTypeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "pilot";
+
     learners.push({
-      profile_id:       profileId,
-      participant_code: prof?.participant_code ?? profileId.slice(0, 8),
-      display_name:     prof?.display_name ?? "Unknown",
-      task_count:       taskList.length,
-      total_attempts:   totalAttempts,
-      avg_complexity:   avgComplexity,
-      at_risk:          atRisk,
-      tasks:            taskList.sort((a, b) => a.task_code.localeCompare(b.task_code)),
+      profile_id:         profileId,
+      participant_code:   prof?.participant_code ?? profileId.slice(0, 8),
+      display_name:       prof?.display_name ?? "Unknown",
+      task_count:         taskList.length,
+      total_attempts:     totalAttempts,
+      avg_complexity:     avgComplexity,
+      at_risk:            atRisk,
+      primary_batch_type: primaryBatchType,
+      tasks:              taskList.sort((a, b) => a.task_code.localeCompare(b.task_code)),
     });
   }
 
