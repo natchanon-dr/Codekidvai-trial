@@ -4,276 +4,317 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
-import { TaskTypeIcon, TASK_TYPE_LABEL, TASK_TYPE_ORDER } from "@/lib/task-type-utils";
-import type {
-  BehavioralLearnerRecord,
-  BehavioralTaskRecord,
-  BehavioralAnalysisResponse,
-} from "@/app/api/researcher/behavioral-analysis/route";
+import { TaskTypeIcon } from "@/lib/task-type-utils";
+import type { BehavioralDatasetRecord, BehavioralRunRecord } from "@/app/api/researcher/behavioral-analysis/route";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 
-function ComplexityDot({ score }: { score: number }) {
-  const cls = score >= 70 ? "bg-rose-500" : score >= 45 ? "bg-amber-400" : "bg-emerald-500";
-  const label = score >= 70 ? "High" : score >= 45 ? "Med" : "Low";
+const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
+const DATASET_TASK_LABEL: Record<string, string> = {
+  sql_text: "SQL Query",
+  sql_block: "Query Block",
+  stored_procedure: "Stored Procedure",
+  er_diagram: "ER Diagram",
+};
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type DetailTarget = {
+  datasetId: string;
+  runId: string;
+  runNumber: string;
+  datasetCode: string;
+  datasetName: string;
+  run: BehavioralRunRecord;
+};
+
+type ListResponse = {
+  datasets: BehavioralDatasetRecord[];
+  filter_options: {
+    batch_types: string[];
+    set_families: string[];
+    task_types: string[];
+    run_statuses: string[];
+    usage_statuses: string[];
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+function StarIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`w-2 h-2 rounded-full ${cls}`} />
-      <span className="text-[10px] font-semibold text-[#475569]">{label}</span>
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+    </svg>
+  );
+}
+
+function DumbbellIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+      <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+      <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+      <path d="M7.5 12h9" />
+    </svg>
+  );
+}
+
+function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    completed: "bg-green-100 text-green-700 border-green-200",
+    pending: "bg-amber-100 text-amber-700 border-amber-200",
+    running: "bg-blue-100 text-blue-700 border-blue-200",
+    failed: "bg-red-100 text-red-700 border-red-200",
+    cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  };
+  const cls = colorMap[status] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
+      {status}
     </span>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Detail Modal — same card style as Sequential Analysis detail modal
+// Inline detail modal
 // ---------------------------------------------------------------------------
 
-function DetailModal({
-  learner,
-  task,
-  onClose,
-}: {
-  learner: BehavioralLearnerRecord;
-  task: BehavioralTaskRecord;
-  onClose: () => void;
-}) {
+function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onClose: () => void }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl max-w-lg w-full p-6 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-lg p-6 space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-[#94A3B8] uppercase tracking-wide">Behavioral Detail</p>
-            <p className="text-base font-bold text-[#0F172A] mt-0.5">
-              {learner.participant_code}{" "}
-              <span className="text-[#94A3B8]">—</span>{" "}
-              <span className="font-mono text-[#F37021]">{task.task_code}</span>
-            </p>
-            <p className="text-xs text-[#64748B]">
-              {learner.display_name} · {task.batch_code} · {task.task_type}
+            <p className="text-sm font-bold text-[#0F172A]">Behavioral Analysis</p>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Dataset <span className="font-mono font-semibold text-[#F37021]">{target.datasetCode}</span>
+              {" "}&mdash; Run <span className="font-mono font-semibold text-[#F37021]">#{target.runNumber}</span>
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#0F172A] transition-colors"
+            className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+            aria-label="Close"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        <hr className="border-[#FED7AA]" />
-
-        {/* Complexity bar */}
-        <div>
-          <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-2">
-            Complexity Score
-          </p>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-3 bg-[#F1F5F9] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  task.complexity_score >= 70 ? "bg-rose-500" :
-                  task.complexity_score >= 45 ? "bg-amber-400" : "bg-emerald-500"
-                }`}
-                style={{ width: `${task.complexity_score}%` }}
-              />
+        {/* Run info */}
+        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#64748B] min-w-[70px]">Status:</span>
+            <StatusBadge status={target.run.status} />
+          </div>
+          {target.run.started_at && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Started:</span>
+              <span className="text-xs text-[#0F172A]">{new Date(target.run.started_at).toLocaleString()}</span>
             </div>
-            <span className="text-lg font-bold text-[#0F172A] font-mono">
-              {task.complexity_score}
-            </span>
-            <span className="text-xs text-[#94A3B8]">/ 100</span>
-          </div>
-          <p className="text-[10px] text-[#94A3B8] mt-1">
-            {task.complexity_score >= 70
-              ? "High complexity — multiple retry loops detected."
-              : task.complexity_score >= 45
-              ? "Medium complexity — some difficulty observed."
-              : "Low complexity — learner resolved task efficiently."}
+          )}
+          {target.run.completed_at && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Completed:</span>
+              <span className="text-xs text-[#0F172A]">{new Date(target.run.completed_at).toLocaleString()}</span>
+            </div>
+          )}
+          {target.run.run_type && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Run type:</span>
+              <span className="text-xs font-mono text-[#475569]">{target.run.run_type}</span>
+            </div>
+          )}
+          {target.run.error_summary && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 mt-1">
+              {target.run.error_summary}
+            </div>
+          )}
+        </div>
+
+        {/* Placeholder */}
+        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+          <p className="text-sm text-[#64748B]">
+            Behavioral analysis results will appear here after running the pipeline.
           </p>
         </div>
 
-        {/* Feature grid */}
-        <div>
-          <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-3">
-            Attempt Features (NB10 proxy)
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Submission Count",  value: task.attempt_count,  unit: "submissions" },
-              { label: "Reviewed Count",    value: task.reviewed_count, unit: "reviewed"    },
-              { label: "Correct Ratio",     value: `${Math.round(task.correct_ratio * 100)}%`, unit: "" },
-              { label: "Avg Score",         value: task.avg_score_pct != null ? `${task.avg_score_pct}%` : "—", unit: "" },
-              { label: "Task Type",         value: task.task_type,      unit: "" },
-              { label: "Risk Status",       value: task.at_risk ? "At-Risk" : "OK", unit: "" },
-            ].map(({ label, value, unit }) => (
-              <div key={label} className="bg-[#FFF7ED] rounded-xl border border-[#FED7AA] px-3 py-2.5">
-                <p className="text-[10px] text-[#94A3B8] mb-0.5">{label}</p>
-                <p className="text-sm font-bold text-[#0F172A]">
-                  {value}
-                  {unit ? (
-                    <span className="text-[10px] font-normal text-[#94A3B8] ml-1">{unit}</span>
-                  ) : null}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] transition-colors"
+          >
+            Close
+          </button>
         </div>
-
-        {/* Research note */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-          <p className="text-[10px] text-amber-700">
-            <span className="font-bold">Research constraint:</span> Complexity is a proxy metric
-            derived from attempt patterns — not expert-validated.{" "}
-            <span className="font-semibold">label_validity = pilot_only.</span>
-          </p>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full py-2 rounded-xl bg-[#F37021] text-white text-sm font-semibold hover:bg-[#E06010] transition-colors"
-        >
-          Close
-        </button>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Main page
 // ---------------------------------------------------------------------------
 
 export default function BehavioralAnalysisPage() {
-  const router     = useRouter();
+  const router = useRouter();
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // ── Auth / profile state ──────────────────────────────────────────────────
-  const [token,           setToken]           = useState<string | null>(null);
-  const [profileOpen,     setProfileOpen]     = useState(false);
-  const [displayName,     setDisplayName]     = useState<string | null>(null);
-  const [email,           setEmail]           = useState<string | null>(null);
+  // Auth / profile
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
-  // ── Data state ────────────────────────────────────────────────────────────
-  const [data,    setData]    = useState<BehavioralAnalysisResponse | null>(null);
+  // Data
+  const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // ── Filters ───────────────────────────────────────────────────────────────
-  const [search,           setSearch]           = useState("");
-  const [batchTypeFilter,  setBatchTypeFilter]  = useState("");
-  const [riskFilter,       setRiskFilter]       = useState<"" | "risk" | "ok">("");
-  const [taskType,         setTaskType]         = useState("");
-  const [complexityFilter, setComplexityFilter] = useState<"" | "high" | "med" | "low">("");
-  const [page,             setPage]             = useState(1);
+  // Filters
+  const [search, setSearch] = useState("");
+  const [batchTypeFilter, setBatchTypeFilter] = useState("");
+  const [setFamilyFilter, setSetFamilyFilter] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("");
+  const [runStatusFilter, setRunStatusFilter] = useState("");
+  const [usageFilter, setUsageFilter] = useState<"used" | "not_used" | "">("");
 
-  // ── Table state ───────────────────────────────────────────────────────────
-  const [expandedIds,  setExpandedIds]  = useState<Set<string>>(new Set());
-  const [detailTarget, setDetailTarget] = useState<{
-    learner: BehavioralLearnerRecord;
-    task: BehavioralTaskRecord;
-  } | null>(null);
+  // Table state
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
 
-  // ── Auth init ─────────────────────────────────────────────────────────────
+  // Modals
+  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
+  const [runTarget, setRunTarget] = useState<BehavioralDatasetRecord | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/auth/login"); return; }
-      setToken(session.access_token);
+
       const { data: { user } } = await supabase.auth.getUser();
       const { data: prof } = await supabase
         .from("mst_profiles")
         .select("display_name, participant_code, role")
         .eq("auth_user_id", session.user.id)
         .single();
+
       if (prof && prof.role !== "researcher" && prof.role !== "admin") {
-        router.push("/student/dashboard"); return;
+        router.push("/student/dashboard");
+        return;
       }
+
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
+      setToken(session.access_token);
     }
     void init();
   }, [router]);
 
-  // ── Click-outside for profile dropdown ────────────────────────────────────
   useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node))
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
+      }
     }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Data fetch ────────────────────────────────────────────────────────────
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  }
+
+  // ── Data loading ──────────────────────────────────────────────────────────
+
   const loadData = useCallback(async () => {
-    if (!token) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
+
     setLoading(true);
     setError(null);
+
     const res = await fetch("/api/researcher/behavioral-analysis", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${session.access_token}` },
     });
+
     if (!res.ok) {
       const j = await res.json().catch(() => ({ error: "Request failed" }));
       setError((j as { error?: string }).error ?? "Failed to load data.");
       setLoading(false);
       return;
     }
-    setData(await res.json() as BehavioralAnalysisResponse);
+
+    setData(await res.json() as ListResponse);
     setLoading(false);
-  }, [token]);
+  }, [router]);
 
-  useEffect(() => { if (token) void loadData(); }, [token, loadData]);
+  useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
 
-  // ── Logout ────────────────────────────────────────────────────────────────
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/auth/login");
-  }
+  useEffect(() => {
+    const hasActive = (data?.datasets ?? []).some((ds) =>
+      ds.runs.some((r) => r.status === "running" || r.status === "pending"),
+    );
+    if (!hasActive) return;
+    const id = setInterval(() => { void loadData(); }, 10_000);
+    return () => clearInterval(id);
+  }, [data, loadData]);
 
   // ── Filtering ─────────────────────────────────────────────────────────────
-  const allLearners   = data?.learners ?? [];
-  // Order by canonical TASK_TYPE_ORDER, include only types present in data
-  const presentTypes  = new Set(allLearners.flatMap((l) => l.tasks.map((t) => t.task_type)));
-  const allTaskTypes  = TASK_TYPE_ORDER.filter((t) => presentTypes.has(t));
 
-  const filteredLearners = allLearners.filter((l) => {
+  const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
     if (search) {
       const q = search.toLowerCase();
-      if (
-        !l.participant_code.toLowerCase().includes(q) &&
-        !l.display_name.toLowerCase().includes(q) &&
-        !l.tasks.some((t) => t.task_code.toLowerCase().includes(q))
-      ) return false;
+      if (!ds.code.toLowerCase().includes(q) && !ds.name.toLowerCase().includes(q)) {
+        return false;
+      }
     }
-    if (batchTypeFilter && l.primary_batch_type !== batchTypeFilter) return false;
-    if (riskFilter === "risk" && !l.at_risk) return false;
-    if (riskFilter === "ok"   &&  l.at_risk) return false;
-    if (taskType && !l.tasks.some((t) => t.task_type === taskType)) return false;
-    if (complexityFilter) {
-      const c = l.avg_complexity;
-      if (complexityFilter === "high" && c < 70)  return false;
-      if (complexityFilter === "med"  && (c < 45 || c >= 70)) return false;
-      if (complexityFilter === "low"  && c >= 45) return false;
+    if (batchTypeFilter && ds.batch_type !== batchTypeFilter) return false;
+    if (setFamilyFilter && ds.set_family !== setFamilyFilter) return false;
+    if (taskTypeFilter && ds.task_type !== taskTypeFilter) return false;
+    if (runStatusFilter) {
+      const hasStatus = ds.runs.some((r) => r.status === runStatusFilter);
+      if (!hasStatus) return false;
     }
+    if (usageFilter && ds.usage_status !== usageFilter) return false;
     return true;
   });
 
-  const totalPages    = Math.max(1, Math.ceil(filteredLearners.length / PAGE_SIZE));
-  const pagedLearners = filteredLearners.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filteredDatasets.length / PAGE_SIZE));
+  const pagedDatasets = filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   function toggleExpanded(id: string) {
     setExpandedIds((prev) => {
@@ -284,14 +325,90 @@ export default function BehavioralAnalysisPage() {
     });
   }
 
-  // ── Loading / error screens ────────────────────────────────────────────────
+  function openDetail(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
+    const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+    const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+    setDetailTarget({
+      datasetId: ds.id,
+      runId: run.id,
+      runNumber,
+      datasetCode: ds.code,
+      datasetName: ds.name,
+      run,
+    });
+  }
+
+  async function continueRun(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs/${run.id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        console.warn("continueRun:", (j as { error?: string }).error ?? "unknown error");
+      }
+      void loadData();
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function stopRun(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs?run_id=${run.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      void loadData();
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function runProgress(run: BehavioralRunRecord): { pct: number; done: number; total: number } | null {
+    const steps = run.analysis_steps;
+    if (!steps || steps.length === 0) return null;
+    const done = steps.filter((s) => s.status === "completed").length;
+    return { pct: Math.round((done / steps.length) * 100), done, total: steps.length };
+  }
+
+  async function confirmRunPipeline() {
+    if (!runTarget || !token) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${runTarget.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_type: "behavioral" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Request failed" }));
+        setRunError((j as { error?: string }).error ?? "Failed to start run.");
+        return;
+      }
+      setRunTarget(null);
+      void loadData();
+    } finally {
+      setRunLoading(false);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">
-        Loading…
+        Loading...
       </div>
     );
   }
+
   if (error && !data) {
     return (
       <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center">
@@ -306,13 +423,9 @@ export default function BehavioralAnalysisPage() {
     );
   }
 
-  const ov = data?.overview;
-
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
-
-      {/* ── Header ── */}
+      {/* Header */}
       <header className="bg-white border-b border-[#FED7AA] px-6 py-3 flex items-center justify-between">
         <div>
           <p className="font-bold text-[#0F172A] text-sm">CodeKidVai Researcher</p>
@@ -359,15 +472,13 @@ export default function BehavioralAnalysisPage() {
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <ResearcherBreadcrumb current="Behavioral Analysis" />
 
-        {/* ── Title ── */}
+        {/* Title */}
         <div>
           <h1 className="text-xl font-bold text-[#0F172A]">Behavioral Analysis</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
-            Learner &#8594; Task &#8594; Behavioral Complexity Features (NB10 proxy)
-          </p>
+          <p className="text-sm text-[#64748B] mt-0.5">Dataset &#8594; Pipeline Run &#8594; Behavioral Complexity Analysis records</p>
         </div>
 
-        {/* ── Filter bar — matches Sequential Analysis style exactly ── */}
+        {/* ── Filters ── */}
         <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
 
           {/* Search */}
@@ -382,12 +493,13 @@ export default function BehavioralAnalysisPage() {
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Code or name…"
+                aria-label="Search datasets by code or name"
                 className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44"
               />
             </div>
           </div>
 
-          {/* Batch — star/dumbbell/airplane icons (same as Sequential Analysis) */}
+          {/* Batch Type */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-[#64748B] font-medium">Batch</label>
             <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
@@ -397,354 +509,456 @@ export default function BehavioralAnalysisPage() {
               </button>
               <button type="button" title="Main" onClick={() => { setBatchTypeFilter(batchTypeFilter === "main" ? "" : "main"); setPage(1); }}
                 className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "main" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
-                  <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                </svg>
+                <StarIcon className="w-4 h-4" />
               </button>
               <button type="button" title="Trial" onClick={() => { setBatchTypeFilter(batchTypeFilter === "trial" ? "" : "trial"); setPage(1); }}
                 className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "trial" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
-                  <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
-                  <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
-                  <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
-                  <path d="M7.5 12h9" />
-                </svg>
+                <DumbbellIcon className="w-4 h-4" />
               </button>
               <button type="button" title="Pilot" onClick={() => { setBatchTypeFilter(batchTypeFilter === "pilot" ? "" : "pilot"); setPage(1); }}
                 className={`flex items-center justify-center px-3 py-2.5 transition-colors ${batchTypeFilter === "pilot" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
-                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                <PaperAirplaneIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Activity Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Activity</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All activities" onClick={() => { setSetFamilyFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Assignment" onClick={() => { setSetFamilyFilter(setFamilyFilter === "assignment" ? "" : "assignment"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                  <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                  <rect x="4" y="3" width="16" height="18" rx="2"/>
+                </svg>
+              </button>
+              <button type="button" title="Lab" onClick={() => { setSetFamilyFilter(setFamilyFilter === "lab" ? "" : "lab"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                  <path d="M8 2h8"/><path d="M7 15h10"/>
+                </svg>
+              </button>
+              <button type="button" title="Exam" onClick={() => { setSetFamilyFilter(setFamilyFilter === "exam" ? "" : "exam"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${setFamilyFilter === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
                 </svg>
               </button>
             </div>
           </div>
 
-          {/* Risk — dot style (matches Sequential run-status dots) */}
+          {/* Task Type */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#64748B] font-medium">Risk</label>
+            <label className="text-xs text-[#64748B] font-medium">Task</label>
             <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-              <button type="button" title="All risk levels" onClick={() => { setRiskFilter(""); setPage(1); }}
-                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${riskFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+              <button type="button" title="All task types" onClick={() => { setTaskTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                 All
               </button>
-              <button type="button" title="At-Risk" onClick={() => { setRiskFilter(riskFilter === "risk" ? "" : "risk"); setPage(1); }}
-                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${riskFilter === "risk" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                <span className={`w-2 h-2 rounded-full ${riskFilter === "risk" ? "bg-white" : "bg-rose-500"}`} />
-              </button>
-              <button type="button" title="OK" onClick={() => { setRiskFilter(riskFilter === "ok" ? "" : "ok"); setPage(1); }}
-                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${riskFilter === "ok" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                <span className={`w-2 h-2 rounded-full ${riskFilter === "ok" ? "bg-white" : "bg-emerald-500"}`} />
-              </button>
-            </div>
-          </div>
-
-          {/* Task Type — icon style (same as Sequential) */}
-          {allTaskTypes.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Task</label>
-              <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-                <button type="button" title="All task types" onClick={() => { setTaskType(""); setPage(1); }}
-                  className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskType === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                  All
-                </button>
-                {allTaskTypes.map((tt, i) => (
-                  <button key={tt} type="button" title={TASK_TYPE_LABEL[tt] ?? tt}
-                    onClick={() => { setTaskType(taskType === tt ? "" : tt); setPage(1); }}
-                    className={`flex items-center justify-center px-3 py-2.5 ${i < allTaskTypes.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskType === tt ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                    <TaskTypeIcon type={tt} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Complexity — dot style (matches Sequential Usage dots) */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#64748B] font-medium">Complexity</label>
-            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
-              <button type="button" title="All complexity levels" onClick={() => { setComplexityFilter(""); setPage(1); }}
-                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${complexityFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                All
-              </button>
-              {([
-                { v: "high" as const, cls: "bg-rose-500",    title: "High (≥70)" },
-                { v: "med"  as const, cls: "bg-amber-400",   title: "Medium (45–69)" },
-                { v: "low"  as const, cls: "bg-emerald-500", title: "Low (<45)" },
-              ]).map(({ v, cls, title }, i, arr) => (
-                <button key={v} type="button" title={title}
-                  onClick={() => { setComplexityFilter(complexityFilter === v ? "" : v); setPage(1); }}
-                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${complexityFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
-                  <span className={`w-2 h-2 rounded-full ${complexityFilter === v ? "bg-white" : cls}`} />
+              {DATASET_TASK_TYPES_IN_SCOPE.map((v, i) => (
+                <button key={v} type="button" title={DATASET_TASK_LABEL[v]}
+                  onClick={() => { setTaskTypeFilter(taskTypeFilter === v ? "" : v); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < DATASET_TASK_TYPES_IN_SCOPE.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskTypeFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <TaskTypeIcon type={v} />
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Run Status */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Run Status</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All statuses" onClick={() => { setRunStatusFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${runStatusFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {[
+                { value: "completed", dotCls: "bg-green-500",  label: "Completed" },
+                { value: "pending",   dotCls: "bg-amber-400",  label: "Pending" },
+                { value: "running",   dotCls: "bg-blue-500",   label: "Running" },
+                { value: "failed",    dotCls: "bg-red-400",    label: "Failed" },
+              ].map(({ value, dotCls, label }, i, arr) => (
+                <button key={value} type="button" title={label}
+                  onClick={() => { setRunStatusFilter(runStatusFilter === value ? "" : value); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${runStatusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <span className={`w-2 h-2 rounded-full ${runStatusFilter === value ? "bg-white" : dotCls}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Usage */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Usage</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All" onClick={() => { setUsageFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${usageFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Used" onClick={() => { setUsageFilter(usageFilter === "used" ? "" : "used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${usageFilter === "used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </button>
+              <button type="button" title="Not used" onClick={() => { setUsageFilter(usageFilter === "not_used" ? "" : "not_used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${usageFilter === "not_used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           {/* Clear All */}
-          {(search || batchTypeFilter || riskFilter || taskType || complexityFilter) && (
-            <button type="button"
-              onClick={() => { setSearch(""); setBatchTypeFilter(""); setRiskFilter(""); setTaskType(""); setComplexityFilter(""); setPage(1); }}
+          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter || runStatusFilter || usageFilter) && (
+            <button type="button" onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setRunStatusFilter(""); setUsageFilter(""); setPage(1); }}
               className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
               Clear All
             </button>
           )}
-
-          <div className="flex-1" />
-
-          {/* Result count */}
-          <div className="self-end pb-[11px]">
-            <span className="text-xs text-[#94A3B8]">
-              {filteredLearners.length} learner{filteredLearners.length !== 1 ? "s" : ""}
-            </span>
-          </div>
         </section>
 
-        {/* ── Learner Table — same <table> structure as Sequential Analysis ── */}
+        {/* ── Dataset Table ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
           {loading ? (
             <p className="text-sm text-[#94A3B8] py-6 text-center">Loading…</p>
           ) : error ? (
             <div className="m-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
-                <thead>
-                  <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
-                    {[
-                      { label: "Learner",     align: "left"   },
-                      { label: "Name",        align: "left"   },
-                      { label: "Batch",       align: "center" },
-                      { label: "Risk",        align: "center" },
-                      { label: "Task Type",   align: "center" },
-                      { label: "Tasks",       align: "center" },
-                      { label: "Submissions", align: "center" },
-                      { label: "Complexity",  align: "center" },
-                      { label: "Runs",        align: "center" },
-                      { label: "",            align: "center" },
-                    ].map(({ label, align }, i) => (
-                      <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
-                        {label}
-                      </th>
-                    ))}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead>
+                <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                  {[
+                    { label: "Code",      align: "left"   },
+                    { label: "Name",      align: "left"   },
+                    { label: "Batch",     align: "center" },
+                    { label: "Activity",  align: "center" },
+                    { label: "Task Type", align: "center" },
+                    { label: "Sessions",  align: "center" },
+                    { label: "Learners",  align: "center" },
+                    { label: "Usage",     align: "center" },
+                    { label: "Runs",      align: "center" },
+                    { label: "",          align: "center" },
+                  ].map(({ label, align }, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pagedDatasets.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">
+                      No datasets found.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {pagedLearners.length === 0 && (
-                    <tr>
-                      <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">
-                        {allLearners.length === 0 ? "No submission data available yet." : "No learners match the current filters."}
-                      </td>
-                    </tr>
-                  )}
-
-                  {pagedLearners.map((learner) => {
-                    const isExpanded = expandedIds.has(learner.profile_id);
-                    const visibleTasks = taskType
-                      ? learner.tasks.filter((t) => t.task_type === taskType)
-                      : learner.tasks;
-                    // Dominant task type for the row
-                    const taskTypeCounts = learner.tasks.reduce<Record<string, number>>((acc, t) => {
-                      acc[t.task_type] = (acc[t.task_type] ?? 0) + 1;
-                      return acc;
-                    }, {});
-                    const dominantType = Object.entries(taskTypeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-
-                    return (
-                      <Fragment key={learner.profile_id}>
-                        {/* ── Learner row ── */}
-                        <tr
-                          className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
-                          onClick={() => toggleExpanded(learner.profile_id)}
-                        >
-                          {/* Learner code */}
-                          <td className="px-4 py-3.5 whitespace-nowrap align-middle">
-                            <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
-                              {learner.participant_code}
+                )}
+                {pagedDatasets.map((ds) => {
+                  const isExpanded = expandedIds.has(ds.id);
+                  const visibleRuns = ds.runs.filter((r) => !runStatusFilter || r.status === runStatusFilter);
+                  return (
+                    <Fragment key={ds.id}>
+                      {/* Dataset row */}
+                      <tr
+                        className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
+                        onClick={() => toggleExpanded(ds.id)}
+                      >
+                        {/* Code */}
+                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+                          <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
+                            {ds.code}
+                          </span>
+                        </td>
+                        {/* Name */}
+                        <td className="px-3 py-3.5 align-middle min-w-[140px]">
+                          <span className="text-xs text-[#0F172A] font-medium leading-snug">{ds.name}</span>
+                        </td>
+                        {/* Batch */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.batch_type === "main"  && <span title="Main"  className="inline-flex items-center justify-center text-[#F37021]"><StarIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "trial" && <span title="Trial" className="inline-flex items-center justify-center text-[#F37021]"><DumbbellIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "pilot" && <span title="Pilot" className="inline-flex items-center justify-center text-[#F37021]"><PaperAirplaneIcon className="w-4 h-4" /></span>}
+                          {!["main","trial","pilot"].includes(ds.batch_type) && <span className="text-[10px] text-[#94A3B8]">{ds.batch_type || "—"}</span>}
+                        </td>
+                        {/* Activity */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span title={ds.set_family} className="inline-flex items-center justify-center text-[#64748B]">
+                            {ds.set_family === "assignment" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg>}
+                            {ds.set_family === "lab"        && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/></svg>}
+                            {ds.set_family === "exam"       && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
+                            {!["assignment","lab","exam"].includes(ds.set_family) && <span className="text-[10px] text-[#94A3B8]">{ds.set_family || "—"}</span>}
+                          </span>
+                        </td>
+                        {/* Task Type */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.task_type ? (
+                            <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#64748B]">
+                              <TaskTypeIcon type={ds.task_type} />
                             </span>
-                          </td>
-                          {/* Display name */}
-                          <td className="px-3 py-3.5 align-middle min-w-[160px]">
-                            <span className="text-xs text-[#0F172A] font-medium leading-snug">{learner.display_name}</span>
-                          </td>
-                          {/* Batch type icon */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span title={learner.primary_batch_type} className="inline-flex items-center justify-center text-[#64748B]">
-                              {learner.primary_batch_type === "main" ? (
-                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                                  <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                                </svg>
-                              ) : learner.primary_batch_type === "trial" ? (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                  <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
-                                  <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
-                                  <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
-                                  <path d="M7.5 12h9" />
-                                </svg>
-                              ) : (
-                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                                </svg>
-                              )}
+                          ) : (
+                            <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
+                          )}
+                        </td>
+                        {/* Sessions */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+                        </td>
+                        {/* Learners */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+                        </td>
+                        {/* Usage */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.usage_status === "used" ? (
+                            <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                              </svg>
                             </span>
-                          </td>
-                          {/* Risk dot */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span
-                              title={learner.at_risk ? "At-Risk" : "OK"}
-                              className={`inline-block w-2.5 h-2.5 rounded-full ${learner.at_risk ? "bg-rose-500" : "bg-emerald-500"}`}
-                            />
-                          </td>
-                          {/* Dominant task type icon */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span title={dominantType} className="inline-flex items-center justify-center text-[#64748B]">
-                              <TaskTypeIcon type={dominantType} />
+                          ) : (
+                            <span title="Not used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                              </svg>
                             </span>
-                          </td>
-                          {/* Task count */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span className="font-mono text-xs text-[#475569]">{learner.task_count}</span>
-                          </td>
-                          {/* Total submissions */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span className="font-mono text-xs text-[#475569]">{learner.total_attempts}</span>
-                          </td>
-                          {/* Avg complexity dot */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <ComplexityDot score={learner.avg_complexity} />
-                          </td>
-                          {/* Runs (reviewed count) */}
-                          <td className="px-2 py-3.5 text-center align-middle">
-                            <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
-                              {learner.tasks.reduce((a, t) => a + t.reviewed_count, 0)}
-                            </span>
-                          </td>
-                          {/* Expand chevron */}
-                          <td className="px-3 py-3.5 text-center align-middle">
+                          )}
+                        </td>
+                        {/* Runs count */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+                            {ds.runs.length}
+                          </span>
+                        </td>
+                        {/* Actions: Run + Expand */}
+                        <td className="px-3 py-3.5 text-center align-middle">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setRunError(null); setRunTarget(ds); }}
+                              title="Run Behavioral Analysis"
+                              className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] transition-colors"
+                              aria-label="Run Behavioral Analysis"
+                            >
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M5 3l14 9-14 9V3z" />
+                              </svg>
+                            </button>
                             <svg
                               viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                               strokeLinecap="round" strokeLinejoin="round"
-                              className={`w-4 h-4 text-[#94A3B8] transition-transform mx-auto ${isExpanded ? "rotate-180" : ""}`}
+                              className={`w-4 h-4 text-[#94A3B8] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              aria-hidden="true"
                             >
                               <polyline points="6 9 12 15 18 9" />
                             </svg>
-                          </td>
-                        </tr>
+                          </div>
+                        </td>
+                      </tr>
 
-                        {/* ── Task sub-rows (same bg-[#FAFAFA] style as run rows) ── */}
-                        {isExpanded && (
-                          visibleTasks.length === 0 ? (
-                            <tr key={`${learner.profile_id}-empty`} className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
-                              <td colSpan={10} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
-                                No tasks match the current filter.
-                              </td>
-                            </tr>
-                          ) : (
-                            visibleTasks.map((task) => (
-                              <tr key={`${learner.profile_id}__${task.task_id}`} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
-                                {/* Risk dot (indented) */}
-                                <td className="pl-8 pr-2 py-2.5 align-middle">
-                                  <span className={`inline-block w-2 h-2 rounded-full ${task.at_risk ? "bg-rose-500" : "bg-emerald-500"}`} />
-                                </td>
-                                {/* Task code + batch */}
+                      {/* Expanded run rows */}
+                      {isExpanded && (
+                        visibleRuns.length === 0 ? (
+                          <tr key={`${ds.id}-empty`} className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
+                            <td colSpan={10} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
+                              No behavioral pipeline runs available.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleRuns.map((run) => {
+                            const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+                            const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+                            const canView = run.artifact_availability !== "unavailable";
+
+                            return (
+                              <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                                {/* Indent spacer */}
+                                <td className="pl-8 pr-2 py-2.5 align-middle" />
+                                {/* Run# */}
                                 <td className="px-3 py-2.5 align-middle" colSpan={2}>
-                                  <span className="font-mono text-xs font-semibold text-[#F37021]">{task.task_code}</span>
-                                  <span className="text-[10px] text-[#94A3B8] ml-2">{task.batch_code}</span>
+                                  <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
                                 </td>
-                                {/* Task type icon */}
-                                <td className="px-3 py-2.5 align-middle text-[#64748B]">
-                                  <TaskTypeIcon type={task.task_type} />
+                                {/* DateTime */}
+                                <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={2}>
+                                  {run.created_at
+                                    ? new Date(run.created_at).toLocaleString()
+                                    : "—"}
                                 </td>
-                                {/* Submissions count */}
-                                <td className="px-3 py-2.5 align-middle font-mono text-xs text-[#475569] text-center">
-                                  {task.attempt_count}
+                                {/* Run Status */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={1}>
+                                  <StatusBadge status={run.status} />
                                 </td>
-                                {/* Avg score */}
-                                <td className="px-3 py-2.5 align-middle font-mono text-xs text-[#0F172A] text-center">
-                                  {task.avg_score_pct != null ? `${task.avg_score_pct}%` : "—"}
+                                {/* Progress / Action */}
+                                <td className="px-2 py-2.5 align-middle" colSpan={1}>
+                                  {run.status === "pending" && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); void continueRun(ds, run); }}
+                                      disabled={actionLoading === run.id}
+                                      title="Queue a new run for this dataset"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                    >
+                                      {actionLoading === run.id ? (
+                                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                      ) : (
+                                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"/></svg>
+                                      )}
+                                      Continue
+                                    </button>
+                                  )}
+                                  {run.status === "running" && (() => {
+                                    const prog = runProgress(run);
+                                    return (
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="flex flex-col gap-0.5 min-w-[44px]">
+                                          <div className="h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                                            {prog ? (
+                                              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${prog.pct}%` }} />
+                                            ) : (
+                                              <div className="h-full w-1/2 bg-blue-400 rounded-full animate-pulse" />
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] font-mono text-blue-600 leading-none">
+                                            {prog ? `${prog.pct}%` : "…"}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); void stopRun(ds, run); }}
+                                          disabled={actionLoading === run.id}
+                                          title="Request cancellation"
+                                          className="p-1 rounded hover:bg-red-100 text-[#94A3B8] hover:text-red-500 disabled:opacity-50 transition-colors"
+                                          aria-label="Pause run"
+                                        >
+                                          {actionLoading === run.id ? (
+                                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                          ) : (
+                                            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
+                                              <rect x="6" y="4" width="4" height="16" rx="1" />
+                                              <rect x="14" y="4" width="4" height="16" rx="1" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
-                                {/* Complexity dot */}
-                                <td className="px-3 py-2.5 align-middle text-center">
-                                  <ComplexityDot score={task.complexity_score} />
-                                </td>
-                                {/* Eye button */}
-                                <td className="px-2 py-2.5 align-middle text-center" colSpan={3}>
+                                {/* View Analysis (eye icon) */}
+                                <td className="px-3 py-2.5 align-middle text-center" colSpan={3}>
                                   <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); setDetailTarget({ learner, task }); }}
-                                    title="View detail"
-                                    className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] transition-colors"
+                                    onClick={(e) => { e.stopPropagation(); openDetail(ds, run); }}
+                                    disabled={!canView}
+                                    title={canView ? "View Analysis" : (run.not_comparable_reason ?? "No artifact available")}
+                                    className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="View Analysis"
                                   >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M2 12s3.636-7 10-7 10 7 10 7-3.636 7-10 7-10-7-10-7z" />
                                       <circle cx="12" cy="12" r="3" />
                                     </svg>
                                   </button>
                                 </td>
                               </tr>
-                            ))
-                          )
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            );
+                          })
+                        )
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#FED7AA] bg-[#FFF7ED]">
+              <span className="text-xs text-[#64748B]">
+                Page {page} of {totalPages} ({filteredDatasets.length} datasets)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </section>
-
-        {/* ── Pagination ── */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2">
-            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-3 py-1.5 rounded-lg border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              ← Prev
-            </button>
-            <span className="text-xs text-[#64748B]">Page {page} of {totalPages}</span>
-            <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="px-3 py-1.5 rounded-lg border border-[#FED7AA] text-xs font-semibold text-[#64748B] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              Next →
-            </button>
-          </div>
-        )}
-
-        {/* ── Overview info bar ── */}
-        {ov && (
-          <div className="flex flex-wrap gap-4 text-xs text-[#94A3B8] justify-center">
-            <span>{ov.learner_count} learners</span>
-            <span>·</span>
-            <span>{ov.task_count} task types</span>
-            <span>·</span>
-            <span>{ov.submission_count} submissions</span>
-            <span>·</span>
-            <span className="text-rose-400">{ov.at_risk_count} at-risk</span>
-            <span>·</span>
-            <span>avg complexity {ov.avg_complexity ?? "—"}</span>
-          </div>
-        )}
-
-        {/* ── Research validity notice ── */}
-        {data?.label_validity_note && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-[11px] text-amber-700">{data.label_validity_note}</p>
-          </div>
-        )}
-
-        {/* ── Footer ── */}
-        <p className="text-center text-[11px] text-[#94A3B8] pb-4">
-          Read-only · Behavioral complexity proxy v1 · label_validity=pilot_only
-        </p>
       </main>
 
-      {/* ── Detail modal ── */}
+      {/* Detail Modal */}
       {detailTarget && (
-        <DetailModal
-          learner={detailTarget.learner}
-          task={detailTarget.task}
-          onClose={() => setDetailTarget(null)}
-        />
+        <BehavioralDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
+
+      {/* Run Confirm Modal */}
+      {runTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Run Behavioral Analysis</p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Dataset <span className="font-mono font-semibold text-[#F37021]">{runTarget.code}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#475569]">
+              This will create a new <strong>behavioral</strong> pipeline run for{" "}
+              <strong>{runTarget.name}</strong>. The run will start in <em>pending</em> state.
+            </p>
+            {runError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {runError}
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmRunPipeline()}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] disabled:opacity-50 transition-colors"
+              >
+                {runLoading ? "Starting…" : "Confirm Run"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

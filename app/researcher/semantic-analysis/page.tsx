@@ -1,126 +1,220 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { TaskTypeIcon } from "@/lib/task-type-utils";
+import type { SemanticDatasetRecord, SemanticRunRecord } from "@/app/api/researcher/semantic-analysis/route";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 10;
+
+const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
+const DATASET_TASK_LABEL: Record<string, string> = {
+  sql_text: "SQL Query",
+  sql_block: "Query Block",
+  stored_procedure: "Stored Procedure",
+  er_diagram: "ER Diagram",
+};
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface NotebooksReady { nb10: boolean; nb11: boolean; nb12: boolean }
+type DetailTarget = {
+  datasetId: string;
+  runId: string;
+  runNumber: string;
+  datasetCode: string;
+  datasetName: string;
+  run: SemanticRunRecord;
+};
 
-interface ComplexityStats {
-  total_rows: number;
-  unique_learners: number;
-  unique_tasks: number;
-  complexity_score_mean: number;
-  complexity_score_min: number;
-  complexity_score_max: number;
-  avg_attempt_count: number;
-  has_error_pct: number;
-  missing_session_rows?: number;
-}
-
-interface ClusterStats {
-  total_attempt_rows: number;
-  error_rows: number;
-  n_clusters_actual: number;
-  silhouette_score: number | null;
-  top_terms_per_cluster: Record<string, string[]>;
-  summary_rows: number;
-}
-
-interface EmbeddingStats {
-  n_learner_task_rows: number;
-  n_features_input: number;
-  n_components_actual: number;
-  cumulative_var_pct: number;
-  top3_var_pct: number[];
-  within_task_similarity: Record<string, number>;
-}
-
-interface SemanticPayload {
-  status: "ready" | "partial" | "unavailable";
-  notebooks_ready: NotebooksReady;
-  complexity: { schema_version: string; dataset_stats: ComplexityStats; created_at_utc: string; parameters: Record<string, unknown> } | null;
-  clustering: { schema_version: string; dataset_stats: ClusterStats;   created_at_utc: string; parameters: Record<string, unknown> } | null;
-  embeddings: { schema_version: string; dataset_stats: EmbeddingStats; created_at_utc: string; parameters: Record<string, unknown> } | null;
-  generated_at: string | null;
-  label_validity_note: string;
-}
+type ListResponse = {
+  datasets: SemanticDatasetRecord[];
+  filter_options: {
+    batch_types: string[];
+    set_families: string[];
+    task_types: string[];
+    run_statuses: string[];
+    usage_statuses: string[];
+  };
+};
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Icons
 // ---------------------------------------------------------------------------
 
-function fmt2(n: number | null | undefined) {
-  if (n == null) return "—";
-  return n.toFixed(2);
-}
-function fmtPct(n: number | null | undefined) {
-  if (n == null) return "—";
-  return `${n.toFixed(1)} %`;
-}
-function fmtInt(n: number | null | undefined) {
-  if (n == null) return "—";
-  return n.toLocaleString();
-}
-
-function NbBadge({ label, ready }: { label: string; ready: boolean }) {
+function StarIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-        ready
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-          : "bg-slate-50 text-slate-400 border-slate-200"
-      }`}
-    >
-      <span aria-hidden="true">{ready ? "✓" : "○"}</span> {label}
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+    </svg>
+  );
+}
+
+function DumbbellIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+      <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+      <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+      <path d="M7.5 12h9" />
+    </svg>
+  );
+}
+
+function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    completed: "bg-green-100 text-green-700 border-green-200",
+    pending: "bg-amber-100 text-amber-700 border-amber-200",
+    running: "bg-blue-100 text-blue-700 border-blue-200",
+    failed: "bg-red-100 text-red-700 border-red-200",
+    cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  };
+  const cls = colorMap[status] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
+      {status}
     </span>
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="bg-[#FFF7ED] rounded-xl border border-[#FED7AA] px-4 py-3 space-y-0.5">
-      <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide font-semibold">{label}</p>
-      <p className="text-xl font-bold text-[#0F172A]">{value}</p>
-      {sub && <p className="text-[11px] text-[#64748B]">{sub}</p>}
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Inline detail modal
+// ---------------------------------------------------------------------------
 
-function ScoreBar({ value, max = 100 }: { value: number; max?: number }) {
-  const pct = Math.min((value / max) * 100, 100);
-  const color =
-    pct >= 65 ? "bg-emerald-500" :
-    pct >= 45 ? "bg-amber-400" : "bg-rose-400";
+function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClose: () => void }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
-        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-lg p-6 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-[#0F172A]">Semantic Analysis</p>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Dataset <span className="font-mono font-semibold text-[#F37021]">{target.datasetCode}</span>
+              {" "}&mdash; Run <span className="font-mono font-semibold text-[#F37021]">#{target.runNumber}</span>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Run info */}
+        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#64748B] min-w-[70px]">Status:</span>
+            <StatusBadge status={target.run.status} />
+          </div>
+          {target.run.started_at && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Started:</span>
+              <span className="text-xs text-[#0F172A]">{new Date(target.run.started_at).toLocaleString()}</span>
+            </div>
+          )}
+          {target.run.completed_at && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Completed:</span>
+              <span className="text-xs text-[#0F172A]">{new Date(target.run.completed_at).toLocaleString()}</span>
+            </div>
+          )}
+          {target.run.run_type && (
+            <div className="flex gap-2">
+              <span className="text-xs text-[#64748B] min-w-[70px]">Run type:</span>
+              <span className="text-xs font-mono text-[#475569]">{target.run.run_type}</span>
+            </div>
+          )}
+          {target.run.error_summary && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 mt-1">
+              {target.run.error_summary}
+            </div>
+          )}
+        </div>
+
+        {/* Placeholder */}
+        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+          <p className="text-sm text-[#64748B]">
+            Semantic analysis results will appear here after running the pipeline.
+          </p>
+        </div>
+
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] transition-colors"
+          >
+            Close
+          </button>
+        </div>
       </div>
-      <span className="text-[11px] font-mono text-[#64748B] w-12 text-right">{value.toFixed(1)}</span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Main page
 // ---------------------------------------------------------------------------
 
 export default function SemanticAnalysisPage() {
-  const router          = useRouter();
-  const profileRef      = useRef<HTMLDivElement>(null);
-  const [profileOpen, setProfileOpen]   = useState(false);
-  const [displayName, setDisplayName]   = useState<string | null>(null);
-  const [email, setEmail]               = useState<string | null>(null);
+  const router = useRouter();
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Auth / profile
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
-  const [authLoading, setAuthLoading]   = useState(true);
-  const [data, setData]                 = useState<SemanticPayload | null>(null);
-  const [dataError, setDataError]       = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Data
+  const [data, setData] = useState<ListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [batchTypeFilter, setBatchTypeFilter] = useState("");
+  const [setFamilyFilter, setSetFamilyFilter] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("");
+  const [runStatusFilter, setRunStatusFilter] = useState("");
+  const [usageFilter, setUsageFilter] = useState<"used" | "not_used" | "">("");
+
+  // Table state
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+
+  // Modals
+  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
+  const [runTarget, setRunTarget] = useState<SemanticDatasetRecord | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     async function init() {
@@ -142,26 +236,16 @@ export default function SemanticAnalysisPage() {
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
-      setAuthLoading(false);
-
-      // Fetch semantic analysis data
-      const res = await fetch("/api/researcher/semantic-analysis", {
-        headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
-      });
-      if (res.ok) {
-        const json = await res.json() as SemanticPayload;
-        setData(json);
-      } else {
-        setDataError("Could not load semantic analysis data.");
-      }
+      setToken(session.access_token);
     }
-    init();
+    void init();
   }, [router]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node))
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -172,18 +256,172 @@ export default function SemanticAnalysisPage() {
     router.push("/auth/login");
   }
 
-  if (authLoading) {
+  // ── Data loading ──────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
+
+    setLoading(true);
+    setError(null);
+
+    const res = await fetch("/api/researcher/semantic-analysis", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({ error: "Request failed" }));
+      setError((j as { error?: string }).error ?? "Failed to load data.");
+      setLoading(false);
+      return;
+    }
+
+    setData(await res.json() as ListResponse);
+    setLoading(false);
+  }, [router]);
+
+  useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
+
+  useEffect(() => {
+    const hasActive = (data?.datasets ?? []).some((ds) =>
+      ds.runs.some((r) => r.status === "running" || r.status === "pending"),
+    );
+    if (!hasActive) return;
+    const id = setInterval(() => { void loadData(); }, 10_000);
+    return () => clearInterval(id);
+  }, [data, loadData]);
+
+  // ── Filtering ─────────────────────────────────────────────────────────────
+
+  const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!ds.code.toLowerCase().includes(q) && !ds.name.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (batchTypeFilter && ds.batch_type !== batchTypeFilter) return false;
+    if (setFamilyFilter && ds.set_family !== setFamilyFilter) return false;
+    if (taskTypeFilter && ds.task_type !== taskTypeFilter) return false;
+    if (runStatusFilter) {
+      const hasStatus = ds.runs.some((r) => r.status === runStatusFilter);
+      if (!hasStatus) return false;
+    }
+    if (usageFilter && ds.usage_status !== usageFilter) return false;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDatasets.length / PAGE_SIZE));
+  const pagedDatasets = filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function openDetail(ds: SemanticDatasetRecord, run: SemanticRunRecord) {
+    const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+    const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+    setDetailTarget({
+      datasetId: ds.id,
+      runId: run.id,
+      runNumber,
+      datasetCode: ds.code,
+      datasetName: ds.name,
+      run,
+    });
+  }
+
+  async function continueRun(ds: SemanticDatasetRecord, run: SemanticRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs/${run.id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        console.warn("continueRun:", (j as { error?: string }).error ?? "unknown error");
+      }
+      void loadData();
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function stopRun(ds: SemanticDatasetRecord, run: SemanticRunRecord) {
+    if (!token || actionLoading) return;
+    setActionLoading(run.id);
+    try {
+      await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs?run_id=${run.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      void loadData();
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function runProgress(run: SemanticRunRecord): { pct: number; done: number; total: number } | null {
+    const steps = run.analysis_steps;
+    if (!steps || steps.length === 0) return null;
+    const done = steps.filter((s) => s.status === "completed").length;
+    return { pct: Math.round((done / steps.length) * 100), done, total: steps.length };
+  }
+
+  async function confirmRunPipeline() {
+    if (!runTarget || !token) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const res = await fetch(`/api/researcher/dataset-analytics/${runTarget.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_type: "semantic" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Request failed" }));
+        setRunError((j as { error?: string }).error ?? "Failed to start run.");
+        return;
+      }
+      setRunTarget(null);
+      void loadData();
+    } finally {
+      setRunLoading(false);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading && !data) {
     return (
       <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">
-        Loading…
+        Loading...
       </div>
     );
   }
 
-  const nb = data?.notebooks_ready ?? { nb10: false, nb11: false, nb12: false };
-  const isReady    = data?.status === "ready";
-  const isPartial  = data?.status === "partial";
-  const readyCount = [nb.nb10, nb.nb11, nb.nb12].filter(Boolean).length;
+  if (error && !data) {
+    return (
+      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 max-w-md">
+          <p className="font-semibold mb-1">Error loading data</p>
+          <p>{error}</p>
+          <button onClick={() => void loadData()} className="mt-3 text-xs text-red-600 underline">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FFF7ED]">
@@ -231,251 +469,497 @@ export default function SemanticAnalysisPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <ResearcherBreadcrumb current="Semantic Analysis" />
 
-        {/* Title + status badges */}
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-0 space-y-1">
-            <h1 className="text-2xl font-bold text-[#0F172A]">Semantic Analysis</h1>
-            <p className="text-sm text-[#64748B]">
-              Behavioral proxy features (NB10–NB12): attempt complexity, error clustering,
-              and solution embeddings derived from attempt metadata.
-            </p>
-          </div>
-          <div className="shrink-0 flex flex-wrap gap-1.5 items-center">
-            <NbBadge label="NB10 Complexity"  ready={nb.nb10} />
-            <NbBadge label="NB11 Clustering"  ready={nb.nb11} />
-            <NbBadge label="NB12 Embeddings"  ready={nb.nb12} />
-          </div>
+        {/* Title */}
+        <div>
+          <h1 className="text-xl font-bold text-[#0F172A]">Semantic Analysis</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Dataset &#8594; Pipeline Run &#8594; Semantic &amp; Embedding Analysis records</p>
         </div>
 
-        {/* Status banner */}
-        {dataError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
-            ⚠ {dataError}
-          </div>
-        ) : !isReady && !isPartial ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 space-y-2">
-            <p className="text-sm font-bold text-amber-700 flex items-center gap-2">
-              <span aria-hidden="true">⚠</span> Awaiting Phase 5 E notebook runs (NB10–NB12)
-            </p>
-            <p className="text-xs text-amber-600 leading-relaxed">
-              Run the E2E pipeline to generate semantic feature artifacts:{" "}
-              <code className="font-mono bg-amber-100 px-1 rounded">
-                python run_e2e_notebooks.py
-              </code>
-            </p>
-          </div>
-        ) : isPartial ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-4 text-sm text-sky-700">
-            <span className="font-bold">Partial data</span> — {readyCount}/3 notebooks have artifacts.
-            Run the full E2E pipeline to complete all three.
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-700 flex items-center gap-2">
-            <span aria-hidden="true">✓</span>
-            <span>All 3 notebooks have artifacts.
-              {data?.generated_at && (
-                <> Generated {new Date(data.generated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.</>
-              )}
-            </span>
-          </div>
-        )}
+        {/* ── Filters ── */}
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
 
-        {/* Research constraint */}
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-3 flex flex-wrap gap-3 items-center text-xs text-[#64748B]">
-          <span className="font-semibold text-[#0F172A]">Research Constraints:</span>
-          <span className="font-mono bg-slate-100 px-1.5 rounded">label_validity=pilot_only</span>
-          <span className="font-mono bg-slate-100 px-1.5 rounded">proxy_behavioral=true</span>
-          <span className="font-mono bg-slate-100 px-1.5 rounded">sklearn/scipy only</span>
-          <span className="font-mono bg-slate-100 px-1.5 rounded">no_sql_text</span>
-        </div>
-
-        {/* ── NB10: Complexity Features ─────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb10 ? "bg-emerald-500" : "bg-slate-300"}`} />
-            <span className="text-sm font-bold text-[#0F172A]">NB10 — Attempt Complexity Features</span>
-            {nb.nb10 && data?.complexity && (
-              <span className="ml-auto text-[10px] font-mono text-slate-400">
-                {data.complexity.schema_version}
-              </span>
-            )}
+          {/* Search */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Search</label>
+            <div className="relative">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Code or name…"
+                aria-label="Search datasets by code or name"
+                className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44"
+              />
+            </div>
           </div>
 
-          <div className="px-6 py-5 space-y-4">
-            {nb.nb10 && data?.complexity ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard label="Learner×Task rows"   value={fmtInt(data.complexity.dataset_stats.total_rows)} />
-                  <StatCard label="Unique learners"      value={fmtInt(data.complexity.dataset_stats.unique_learners)} />
-                  <StatCard label="Unique tasks"         value={fmtInt(data.complexity.dataset_stats.unique_tasks)} />
-                  <StatCard label="Has-error rate"       value={fmtPct(data.complexity.dataset_stats.has_error_pct)} />
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-[#64748B]">Complexity Score (0–100)</p>
-                  <div className="space-y-1.5">
-                    {[
-                      { label: "Mean", v: data.complexity.dataset_stats.complexity_score_mean },
-                      { label: "Min",  v: data.complexity.dataset_stats.complexity_score_min },
-                      { label: "Max",  v: data.complexity.dataset_stats.complexity_score_max },
-                    ].map(({ label, v }) => (
-                      <div key={label} className="grid grid-cols-[5rem_1fr] items-center gap-3">
-                        <span className="text-xs text-[#64748B]">{label}</span>
-                        <ScoreBar value={v} max={100} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-xs text-[#94A3B8]">
-                  Avg attempt count: <strong>{fmt2(data.complexity.dataset_stats.avg_attempt_count)}</strong>
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-slate-400 italic">
-                Awaiting NB10 run — no <code>sql_complexity_v1.parquet</code> found.
-              </p>
-            )}
+          {/* Batch Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Batch</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All batches" onClick={() => { setBatchTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Main" onClick={() => { setBatchTypeFilter(batchTypeFilter === "main" ? "" : "main"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "main" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <StarIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Trial" onClick={() => { setBatchTypeFilter(batchTypeFilter === "trial" ? "" : "trial"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "trial" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <DumbbellIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Pilot" onClick={() => { setBatchTypeFilter(batchTypeFilter === "pilot" ? "" : "pilot"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${batchTypeFilter === "pilot" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <PaperAirplaneIcon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+
+          {/* Activity Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Activity</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All activities" onClick={() => { setSetFamilyFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Assignment" onClick={() => { setSetFamilyFilter(setFamilyFilter === "assignment" ? "" : "assignment"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                  <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                  <rect x="4" y="3" width="16" height="18" rx="2"/>
+                </svg>
+              </button>
+              <button type="button" title="Lab" onClick={() => { setSetFamilyFilter(setFamilyFilter === "lab" ? "" : "lab"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                  <path d="M8 2h8"/><path d="M7 15h10"/>
+                </svg>
+              </button>
+              <button type="button" title="Exam" onClick={() => { setSetFamilyFilter(setFamilyFilter === "exam" ? "" : "exam"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${setFamilyFilter === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Task Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Task</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All task types" onClick={() => { setTaskTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {DATASET_TASK_TYPES_IN_SCOPE.map((v, i) => (
+                <button key={v} type="button" title={DATASET_TASK_LABEL[v]}
+                  onClick={() => { setTaskTypeFilter(taskTypeFilter === v ? "" : v); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < DATASET_TASK_TYPES_IN_SCOPE.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskTypeFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <TaskTypeIcon type={v} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Run Status */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Run Status</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All statuses" onClick={() => { setRunStatusFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${runStatusFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {[
+                { value: "completed", dotCls: "bg-green-500",  label: "Completed" },
+                { value: "pending",   dotCls: "bg-amber-400",  label: "Pending" },
+                { value: "running",   dotCls: "bg-blue-500",   label: "Running" },
+                { value: "failed",    dotCls: "bg-red-400",    label: "Failed" },
+              ].map(({ value, dotCls, label }, i, arr) => (
+                <button key={value} type="button" title={label}
+                  onClick={() => { setRunStatusFilter(runStatusFilter === value ? "" : value); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < arr.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${runStatusFilter === value ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <span className={`w-2 h-2 rounded-full ${runStatusFilter === value ? "bg-white" : dotCls}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Usage */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Usage</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All" onClick={() => { setUsageFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${usageFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Used" onClick={() => { setUsageFilter(usageFilter === "used" ? "" : "used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${usageFilter === "used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </button>
+              <button type="button" title="Not used" onClick={() => { setUsageFilter(usageFilter === "not_used" ? "" : "not_used"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${usageFilter === "not_used" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Clear All */}
+          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter || runStatusFilter || usageFilter) && (
+            <button type="button" onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setRunStatusFilter(""); setUsageFilter(""); setPage(1); }}
+              className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
+              Clear All
+            </button>
+          )}
         </section>
 
-        {/* ── NB11: Error Clustering ────────────────────────────────── */}
+        {/* ── Dataset Table ── */}
         <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb11 ? "bg-rose-500" : "bg-slate-300"}`} />
-            <span className="text-sm font-bold text-[#0F172A]">NB11 — Error Semantic Clustering</span>
-            {nb.nb11 && data?.clustering && (
-              <span className="ml-auto text-[10px] font-mono text-slate-400">
-                {data.clustering.schema_version}
-              </span>
-            )}
-          </div>
-
-          <div className="px-6 py-5 space-y-4">
-            {nb.nb11 && data?.clustering ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard label="Total attempts"  value={fmtInt(data.clustering.dataset_stats.total_attempt_rows)} />
-                  <StatCard label="Error rows"      value={fmtInt(data.clustering.dataset_stats.error_rows)} />
-                  <StatCard label="Clusters (k)"    value={String(data.clustering.dataset_stats.n_clusters_actual ?? "—")} />
-                  <StatCard
-                    label="Silhouette score"
-                    value={
-                      data.clustering.dataset_stats.silhouette_score != null
-                        ? fmt2(data.clustering.dataset_stats.silhouette_score as number)
-                        : "—"
-                    }
-                  />
-                </div>
-
-                {/* Top terms per cluster */}
-                {data.clustering.dataset_stats.top_terms_per_cluster &&
-                  Object.keys(data.clustering.dataset_stats.top_terms_per_cluster).length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-[#64748B]">Top terms per cluster</p>
-                    <div className="divide-y divide-[#F8FAFC]">
-                      {Object.entries(
-                        data.clustering.dataset_stats.top_terms_per_cluster as Record<string, string[]>
-                      ).map(([cid, terms]) => (
-                        <div key={cid} className="flex items-start gap-3 py-1.5">
-                          <span className="font-mono text-[10px] bg-rose-50 border border-rose-200 text-rose-700 px-1.5 py-0.5 rounded shrink-0">
-                            C{cid}
+          {loading ? (
+            <p className="text-sm text-[#94A3B8] py-6 text-center">Loading…</p>
+          ) : error ? (
+            <div className="m-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
+          ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead>
+                <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                  {[
+                    { label: "Code",      align: "left"   },
+                    { label: "Name",      align: "left"   },
+                    { label: "Batch",     align: "center" },
+                    { label: "Activity",  align: "center" },
+                    { label: "Task Type", align: "center" },
+                    { label: "Sessions",  align: "center" },
+                    { label: "Learners",  align: "center" },
+                    { label: "Usage",     align: "center" },
+                    { label: "Runs",      align: "center" },
+                    { label: "",          align: "center" },
+                  ].map(({ label, align }, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pagedDatasets.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">
+                      No datasets found.
+                    </td>
+                  </tr>
+                )}
+                {pagedDatasets.map((ds) => {
+                  const isExpanded = expandedIds.has(ds.id);
+                  const visibleRuns = ds.runs.filter((r) => !runStatusFilter || r.status === runStatusFilter);
+                  return (
+                    <Fragment key={ds.id}>
+                      {/* Dataset row */}
+                      <tr
+                        className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
+                        onClick={() => toggleExpanded(ds.id)}
+                      >
+                        {/* Code */}
+                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+                          <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
+                            {ds.code}
                           </span>
-                          <div className="flex flex-wrap gap-1">
-                            {terms.map((t) => (
-                              <span key={t} className="font-mono text-[10px] bg-[#F1F5F9] px-1.5 rounded text-[#475569]">
-                                {t}
-                              </span>
-                            ))}
+                        </td>
+                        {/* Name */}
+                        <td className="px-3 py-3.5 align-middle min-w-[140px]">
+                          <span className="text-xs text-[#0F172A] font-medium leading-snug">{ds.name}</span>
+                        </td>
+                        {/* Batch */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.batch_type === "main"  && <span title="Main"  className="inline-flex items-center justify-center text-[#F37021]"><StarIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "trial" && <span title="Trial" className="inline-flex items-center justify-center text-[#F37021]"><DumbbellIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "pilot" && <span title="Pilot" className="inline-flex items-center justify-center text-[#F37021]"><PaperAirplaneIcon className="w-4 h-4" /></span>}
+                          {!["main","trial","pilot"].includes(ds.batch_type) && <span className="text-[10px] text-[#94A3B8]">{ds.batch_type || "—"}</span>}
+                        </td>
+                        {/* Activity */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span title={ds.set_family} className="inline-flex items-center justify-center text-[#64748B]">
+                            {ds.set_family === "assignment" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg>}
+                            {ds.set_family === "lab"        && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/></svg>}
+                            {ds.set_family === "exam"       && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
+                            {!["assignment","lab","exam"].includes(ds.set_family) && <span className="text-[10px] text-[#94A3B8]">{ds.set_family || "—"}</span>}
+                          </span>
+                        </td>
+                        {/* Task Type */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.task_type ? (
+                            <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#64748B]">
+                              <TaskTypeIcon type={ds.task_type} />
+                            </span>
+                          ) : (
+                            <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
+                          )}
+                        </td>
+                        {/* Sessions */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.session_count}</span>
+                        </td>
+                        {/* Learners */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
+                        </td>
+                        {/* Usage */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.usage_status === "used" ? (
+                            <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                              </svg>
+                            </span>
+                          ) : (
+                            <span title="Not used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                              </svg>
+                            </span>
+                          )}
+                        </td>
+                        {/* Runs count */}
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+                            {ds.runs.length}
+                          </span>
+                        </td>
+                        {/* Actions: Run + Expand */}
+                        <td className="px-3 py-3.5 text-center align-middle">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setRunError(null); setRunTarget(ds); }}
+                              title="Run Semantic Analysis"
+                              className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] transition-colors"
+                              aria-label="Run Semantic Analysis"
+                            >
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+                                <path d="M5 3l14 9-14 9V3z" />
+                              </svg>
+                            </button>
+                            <svg
+                              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                              strokeLinecap="round" strokeLinejoin="round"
+                              className={`w-4 h-4 text-[#94A3B8] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              aria-hidden="true"
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-slate-400 italic">
-                Awaiting NB11 run — no <code>error_clusters_v1.parquet</code> found.
-              </p>
-            )}
-          </div>
-        </section>
+                        </td>
+                      </tr>
 
-        {/* ── NB12: Solution Embeddings ─────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${nb.nb12 ? "bg-sky-500" : "bg-slate-300"}`} />
-            <span className="text-sm font-bold text-[#0F172A]">NB12 — Solution Progression Embeddings</span>
-            {nb.nb12 && data?.embeddings && (
-              <span className="ml-auto text-[10px] font-mono text-slate-400">
-                {data.embeddings.schema_version}
+                      {/* Expanded run rows */}
+                      {isExpanded && (
+                        visibleRuns.length === 0 ? (
+                          <tr key={`${ds.id}-empty`} className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
+                            <td colSpan={10} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
+                              No semantic pipeline runs available.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleRuns.map((run) => {
+                            const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+                            const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+                            const canView = run.artifact_availability !== "unavailable";
+
+                            return (
+                              <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                                {/* Indent spacer */}
+                                <td className="pl-8 pr-2 py-2.5 align-middle" />
+                                {/* Run# */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={2}>
+                                  <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
+                                </td>
+                                {/* DateTime */}
+                                <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={2}>
+                                  {run.created_at
+                                    ? new Date(run.created_at).toLocaleString()
+                                    : "—"}
+                                </td>
+                                {/* Run Status */}
+                                <td className="px-3 py-2.5 align-middle" colSpan={1}>
+                                  <StatusBadge status={run.status} />
+                                </td>
+                                {/* Progress / Action */}
+                                <td className="px-2 py-2.5 align-middle" colSpan={1}>
+                                  {run.status === "pending" && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); void continueRun(ds, run); }}
+                                      disabled={actionLoading === run.id}
+                                      title="Queue a new run for this dataset"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                    >
+                                      {actionLoading === run.id ? (
+                                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                      ) : (
+                                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"/></svg>
+                                      )}
+                                      Continue
+                                    </button>
+                                  )}
+                                  {run.status === "running" && (() => {
+                                    const prog = runProgress(run);
+                                    return (
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="flex flex-col gap-0.5 min-w-[44px]">
+                                          <div className="h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                                            {prog ? (
+                                              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${prog.pct}%` }} />
+                                            ) : (
+                                              <div className="h-full w-1/2 bg-blue-400 rounded-full animate-pulse" />
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] font-mono text-blue-600 leading-none">
+                                            {prog ? `${prog.pct}%` : "…"}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); void stopRun(ds, run); }}
+                                          disabled={actionLoading === run.id}
+                                          title="Request cancellation"
+                                          className="p-1 rounded hover:bg-red-100 text-[#94A3B8] hover:text-red-500 disabled:opacity-50 transition-colors"
+                                          aria-label="Pause run"
+                                        >
+                                          {actionLoading === run.id ? (
+                                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                                          ) : (
+                                            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
+                                              <rect x="6" y="4" width="4" height="16" rx="1" />
+                                              <rect x="14" y="4" width="4" height="16" rx="1" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+                                </td>
+                                {/* View Analysis (eye icon) */}
+                                <td className="px-3 py-2.5 align-middle text-center" colSpan={3}>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openDetail(ds, run); }}
+                                    disabled={!canView}
+                                    title={canView ? "View Analysis" : (run.not_comparable_reason ?? "No artifact available")}
+                                    className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="View Analysis"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M2 12s3.636-7 10-7 10 7 10 7-3.636 7-10 7-10-7-10-7z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#FED7AA] bg-[#FFF7ED]">
+              <span className="text-xs text-[#64748B]">
+                Page {page} of {totalPages} ({filteredDatasets.length} datasets)
               </span>
-            )}
-          </div>
-
-          <div className="px-6 py-5 space-y-4">
-            {nb.nb12 && data?.embeddings ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard label="Learner×Task rows"    value={fmtInt(data.embeddings.dataset_stats.n_learner_task_rows)} />
-                  <StatCard label="Input features"       value={fmtInt(data.embeddings.dataset_stats.n_features_input)} />
-                  <StatCard label="SVD components"       value={String(data.embeddings.dataset_stats.n_components_actual)} />
-                  <StatCard
-                    label="Cumulative variance"
-                    value={fmtPct(data.embeddings.dataset_stats.cumulative_var_pct)}
-                    sub="TruncatedSVD(32)"
-                  />
-                </div>
-
-                {/* Top-3 component variance */}
-                {Array.isArray(data.embeddings.dataset_stats.top3_var_pct) && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-[#64748B]">Top-3 component variance (%)</p>
-                    {(data.embeddings.dataset_stats.top3_var_pct as number[]).map((v, i) => (
-                      <div key={i} className="grid grid-cols-[5rem_1fr] items-center gap-3">
-                        <span className="text-xs text-[#64748B]">Component {i + 1}</span>
-                        <ScoreBar value={v} max={100} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Within-task similarity */}
-                {data.embeddings.dataset_stats.within_task_similarity &&
-                  Object.keys(data.embeddings.dataset_stats.within_task_similarity).length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-[#64748B]">Within-task cosine similarity</p>
-                    <div className="divide-y divide-[#F8FAFC]">
-                      {Object.entries(
-                        data.embeddings.dataset_stats.within_task_similarity as Record<string, number>
-                      ).map(([taskId, sim]) => (
-                        <div key={taskId} className="grid grid-cols-[8rem_1fr] items-center gap-3 py-1">
-                          <span className="text-xs font-mono text-[#64748B]">Task {taskId}</span>
-                          <ScoreBar value={sim * 100} max={100} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-slate-400 italic">
-                Awaiting NB12 run — no <code>solution_embeddings_v1.npz</code> found.
-              </p>
-            )}
-          </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </section>
-
-        {/* Footer */}
-        <p className="text-center text-[11px] text-[#94A3B8] pb-4">
-          Read-only · Semantic analysis v1.0 · Behavioral proxies only (no SQL text) ·{" "}
-          {data?.label_validity_note ?? "label_validity=pilot_only"}
-        </p>
       </main>
+
+      {/* Detail Modal */}
+      {detailTarget && (
+        <SemanticDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
+
+      {/* Run Confirm Modal */}
+      {runTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Run Semantic Analysis</p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Dataset <span className="font-mono font-semibold text-[#F37021]">{runTarget.code}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                className="text-[#94A3B8] hover:text-[#475569] transition-colors mt-0.5"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-[#475569]">
+              This will create a new <strong>semantic</strong> pipeline run for{" "}
+              <strong>{runTarget.name}</strong>. The run will start in <em>pending</em> state.
+            </p>
+            {runError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {runError}
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setRunTarget(null); setRunError(null); }}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmRunPipeline()}
+                disabled={runLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#F37021] text-white text-xs font-semibold hover:bg-[#D95F10] disabled:opacity-50 transition-colors"
+              >
+                {runLoading ? "Starting…" : "Confirm Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
