@@ -29,6 +29,11 @@ export default function LoginPage() {
         return;
       }
 
+      if (profile.role === "researcher") {
+        router.push("/researcher/dashboard");
+        return;
+      }
+
       router.push("/student/dashboard");
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Login failed.");
