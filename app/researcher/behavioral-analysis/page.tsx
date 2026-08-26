@@ -339,12 +339,14 @@ export default function BehavioralAnalysisPage() {
   }
 
   async function continueRun(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
-    if (!token || actionLoading) return;
+    if (actionLoading) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
     setActionLoading(run.id);
     try {
       const res = await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs/${run.id}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -357,12 +359,14 @@ export default function BehavioralAnalysisPage() {
   }
 
   async function stopRun(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
-    if (!token || actionLoading) return;
+    if (actionLoading) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
     setActionLoading(run.id);
     try {
       await fetch(`/api/researcher/dataset-analytics/${ds.id}/runs?run_id=${run.id}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       void loadData();
     } finally {
@@ -378,13 +382,15 @@ export default function BehavioralAnalysisPage() {
   }
 
   async function confirmRunPipeline() {
-    if (!runTarget || !token) return;
+    if (!runTarget) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
     setRunLoading(true);
     setRunError(null);
     try {
       const res = await fetch(`/api/researcher/dataset-analytics/${runTarget.id}/runs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ run_type: "behavioral" }),
       });
       if (!res.ok) {
