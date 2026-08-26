@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { TaskTypeIcon, TASK_TYPE_LABEL, TASK_TYPE_ORDER } from "@/lib/task-type-utils";
 import type {
   BehavioralLearnerRecord,
   BehavioralTaskRecord,
@@ -15,45 +16,6 @@ import type {
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 15;
-
-// ---------------------------------------------------------------------------
-// Small icons
-// ---------------------------------------------------------------------------
-
-function TaskTypeIcon({ type }: { type: string }) {
-  switch (type) {
-    case "sql_text":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-          <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
-        </svg>
-      );
-    case "sql_block":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <path d="M8 21h8M12 17v4" />
-        </svg>
-      );
-    case "er_diagram":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-          <rect x="2" y="8" width="8" height="8" rx="1" />
-          <rect x="14" y="8" width="8" height="8" rx="1" />
-          <path d="M10 12h4" />
-        </svg>
-      );
-    case "stored_procedure":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-          <polyline points="16 18 22 12 16 6" />
-          <polyline points="8 6 2 12 8 18" />
-        </svg>
-      );
-    default:
-      return <span className="text-[10px] font-mono font-bold text-[#94A3B8]">{type.slice(0, 2).toUpperCase()}</span>;
-  }
-}
 
 function ComplexityDot({ score }: { score: number }) {
   const cls = score >= 70 ? "bg-rose-500" : score >= 45 ? "bg-amber-400" : "bg-emerald-500";
@@ -282,7 +244,9 @@ export default function BehavioralAnalysisPage() {
 
   // ── Filtering ─────────────────────────────────────────────────────────────
   const allLearners   = data?.learners ?? [];
-  const allTaskTypes  = [...new Set(allLearners.flatMap((l) => l.tasks.map((t) => t.task_type)))].sort();
+  // Order by canonical TASK_TYPE_ORDER, include only types present in data
+  const presentTypes  = new Set(allLearners.flatMap((l) => l.tasks.map((t) => t.task_type)));
+  const allTaskTypes  = TASK_TYPE_ORDER.filter((t) => presentTypes.has(t));
 
   const filteredLearners = allLearners.filter((l) => {
     if (search) {
@@ -442,7 +406,7 @@ export default function BehavioralAnalysisPage() {
                   All
                 </button>
                 {allTaskTypes.map((tt, i) => (
-                  <button key={tt} type="button" title={tt}
+                  <button key={tt} type="button" title={TASK_TYPE_LABEL[tt] ?? tt}
                     onClick={() => { setTaskType(taskType === tt ? "" : tt); setPage(1); }}
                     className={`flex items-center justify-center px-3 py-2.5 ${i < allTaskTypes.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskType === tt ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
                     <TaskTypeIcon type={tt} />
