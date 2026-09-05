@@ -322,36 +322,10 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               </div>
             </div>
 
-            {/* Per-learner table — Behavioral Feature values, followed by the
-                AI Model Layer's predictions for the same learner in one row.
-                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
-                since their input is Sequential features, not Behavioral. RF is
-                shown on both this page and Semantic Analysis since it consumes
-                both feature sets jointly. */}
+            {/* Feature Values — Behavioral (+ Semantic, when RF applies) features,
+                one row per learner. */}
             <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">
-                Per learner{risk && " — Feature values + Predicted Risk (AI Model Layer)"}
-              </p>
-              {risk && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
-                  <p>
-                    ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
-                    {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
-                    {risk.models_used.e2_random_forest && (
-                      <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
-                    )}
-                    {" "}(small-n — likely overfit, not a generalization guarantee)
-                  </p>
-                  <p className="font-mono text-[10px] text-red-600">
-                    LR features: {risk.models_used.e1_logistic_regression.feature_names.join(", ")}
-                  </p>
-                  {risk.models_used.e2_random_forest && (
-                    <p className="font-mono text-[10px] text-red-600">
-                      RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
-                    </p>
-                  )}
-                </div>
-              )}
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
               <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
@@ -368,12 +342,6 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                         <>
                           <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">AST Sim</th>
                           <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Structure</th>
-                        </>
-                      )}
-                      {risk && (
-                        <>
-                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">LR (%)</th>
-                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">RF (%)</th>
                         </>
                       )}
                     </tr>
@@ -401,24 +369,6 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                               </td>
                             </>
                           )}
-                          {risk && (
-                            <>
-                              <td className="px-3 py-2 text-right">
-                                {p ? (
-                                  <span className={p.lr_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                                    {pct(p.lr_probability_success)}
-                                  </span>
-                                ) : "—"}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {p && p.rf_probability_success !== null ? (
-                                  <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                                    {pct(p.rf_probability_success)}
-                                  </span>
-                                ) : "—"}
-                              </td>
-                            </>
-                          )}
                         </tr>
                       );
                     })}
@@ -426,6 +376,67 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                 </table>
               </div>
             </div>
+
+            {/* AI Model Layer — LR (E1) / RF (E2) predictions.
+                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
+                since their input is Sequential features, not Behavioral. RF is
+                shown on both this page and Semantic Analysis since it consumes
+                both feature sets jointly. */}
+            {risk && (
+              <div>
+                <p className="text-xs font-bold text-[#0F172A] mb-2">
+                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
+                </p>
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
+                  <p>
+                    ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
+                    {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
+                    {risk.models_used.e2_random_forest && (
+                      <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
+                    )}
+                    {" "}(small-n — likely overfit, not a generalization guarantee)
+                  </p>
+                  <p className="font-mono text-[10px] text-red-600">
+                    LR features: {risk.models_used.e1_logistic_regression.feature_names.join(", ")}
+                  </p>
+                  {risk.models_used.e2_random_forest && (
+                    <p className="font-mono text-[10px] text-red-600">
+                      RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
+                    </p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                        <th className="text-right px-3 py-2 font-semibold">LR (%)</th>
+                        <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#FED7AA]">
+                      {risk.predictions.map((p) => (
+                        <tr key={p.profile_id}>
+                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={p.lr_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                              {pct(p.lr_probability_success)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {p.rf_probability_success !== null ? (
+                              <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                {pct(p.rf_probability_success)}
+                              </span>
+                            ) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

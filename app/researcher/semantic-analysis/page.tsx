@@ -302,10 +302,42 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                 standalone model of its own (thesis Table 3.1: Semantic
                 Features -> RF). */}
             <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">
-                Per learner{risk?.models_used.e2_random_forest && " — Feature values + Predicted Risk (AI Model Layer)"}
-              </p>
-              {risk?.models_used.e2_random_forest && (
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
+              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                      <th className="text-right px-3 py-2 font-semibold">Submits</th>
+                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
+                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
+                      <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FED7AA]">
+                    {result.per_learner.map((l) => (
+                      <tr key={l.profile_id}>
+                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* AI Model Layer — RF (E2) predictions. RF consumes Behavioral +
+                Semantic features jointly, so it's shown here as well as on the
+                Behavioral Analysis page — Semantic has no standalone model of
+                its own (thesis Table 3.1: Semantic Features -> RF). */}
+            {risk?.models_used.e2_random_forest && (
+              <div>
+                <p className="text-xs font-bold text-[#0F172A] mb-2">
+                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
+                </p>
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
                   <p>
                     ⚠ {risk.models_used.e2_random_forest.pilot_warning} CV accuracy — RF:{" "}
@@ -316,47 +348,32 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                     RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
                   </p>
                 </div>
-              )}
-              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                      <th className="text-right px-3 py-2 font-semibold">Submits</th>
-                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
-                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
-                      <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
-                      {risk?.models_used.e2_random_forest && (
+                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
                         <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#FED7AA]">
-                    {result.per_learner.map((l) => {
-                      const p = risk?.predictions.find((pr) => pr.profile_id === l.profile_id);
-                      return (
-                        <tr key={l.profile_id}>
-                          <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
-                          {risk?.models_used.e2_random_forest && (
-                            <td className="px-3 py-2 text-right">
-                              {p && p.rf_probability_success !== null ? (
-                                <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                                  {pct(p.rf_probability_success)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                          )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#FED7AA]">
+                      {risk.predictions.map((p) => (
+                        <tr key={p.profile_id}>
+                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
+                          <td className="px-3 py-2 text-right">
+                            {p.rf_probability_success !== null ? (
+                              <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                {pct(p.rf_probability_success)}
+                              </span>
+                            ) : "—"}
+                          </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
