@@ -552,6 +552,7 @@ async function handleListMode(): Promise<NextResponse> {
       "id, dataset_id, run_type, status, result_version, configuration, analysis_steps, started_at, completed_at, error_summary, created_at",
     )
     .in("dataset_id", datasetIds)
+    .eq("run_type", "sequential")
     .order("created_at", { ascending: false });
 
   if (runErr) {
