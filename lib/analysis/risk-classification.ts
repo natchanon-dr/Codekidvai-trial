@@ -118,6 +118,11 @@ export type RiskLabel = "success" | "at_risk";
 
 export interface RiskPrediction {
   profile_id: string;
+  // Raw feature values fed into LR/RF, keyed by feature name (union of both
+  // models' feature_names — see models_used.*.feature_names for which subset
+  // each model actually uses). Lets the UI show input values next to the
+  // predictions they produced.
+  feature_values: Record<string, number>;
   lr_predicted_label: RiskLabel;
   lr_probability_success: number;
   rf_predicted_label: RiskLabel | null;
@@ -182,6 +187,9 @@ export async function runRiskClassification(ctx: StepContext): Promise<void> {
     const lrFeatures = lr.feature_names.map((f) => behRecord[f] ?? 0);
     const lrProbSuccess = r2(predictLogisticRegression(lrFeatures));
 
+    const featureValues: Record<string, number> = {};
+    for (const f of lr.feature_names) featureValues[f] = r2(behRecord[f] ?? 0);
+
     let rfProbSuccess: number | null = null;
     const sem = semByProfile?.get(profileId);
     if (sem) {
@@ -189,6 +197,7 @@ export async function runRiskClassification(ctx: StepContext): Promise<void> {
       const rfFeatures = rf.feature_names.map((f) => behRecord[f] ?? semRecord[f] ?? 0);
       rfProbSuccess = r2(predictRandomForest(rfFeatures));
       rfAppliedCount += 1;
+      for (const f of rf.feature_names) featureValues[f] = r2(behRecord[f] ?? semRecord[f] ?? 0);
     }
 
     let lstmProbSuccess: number | null = null;
@@ -204,6 +213,7 @@ export async function runRiskClassification(ctx: StepContext): Promise<void> {
 
     predictions.push({
       profile_id: profileId,
+      feature_values: featureValues,
       lr_predicted_label: lrProbSuccess >= 0.5 ? "success" : "at_risk",
       lr_probability_success: lrProbSuccess,
       rf_predicted_label: rfProbSuccess !== null ? (rfProbSuccess >= 0.5 ? "success" : "at_risk") : null,

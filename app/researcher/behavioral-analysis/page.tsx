@@ -145,6 +145,7 @@ type BehavioralResult = {
 
 type RiskPrediction = {
   profile_id: string;
+  feature_values: Record<string, number>;
   lr_predicted_label: "success" | "at_risk";
   lr_probability_success: number;
   rf_predicted_label: "success" | "at_risk" | null;
@@ -390,6 +391,42 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                     </p>
                   )}
                 </div>
+
+                {/* Feature Values — the actual model input, one column per feature */}
+                {(() => {
+                  const featureCols = risk.models_used.e2_random_forest?.feature_names
+                    ?? risk.models_used.e1_logistic_regression.feature_names;
+                  return (
+                    <div className="mb-3">
+                    <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-1">Feature Values (model input)</p>
+                    <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#FFF7ED]">Learner</th>
+                            {featureCols.map((f) => (
+                              <th key={f} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{f}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#FED7AA]">
+                          {risk.predictions.map((p) => (
+                            <tr key={p.profile_id}>
+                              <td className="px-3 py-2 font-mono text-[#475569] sticky left-0 bg-white">{p.profile_id.slice(0, 8)}…</td>
+                              {featureCols.map((f) => (
+                                <td key={f} className="px-3 py-2 text-right text-[#0F172A]">
+                                  {p.feature_values[f] !== undefined ? p.feature_values[f] : "—"}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
                   <table className="w-full text-[11px]">
                     <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
