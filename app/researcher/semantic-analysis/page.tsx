@@ -142,7 +142,7 @@ type RfRiskClassification = {
   learner_count: number;
   rf_applied_count: number;
   models_used: {
-    e2_random_forest: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+    e2_random_forest: { feature_names: string[]; cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
   };
   predictions: RfRiskPrediction[];
 };
@@ -344,10 +344,15 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                 <p className="text-xs font-bold text-[#0F172A] mb-2">
                   Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
                 </p>
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
-                  ⚠ {risk.models_used.e2_random_forest.pilot_warning} CV accuracy — RF:{" "}
-                  {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}
-                  {" "}(small-n — likely overfit, not a generalization guarantee)
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
+                  <p>
+                    ⚠ {risk.models_used.e2_random_forest.pilot_warning} CV accuracy — RF:{" "}
+                    {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}
+                    {" "}(small-n — likely overfit, not a generalization guarantee)
+                  </p>
+                  <p className="font-mono text-[10px] text-red-600">
+                    RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
                   <table className="w-full text-[11px]">
