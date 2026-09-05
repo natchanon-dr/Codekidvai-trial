@@ -352,19 +352,28 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                   )}
                 </div>
               )}
-              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+              <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
                     <tr>
-                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                      <th className="text-right px-3 py-2 font-semibold">Sessions</th>
-                      <th className="text-right px-3 py-2 font-semibold">Success</th>
-                      <th className="text-right px-3 py-2 font-semibold">Error</th>
-                      <th className="text-right px-3 py-2 font-semibold">Submit</th>
+                      <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#FFF7ED]">Learner</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Sessions</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Success</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Error</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Submit</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Avg Duration (s)</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts/Session</th>
+                      {risk?.models_used.e2_random_forest && (
+                        <>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">AST Sim</th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Structure</th>
+                        </>
+                      )}
                       {risk && (
                         <>
-                          <th className="text-right px-3 py-2 font-semibold">LR (%)</th>
-                          <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">LR (%)</th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">RF (%)</th>
                         </>
                       )}
                     </tr>
@@ -374,11 +383,24 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                       const p = risk?.predictions.find((pr) => pr.profile_id === l.profile_id);
                       return (
                         <tr key={l.profile_id}>
-                          <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                          <td className="px-3 py-2 font-mono text-[#475569] sticky left-0 bg-white">{l.profile_id.slice(0, 8)}…</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_sessions}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_attempts}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.attempt_success_rate)}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.error_rate)}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.submission_rate)}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.avg_session_duration_seconds}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.avg_attempts_per_session}</td>
+                          {risk?.models_used.e2_random_forest && (
+                            <>
+                              <td className="px-3 py-2 text-right text-[#0F172A]">
+                                {p?.feature_values.avg_ast_similarity !== undefined ? p.feature_values.avg_ast_similarity : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right text-[#0F172A]">
+                                {p?.feature_values.avg_structure_score !== undefined ? p.feature_values.avg_structure_score : "—"}
+                              </td>
+                            </>
+                          )}
                           {risk && (
                             <>
                               <td className="px-3 py-2 text-right">
