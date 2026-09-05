@@ -2,6 +2,24 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from "recharts";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 import { BehavioralCompareModal } from "@/app/researcher/_components/BehavioralCompareModal";
@@ -173,6 +191,70 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+// Formats an ISO timestamp as "02 Sep 2026 01:21:02 PM" (day-month-year, 12h clock).
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  const hours24 = d.getHours();
+  const ampm = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = String(hours24 % 12 === 0 ? 12 : hours24 % 12).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  return `${day} ${month} ${year} ${hours12}:${minutes}:${seconds} ${ampm}`;
+}
+
+// Buckets a list of numeric values into evenly-sized bins for a distribution
+// histogram (e.g. session counts, avg durations across the learner cohort).
+function buildHistogram(values: number[], binCount = 6): { range: string; count: number }[] {
+  if (values.length === 0) return [];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) return [{ range: `${min}`, count: values.length }];
+
+  const width = (max - min) / binCount;
+  const bins = Array.from({ length: binCount }, (_, i) => ({
+    start: min + i * width,
+    end: min + (i + 1) * width,
+    count: 0,
+  }));
+  for (const v of values) {
+    const idx = Math.min(binCount - 1, Math.floor((v - min) / width));
+    bins[idx].count += 1;
+  }
+  return bins.map((b) => ({
+    range: `${b.start.toFixed(1)}–${b.end.toFixed(1)}`,
+    count: b.count,
+  }));
+}
+
+// Same bucketing as buildHistogram, but over a caller-supplied fixed range
+// (e.g. 0–100 for percentage rates) with a fixed bin width, instead of each
+// series' own min/max — lets several rate distributions share identical,
+// human-readable bin edges (0-15, 16-30, 31-45, ...) so they can be plotted
+// as one grouped chart.
+function buildFixedWidthHistogram(
+  values: number[],
+  max: number,
+  width: number,
+): { range: string; count: number }[] {
+  const bins: { start: number; end: number; count: number }[] = [];
+  let start = 0;
+  let boundaryMultiple = 1;
+  while (start <= max) {
+    const end = Math.min(max, width * boundaryMultiple);
+    bins.push({ start, end, count: 0 });
+    start = end + 1;
+    boundaryMultiple += 1;
+  }
+  for (const v of values) {
+    const bin = bins.find((b) => v >= b.start && v <= b.end) ?? bins[bins.length - 1];
+    bin.count += 1;
+  }
+  return bins.map((b) => ({ range: `${b.start}-${b.end}`, count: b.count }));
+}
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -187,6 +269,7 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
   const [risk, setRisk] = useState<RiskClassificationResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [radarLearnerId, setRadarLearnerId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,6 +305,7 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
       const j = await res.json() as { result: BehavioralResult; risk_classification: RiskClassificationResult | null };
       setResult(j.result);
       setRisk(j.risk_classification);
+      setRadarLearnerId(j.result.per_learner[0]?.profile_id ?? null);
       setDetailLoading(false);
     }
 
@@ -261,13 +345,13 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
           {target.run.started_at && (
             <div className="flex gap-2">
               <span className="text-xs text-[#64748B] min-w-[70px]">Started:</span>
-              <span className="text-xs text-[#0F172A]">{new Date(target.run.started_at).toLocaleString()}</span>
+              <span className="text-xs text-[#0F172A]">{formatDateTime(target.run.started_at)}</span>
             </div>
           )}
           {target.run.completed_at && (
             <div className="flex gap-2">
               <span className="text-xs text-[#64748B] min-w-[70px]">Completed:</span>
-              <span className="text-xs text-[#0F172A]">{new Date(target.run.completed_at).toLocaleString()}</span>
+              <span className="text-xs text-[#0F172A]">{formatDateTime(target.run.completed_at)}</span>
             </div>
           )}
           {target.run.run_type && (
@@ -308,35 +392,64 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               )}
             </div>
 
-            {/* Aggregate stats */}
+            {/* Aggregate stats — sessions/duration as plain numbers (StatCards),
+                success/error and submission as paired progress bars since they're
+                each two halves of the same 100% (success+error; submitted+not). */}
             <div>
               <p className="text-xs font-bold text-[#0F172A] mb-2">
                 Aggregate ({result.learner_count} learners)
               </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 mb-3">
                 <StatCard label="Avg sessions" value={String(result.aggregate.avg_total_sessions)} />
-                <StatCard label="Success rate" value={pct(result.aggregate.avg_attempt_success_rate)} />
-                <StatCard label="Error rate" value={pct(result.aggregate.avg_error_rate)} />
-                <StatCard label="Submission rate" value={pct(result.aggregate.avg_submission_rate)} />
                 <StatCard label="Avg duration (s)" value={String(result.aggregate.avg_session_duration_seconds)} />
+              </div>
+
+              <div className="mb-2">
+                <div className="flex items-center justify-between text-[10px] text-[#64748B] mb-1">
+                  <span className="font-semibold text-green-700">Success Rate {pct(result.aggregate.avg_attempt_success_rate)}</span>
+                  <span className="font-semibold text-red-700">Error Rate {pct(result.aggregate.avg_error_rate)}</span>
+                </div>
+                <div className="w-full h-4 rounded-full overflow-hidden flex border border-[#FED7AA]">
+                  <div className="bg-[#16A34A] h-full" style={{ width: `${Math.round(result.aggregate.avg_attempt_success_rate * 100)}%` }} />
+                  <div className="bg-[#DC2626] h-full" style={{ width: `${Math.round(result.aggregate.avg_error_rate * 100)}%` }} />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-[10px] text-[#64748B] mb-1">
+                  <span className="font-semibold text-[#C2410C]">Submission Rate {pct(result.aggregate.avg_submission_rate)}</span>
+                  <span className="font-semibold text-[#94A3B8]">No Submission {pct(1 - result.aggregate.avg_submission_rate)}</span>
+                </div>
+                <div className="w-full h-4 rounded-full overflow-hidden flex border border-[#FED7AA]">
+                  <div className="bg-[#F37021] h-full" style={{ width: `${Math.round(result.aggregate.avg_submission_rate * 100)}%` }} />
+                  <div className="bg-[#CBD5E1] h-full" style={{ width: `${Math.round((1 - result.aggregate.avg_submission_rate) * 100)}%` }} />
+                </div>
               </div>
             </div>
 
-            {/* Feature Values — Behavioral (+ Semantic, when RF applies) features,
-                one row per learner. Each column header is tagged with which
-                model(s) actually consume it, since LR uses 7 of the 9 columns
-                and RF uses all 9. */}
+            {/* Feature Values + Predicted Risk — one merged table per learner:
+                Behavioral (+ Semantic, when RF applies) feature columns, followed
+                by LR (E1) / RF (E2) prediction columns when a risk_classification
+                run exists. LSTM (E3) / GRU (E4) live on the Sequential Analysis
+                page instead, since their input is Sequential features, not
+                Behavioral. RF is shown here and on Semantic Analysis since it
+                consumes both feature sets jointly. */}
             <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values &amp; Predicted Risk</p>
               <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#FFF7ED]">Learner</th>
+                      {risk && (
+                        <>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">LR (%)</th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">RF (%)</th>
+                        </>
+                      )}
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Sessions</th>
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts</th>
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Success</th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Error</th>
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Submit</th>
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Avg Duration (s)</th>
                       <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts/Session</th>
@@ -354,10 +467,27 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                       return (
                         <tr key={l.profile_id}>
                           <td className="px-3 py-2 font-mono text-[#475569] sticky left-0 bg-white">{l.profile_id.slice(0, 8)}…</td>
+                          {risk && (
+                            <>
+                              <td className="px-3 py-2 text-right">
+                                {p ? (
+                                  <span className={p.lr_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                    {pct(p.lr_probability_success)}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {p?.rf_probability_success !== null && p?.rf_probability_success !== undefined ? (
+                                  <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                    {pct(p.rf_probability_success)}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                            </>
+                          )}
                           <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_sessions}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_attempts}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.attempt_success_rate)}</td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.error_rate)}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.submission_rate)}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{l.avg_session_duration_seconds}</td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">{l.avg_attempts_per_session}</td>
@@ -379,66 +509,368 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               </div>
             </div>
 
-            {/* AI Model Layer — LR (E1) / RF (E2) predictions.
-                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
-                since their input is Sequential features, not Behavioral. RF is
-                shown on both this page and Semantic Analysis since it consumes
-                both feature sets jointly. */}
-            {risk && (
-              <div>
-                <p className="text-xs font-bold text-[#0F172A] mb-2">
-                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
-                </p>
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
-                  <p>
-                    ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
-                    {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
-                    {risk.models_used.e2_random_forest && (
-                      <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
-                    )}
-                    {" "}(small-n — likely overfit, not a generalization guarantee)
-                  </p>
-                  <p className="font-mono text-[10px] text-red-600">
-                    LR features: {risk.models_used.e1_logistic_regression.feature_names.join(", ")}
-                  </p>
-                  {risk.models_used.e2_random_forest && (
-                    <p className="font-mono text-[10px] text-red-600">
-                      RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
-                    </p>
-                  )}
+            {/* Charts — visual read of the same LR/RF predictions shown in the
+                table above. Per-learner bar chart for a quick outlier scan,
+                plus a Success/At-risk count summary per model. */}
+            {risk && risk.predictions.length > 0 && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Success Probability by Learner</p>
+                  <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart
+                        data={risk.predictions.map((p) => ({
+                          learner: p.profile_id.slice(0, 6),
+                          LR: Math.round(p.lr_probability_success * 100),
+                          RF: p.rf_probability_success !== null ? Math.round(p.rf_probability_success * 100) : undefined,
+                        }))}
+                        margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                        <XAxis dataKey="learner" tick={{ fontSize: 10 }} interval={0} angle={-45} textAnchor="end" height={50} />
+                        <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%" />
+                        <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value) => `${value}%`} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="LR" fill="#F37021" name="LR (%)" />
+                        {risk.models_used.e2_random_forest && <Bar dataKey="RF" fill="#0EA5E9" name="RF (%)" />}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                        <th className="text-right px-3 py-2 font-semibold">LR (%)</th>
-                        <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#FED7AA]">
-                      {risk.predictions.map((p) => (
-                        <tr key={p.profile_id}>
-                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
-                          <td className="px-3 py-2 text-right">
-                            <span className={p.lr_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                              {pct(p.lr_probability_success)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {p.rf_probability_success !== null ? (
-                              <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                                {pct(p.rf_probability_success)}
-                              </span>
-                            ) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                <div>
+                  <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Label Summary</p>
+                  <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart
+                        data={(() => {
+                          const lrSuccess = risk.predictions.filter((p) => p.lr_predicted_label === "success").length;
+                          const rows = [
+                            { model: "LR", success: lrSuccess, at_risk: risk.predictions.length - lrSuccess },
+                          ];
+                          if (risk.models_used.e2_random_forest) {
+                            const rfPreds = risk.predictions.filter((p) => p.rf_predicted_label !== null);
+                            const rfSuccess = rfPreds.filter((p) => p.rf_predicted_label === "success").length;
+                            rows.push({ model: "RF", success: rfSuccess, at_risk: rfPreds.length - rfSuccess });
+                          }
+                          return rows;
+                        })()}
+                        layout="vertical"
+                        margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                        <YAxis type="category" dataKey="model" tick={{ fontSize: 11 }} width={30} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="success" stackId="a" fill="#16A34A" name="Success" />
+                        <Bar dataKey="at_risk" stackId="a" fill="#DC2626" name="At-risk" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Scatter — Success Rate vs Error Rate per learner, colored by the
+                LR predicted label (falls back to a neutral color when no
+                risk_classification run exists yet), to spot behavioral outliers
+                and how they line up with the model's risk call. Points sharing
+                the exact same (rounded) rate are grouped into one bubble sized
+                by how many learners overlap there — ties are common since
+                Success + Error Rate always sum to 100% and small attempt counts
+                only produce a handful of distinct ratios. */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Success Rate vs Error Rate by Learner</p>
+              <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                <ResponsiveContainer width="100%" height={220}>
+                  <ScatterChart margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                    <XAxis type="number" dataKey="successRate" name="Success Rate" unit="%" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                    <YAxis type="number" dataKey="errorRate" name="Error Rate" unit="%" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                    <ZAxis type="number" dataKey="count" range={[60, 500]} name="Learners" />
+                    <Tooltip
+                      cursor={{ strokeDasharray: "3 3" }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload || payload.length === 0) return null;
+                        const d = payload[0].payload as {
+                          successRate: number;
+                          errorRate: number;
+                          count: number;
+                          learners: string[];
+                        };
+                        return (
+                          <div className="bg-white border border-[#FED7AA] rounded-lg px-2 py-1.5 text-[11px] shadow">
+                            <p>Success {d.successRate}% · Error {d.errorRate}%</p>
+                            <p className="font-semibold">{d.count} learner{d.count !== 1 ? "s" : ""}</p>
+                            <p className="font-mono text-[10px] text-[#94A3B8]">{d.learners.join(", ")}</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {(() => {
+                      const grouped = new Map<
+                        string,
+                        { successRate: number; errorRate: number; label: string | null; count: number; learners: string[] }
+                      >();
+                      for (const l of result.per_learner) {
+                        const p = risk?.predictions.find((pr) => pr.profile_id === l.profile_id);
+                        const successRate = Math.round(l.attempt_success_rate * 100);
+                        const errorRate = Math.round(l.error_rate * 100);
+                        const label = p?.lr_predicted_label ?? null;
+                        const key = `${successRate}_${errorRate}_${label}`;
+                        const existing = grouped.get(key);
+                        if (existing) {
+                          existing.count += 1;
+                          existing.learners.push(l.profile_id.slice(0, 6));
+                        } else {
+                          grouped.set(key, { successRate, errorRate, label, count: 1, learners: [l.profile_id.slice(0, 6)] });
+                        }
+                      }
+                      const points = Array.from(grouped.values());
+                      const success = points.filter((d) => d.label === "success");
+                      const atRisk = points.filter((d) => d.label === "at_risk");
+                      const unlabeled = points.filter((d) => d.label === null);
+                      return (
+                        <>
+                          {success.length > 0 && <Scatter name="Success" data={success} fill="#16A34A" fillOpacity={0.7} />}
+                          {atRisk.length > 0 && <Scatter name="At-risk" data={atRisk} fill="#DC2626" fillOpacity={0.7} />}
+                          {unlabeled.length > 0 && <Scatter name="No prediction" data={unlabeled} fill="#94A3B8" fillOpacity={0.7} />}
+                        </>
+                      );
+                    })()}
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                Bubble size = number of learners sharing that exact rate — hover a bubble to see who.
+              </p>
+            </div>
+
+            {/* Distribution histograms — one per Feature Values column, showing
+                how that feature spreads across the whole cohort so outliers a
+                single aggregate average would hide are visible. Success /
+                Submission / AST Similarity / Structure are all 0–100% rates, so
+                they're combined into one grouped chart on shared bins instead
+                of 4 separate ones. */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Distributions</p>
+
+              <div className="mb-3">
+                <p className="text-xs font-bold text-[#0F172A] mb-2">
+                  <span className="text-green-700">Success</span> · <span className="text-red-600">Submission</span>
+                  {risk?.models_used.e2_random_forest && (
+                    <>
+                      {" "}· <span className="text-teal-600">AST Sim</span> · <span className="text-pink-600">Structure</span>
+                    </>
+                  )}{" "}
+                  Rate (%) Distribution
+                </p>
+                <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                  <ResponsiveContainer width="100%" height={190}>
+                    <BarChart
+                      data={(() => {
+                        const successHist = buildFixedWidthHistogram(
+                          result.per_learner.map((l) => Math.round(l.attempt_success_rate * 100)),
+                          100,
+                          15,
+                        );
+                        const submitHist = buildFixedWidthHistogram(
+                          result.per_learner.map((l) => Math.round(l.submission_rate * 100)),
+                          100,
+                          15,
+                        );
+                        const astHist = risk?.models_used.e2_random_forest
+                          ? buildFixedWidthHistogram(
+                              risk.predictions
+                                .map((p) => p.feature_values.avg_ast_similarity)
+                                .filter((v): v is number => v !== undefined)
+                                .map((v) => Math.round(v * 100)),
+                              100,
+                              15,
+                            )
+                          : null;
+                        const structureHist = risk?.models_used.e2_random_forest
+                          ? buildFixedWidthHistogram(
+                              risk.predictions
+                                .map((p) => p.feature_values.avg_structure_score)
+                                .filter((v): v is number => v !== undefined)
+                                .map((v) => Math.round(v * 100)),
+                              100,
+                              15,
+                            )
+                          : null;
+                        return successHist.map((h, i) => ({
+                          range: h.range,
+                          Success: h.count,
+                          Submission: submitHist[i]?.count ?? 0,
+                          ...(astHist ? { "AST Sim": astHist[i]?.count ?? 0 } : {}),
+                          ...(structureHist ? { Structure: structureHist[i]?.count ?? 0 } : {}),
+                        }));
+                      })()}
+                      margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                      <XAxis dataKey="range" tick={{ fontSize: 9 }} interval={0} />
+                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="Success" fill="#16A34A" />
+                      <Bar dataKey="Submission" fill="#DC2626" />
+                      {risk?.models_used.e2_random_forest && <Bar dataKey="AST Sim" fill="#0D9488" />}
+                      {risk?.models_used.e2_random_forest && <Bar dataKey="Structure" fill="#DB2777" />}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(() => {
+                  const HIST_COLORS = ["#F37021", "#0EA5E9", "#9333EA", "#CA8A04"];
+                  const histograms: { label: string; values: number[] }[] = [
+                    { label: "Sessions", values: result.per_learner.map((l) => l.total_sessions) },
+                    { label: "Attempts", values: result.per_learner.map((l) => l.total_attempts) },
+                    { label: "Avg Duration (s)", values: result.per_learner.map((l) => l.avg_session_duration_seconds) },
+                    { label: "Attempts/Session", values: result.per_learner.map((l) => l.avg_attempts_per_session) },
+                  ];
+                  return histograms.map((h, i) => (
+                    <div key={h.label}>
+                      <p className="text-xs font-bold text-[#0F172A] mb-2">{h.label} Distribution</p>
+                      <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                        <ResponsiveContainer width="100%" height={170}>
+                          <BarChart data={buildHistogram(h.values)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                            <XAxis dataKey="range" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={40} />
+                            <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                            <Tooltip contentStyle={{ fontSize: 11 }} />
+                            <Bar dataKey="count" fill={HIST_COLORS[i % HIST_COLORS.length]} name="Learners" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Radar — one learner's Behavioral features vs the cohort average,
+                normalized to a shared 0–100 scale (rates are already %, counts
+                are scaled to % of the cohort max) so all axes are comparable on
+                one chart. Error is omitted — it's just 100 - Success (see
+                behavioral.ts), so it wouldn't add a distinct axis. */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-[#0F172A]">Feature Profile — Learner vs Cohort Avg</p>
+                <select
+                  value={radarLearnerId ?? ""}
+                  onChange={(e) => setRadarLearnerId(e.target.value)}
+                  className="text-[10px] border border-[#FED7AA] rounded-lg px-2 py-1 bg-white text-[#475569]"
+                >
+                  {result.per_learner.map((l) => (
+                    <option key={l.profile_id} value={l.profile_id}>{l.profile_id.slice(0, 8)}…</option>
+                  ))}
+                </select>
+              </div>
+              <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                <ResponsiveContainer width="100%" height={260}>
+                  {(() => {
+                    const maxSessions = Math.max(1, ...result.per_learner.map((l) => l.total_sessions));
+                    const maxAttempts = Math.max(1, ...result.per_learner.map((l) => l.total_attempts));
+                    const maxDuration = Math.max(1, ...result.per_learner.map((l) => l.avg_session_duration_seconds));
+                    const maxAttemptsPerSession = Math.max(1, ...result.per_learner.map((l) => l.avg_attempts_per_session));
+                    const hasSemantic = !!risk?.models_used.e2_random_forest;
+
+                    // Semantic (RF-only) features, keyed by profile_id — not part of
+                    // BehavioralLearnerMetrics since they come from the risk_classification
+                    // run's feature_values, not the behavioral engine itself.
+                    const semanticByLearner = new Map(
+                      (risk?.predictions ?? []).map((p) => [
+                        p.profile_id,
+                        { ast: p.feature_values.avg_ast_similarity, structure: p.feature_values.avg_structure_score },
+                      ]),
+                    );
+
+                    const normalize = (l: BehavioralLearnerMetrics) => {
+                      const base = [
+                        { feature: "Sessions", value: Math.round((l.total_sessions / maxSessions) * 100) },
+                        { feature: "Attempts", value: Math.round((l.total_attempts / maxAttempts) * 100) },
+                        { feature: "Success", value: Math.round(l.attempt_success_rate * 100) },
+                        { feature: "Submit", value: Math.round(l.submission_rate * 100) },
+                        { feature: "Duration", value: Math.round((l.avg_session_duration_seconds / maxDuration) * 100) },
+                        { feature: "Attempts/Sess", value: Math.round((l.avg_attempts_per_session / maxAttemptsPerSession) * 100) },
+                      ];
+                      if (hasSemantic) {
+                        const sem = semanticByLearner.get(l.profile_id);
+                        base.push({ feature: "AST Sim", value: Math.round((sem?.ast ?? 0) * 100) });
+                        base.push({ feature: "Structure", value: Math.round((sem?.structure ?? 0) * 100) });
+                      }
+                      return base;
+                    };
+
+                    const n = result.per_learner.length;
+                    const sum = (f: (l: BehavioralLearnerMetrics) => number) =>
+                      result.per_learner.reduce((s, l) => s + f(l), 0) / n;
+                    const cohortAvg: BehavioralLearnerMetrics = {
+                      profile_id: "cohort_avg",
+                      total_sessions: sum((l) => l.total_sessions),
+                      total_attempts: sum((l) => l.total_attempts),
+                      correct_attempts: 0,
+                      attempt_success_rate: sum((l) => l.attempt_success_rate),
+                      avg_session_duration_seconds: sum((l) => l.avg_session_duration_seconds),
+                      total_events: 0,
+                      submission_count: 0,
+                      submission_rate: sum((l) => l.submission_rate),
+                      error_attempt_count: 0,
+                      error_rate: sum((l) => l.error_rate),
+                      avg_attempts_per_session: sum((l) => l.avg_attempts_per_session),
+                    };
+
+                    if (hasSemantic) {
+                      const astValues = (risk?.predictions ?? [])
+                        .map((p) => p.feature_values.avg_ast_similarity)
+                        .filter((v): v is number => v !== undefined);
+                      const structureValues = (risk?.predictions ?? [])
+                        .map((p) => p.feature_values.avg_structure_score)
+                        .filter((v): v is number => v !== undefined);
+                      semanticByLearner.set("cohort_avg", {
+                        ast: astValues.length > 0 ? astValues.reduce((a, b) => a + b, 0) / astValues.length : 0,
+                        structure:
+                          structureValues.length > 0
+                            ? structureValues.reduce((a, b) => a + b, 0) / structureValues.length
+                            : 0,
+                      });
+                    }
+
+                    const selectedLearner =
+                      result.per_learner.find((l) => l.profile_id === radarLearnerId) ?? result.per_learner[0];
+                    const selectedNorm = normalize(selectedLearner);
+                    const cohortNorm = normalize(cohortAvg);
+                    const radarData = selectedNorm.map((d, i) => ({
+                      feature: d.feature,
+                      Selected: d.value,
+                      "Cohort Avg": cohortNorm[i].value,
+                    }));
+
+                    return (
+                      <RadarChart data={radarData} outerRadius={80}>
+                        <PolarGrid stroke="#FED7AA" />
+                        <PolarAngleAxis dataKey="feature" tick={{ fontSize: 10 }} />
+                        <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
+                        <Radar name="Selected learner" dataKey="Selected" stroke="#F37021" fill="#F37021" fillOpacity={0.4} />
+                        <Radar name="Cohort avg" dataKey="Cohort Avg" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.25} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                      </RadarChart>
+                    );
+                  })()}
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                Values normalized to 0–100 (rates are already %; counts are scaled to % of the cohort max) so all{" "}
+                {risk?.models_used.e2_random_forest ? "8 features (6 Behavioral + 2 Semantic)" : "6 Behavioral features"} share one scale.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1140,9 +1572,7 @@ export default function BehavioralAnalysisPage() {
                                 </td>
                                 {/* DateTime */}
                                 <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={2}>
-                                  {run.created_at
-                                    ? new Date(run.created_at).toLocaleString()
-                                    : "—"}
+                                  {run.created_at ? formatDateTime(run.created_at) : "—"}
                                 </td>
                                 {/* Run Status */}
                                 <td className="px-3 py-2.5 align-middle" colSpan={1}>

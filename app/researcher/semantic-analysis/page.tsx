@@ -2,6 +2,24 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from "recharts";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
 import { SemanticCompareModal } from "@/app/researcher/_components/SemanticCompareModal";
@@ -152,6 +170,70 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+// Formats an ISO timestamp as "02 Sep 2026 01:21:02 PM" (day-month-year, 12h clock).
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  const hours24 = d.getHours();
+  const ampm = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = String(hours24 % 12 === 0 ? 12 : hours24 % 12).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  return `${day} ${month} ${year} ${hours12}:${minutes}:${seconds} ${ampm}`;
+}
+
+// Buckets a list of numeric values into evenly-sized bins for a distribution
+// histogram (e.g. submission counts across the learner cohort).
+function buildHistogram(values: number[], binCount = 6): { range: string; count: number }[] {
+  if (values.length === 0) return [];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) return [{ range: `${min}`, count: values.length }];
+
+  const width = (max - min) / binCount;
+  const bins = Array.from({ length: binCount }, (_, i) => ({
+    start: min + i * width,
+    end: min + (i + 1) * width,
+    count: 0,
+  }));
+  for (const v of values) {
+    const idx = Math.min(binCount - 1, Math.floor((v - min) / width));
+    bins[idx].count += 1;
+  }
+  return bins.map((b) => ({
+    range: `${b.start.toFixed(1)}–${b.end.toFixed(1)}`,
+    count: b.count,
+  }));
+}
+
+// Same bucketing as buildHistogram, but over a caller-supplied fixed range
+// (e.g. 0–100 for percentage rates) with a fixed bin width, instead of each
+// series' own min/max — lets several rate distributions share identical,
+// human-readable bin edges (0-15, 16-30, 31-45, ...) so they can be plotted
+// as one grouped chart.
+function buildFixedWidthHistogram(
+  values: number[],
+  max: number,
+  width: number,
+): { range: string; count: number }[] {
+  const bins: { start: number; end: number; count: number }[] = [];
+  let start = 0;
+  let boundaryMultiple = 1;
+  while (start <= max) {
+    const end = Math.min(max, width * boundaryMultiple);
+    bins.push({ start, end, count: 0 });
+    start = end + 1;
+    boundaryMultiple += 1;
+  }
+  for (const v of values) {
+    const bin = bins.find((b) => v >= b.start && v <= b.end) ?? bins[bins.length - 1];
+    bin.count += 1;
+  }
+  return bins.map((b) => ({ range: `${b.start}-${b.end}`, count: b.count }));
+}
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -166,6 +248,7 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
   const [risk, setRisk] = useState<RfRiskClassification | null>(null);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [radarLearnerId, setRadarLearnerId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,6 +284,7 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
       const j = await res.json() as { result: SemanticResult; risk_classification: RfRiskClassification | null };
       setResult(j.result);
       setRisk(j.risk_classification);
+      setRadarLearnerId(j.result.per_learner[0]?.profile_id ?? null);
       setDetailLoading(false);
     }
 
@@ -240,13 +324,13 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
           {target.run.started_at && (
             <div className="flex gap-2">
               <span className="text-xs text-[#64748B] min-w-[70px]">Started:</span>
-              <span className="text-xs text-[#0F172A]">{new Date(target.run.started_at).toLocaleString()}</span>
+              <span className="text-xs text-[#0F172A]">{formatDateTime(target.run.started_at)}</span>
             </div>
           )}
           {target.run.completed_at && (
             <div className="flex gap-2">
               <span className="text-xs text-[#64748B] min-w-[70px]">Completed:</span>
-              <span className="text-xs text-[#0F172A]">{new Date(target.run.completed_at).toLocaleString()}</span>
+              <span className="text-xs text-[#0F172A]">{formatDateTime(target.run.completed_at)}</span>
             </div>
           )}
           {target.run.run_type && (
@@ -288,79 +372,46 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
               <p className="text-xs font-bold text-[#0F172A] mb-2">
                 Aggregate ({result.learner_count} learners, {result.submission_count} submissions)
               </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2 mb-2">
                 <StatCard label="Avg AST similarity" value={pct(result.avg_ast_similarity)} />
                 <StatCard label="Avg structure score" value={pct(result.avg_structure_score)} />
                 <StatCard label="Parse errors" value={`${result.parse_error_count} / ${result.submission_count}`} />
               </div>
-            </div>
-
-            {/* Per-learner table — Semantic Feature values, followed by RF's
-                prediction for the same learner in one row. RF consumes
-                Behavioral + Semantic features jointly, so it's shown here as
-                well as on the Behavioral Analysis page — Semantic has no
-                standalone model of its own (thesis Table 3.1: Semantic
-                Features -> RF). */}
-            <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">Per learner</p>
-              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                      <th className="text-right px-3 py-2 font-semibold">Submits</th>
-                      <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#FED7AA]">
-                    {result.per_learner.map((l) => (
-                      <tr key={l.profile_id}>
-                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                <ResponsiveContainer width="100%" height={130}>
+                  <BarChart
+                    data={[
+                      { name: "AST Similarity %", value: Math.round(result.avg_ast_similarity * 100) },
+                      { name: "Structure Score %", value: Math.round(result.avg_structure_score * 100) },
+                      {
+                        name: "Parse Error Rate %",
+                        value: result.submission_count > 0
+                          ? Math.round((result.parse_error_count / result.submission_count) * 100)
+                          : 0,
+                      },
+                    ]}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                    <XAxis type="number" tick={{ fontSize: 10 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={110} />
+                    <Tooltip contentStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="value" fill="#F37021" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Feature Values — only the columns RF actually consumes
-                (avg_ast_similarity, avg_structure_score). Submits/Parse Err
-                above are descriptive context, not model input. */}
-            <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
-              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
-                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#FED7AA]">
-                    {result.per_learner.map((l) => (
-                      <tr key={l.profile_id}>
-                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* AI Model Layer — RF (E2) predictions. RF consumes Behavioral +
+            {/* Feature Values + Predicted Risk — one merged table per learner:
+                Submits/Parse Err (descriptive) + AST Sim/Structure (the actual
+                RF features) + RF (%) prediction. RF consumes Behavioral +
                 Semantic features jointly, so it's shown here as well as on the
                 Behavioral Analysis page — Semantic has no standalone model of
                 its own (thesis Table 3.1: Semantic Features -> RF). */}
-            {risk?.models_used.e2_random_forest && (
-              <div>
-                <p className="text-xs font-bold text-[#0F172A] mb-2">
-                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
-                </p>
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values &amp; Predicted Risk</p>
+              {risk?.models_used.e2_random_forest && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
                   <p>
                     ⚠ {risk.models_used.e2_random_forest.pilot_warning} CV accuracy — RF:{" "}
@@ -371,32 +422,306 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                     RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
                   </p>
                 </div>
-                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
+              )}
+              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                      {risk?.models_used.e2_random_forest && (
                         <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#FED7AA]">
-                      {risk.predictions.map((p) => (
-                        <tr key={p.profile_id}>
-                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
-                          <td className="px-3 py-2 text-right">
-                            {p.rf_probability_success !== null ? (
-                              <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
-                                {pct(p.rf_probability_success)}
-                              </span>
-                            ) : "—"}
-                          </td>
+                      )}
+                      <th className="text-right px-3 py-2 font-semibold">Submits</th>
+                      <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
+                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
+                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FED7AA]">
+                    {result.per_learner.map((l) => {
+                      const p = risk?.predictions.find((pr) => pr.profile_id === l.profile_id);
+                      return (
+                        <tr key={l.profile_id}>
+                          <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                          {risk?.models_used.e2_random_forest && (
+                            <td className="px-3 py-2 text-right">
+                              {p?.rf_probability_success !== null && p?.rf_probability_success !== undefined ? (
+                                <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                  {pct(p.rf_probability_success)}
+                                </span>
+                              ) : "—"}
+                            </td>
+                          )}
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Charts — visual read of the same RF predictions shown in the
+                table above. */}
+            {risk?.models_used.e2_random_forest && risk.predictions.length > 0 && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Success Probability by Learner</p>
+                  <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart
+                        data={risk.predictions.map((p) => ({
+                          learner: p.profile_id.slice(0, 6),
+                          RF: p.rf_probability_success !== null ? Math.round(p.rf_probability_success * 100) : undefined,
+                        }))}
+                        margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                        <XAxis dataKey="learner" tick={{ fontSize: 10 }} interval={0} angle={-45} textAnchor="end" height={50} />
+                        <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%" />
+                        <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value) => `${value}%`} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="RF" fill="#0EA5E9" name="RF (%)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Label Summary</p>
+                  <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                    <ResponsiveContainer width="100%" height={110}>
+                      <BarChart
+                        data={(() => {
+                          const rfPreds = risk.predictions.filter((p) => p.rf_predicted_label !== null);
+                          const rfSuccess = rfPreds.filter((p) => p.rf_predicted_label === "success").length;
+                          return [{ model: "RF", success: rfSuccess, at_risk: rfPreds.length - rfSuccess }];
+                        })()}
+                        layout="vertical"
+                        margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                        <YAxis type="category" dataKey="model" tick={{ fontSize: 11 }} width={30} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="success" stackId="a" fill="#16A34A" name="Success" />
+                        <Bar dataKey="at_risk" stackId="a" fill="#DC2626" name="At-risk" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Scatter — the 2 real RF features plotted against each
+                    other, colored by predicted label, grouped into bubbles
+                    when several learners share the exact same rounded pair. */}
+                <div>
+                  <p className="text-xs font-bold text-[#0F172A] mb-2">AST Similarity vs Structure Score by Learner</p>
+                  <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ScatterChart margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                        <XAxis type="number" dataKey="astSim" name="AST Similarity" unit="%" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                        <YAxis type="number" dataKey="structure" name="Structure Score" unit="%" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                        <ZAxis type="number" dataKey="count" range={[60, 500]} name="Learners" />
+                        <Tooltip
+                          cursor={{ strokeDasharray: "3 3" }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload || payload.length === 0) return null;
+                            const d = payload[0].payload as {
+                              astSim: number;
+                              structure: number;
+                              count: number;
+                              learners: string[];
+                            };
+                            return (
+                              <div className="bg-white border border-[#FED7AA] rounded-lg px-2 py-1.5 text-[11px] shadow">
+                                <p>AST Sim {d.astSim}% · Structure {d.structure}%</p>
+                                <p className="font-semibold">{d.count} learner{d.count !== 1 ? "s" : ""}</p>
+                                <p className="font-mono text-[10px] text-[#94A3B8]">{d.learners.join(", ")}</p>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        {(() => {
+                          const grouped = new Map<
+                            string,
+                            { astSim: number; structure: number; label: string | null; count: number; learners: string[] }
+                          >();
+                          for (const l of result.per_learner) {
+                            const p = risk.predictions.find((pr) => pr.profile_id === l.profile_id);
+                            const astSim = Math.round(l.avg_ast_similarity * 100);
+                            const structure = Math.round(l.avg_structure_score * 100);
+                            const label = p?.rf_predicted_label ?? null;
+                            const key = `${astSim}_${structure}_${label}`;
+                            const existing = grouped.get(key);
+                            if (existing) {
+                              existing.count += 1;
+                              existing.learners.push(l.profile_id.slice(0, 6));
+                            } else {
+                              grouped.set(key, { astSim, structure, label, count: 1, learners: [l.profile_id.slice(0, 6)] });
+                            }
+                          }
+                          const points = Array.from(grouped.values());
+                          const success = points.filter((d) => d.label === "success");
+                          const atRisk = points.filter((d) => d.label === "at_risk");
+                          const unlabeled = points.filter((d) => d.label === null);
+                          return (
+                            <>
+                              {success.length > 0 && <Scatter name="Success" data={success} fill="#16A34A" fillOpacity={0.7} />}
+                              {atRisk.length > 0 && <Scatter name="At-risk" data={atRisk} fill="#DC2626" fillOpacity={0.7} />}
+                              {unlabeled.length > 0 && <Scatter name="No prediction" data={unlabeled} fill="#94A3B8" fillOpacity={0.7} />}
+                            </>
+                          );
+                        })()}
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Distribution histograms — one per Feature Values column. AST
+                Similarity / Structure Score are both 0–100% rates, so they're
+                combined into one grouped chart on shared 15-wide bins;
+                Submits/Parse Err are raw counts and stay separate. */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Distributions</p>
+
+              <div className="mb-3">
+                <p className="text-xs font-bold text-[#0F172A] mb-2">
+                  <span className="text-teal-600">AST Sim</span> · <span className="text-pink-600">Structure</span> Rate (%) Distribution
+                </p>
+                <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                  <ResponsiveContainer width="100%" height={190}>
+                    <BarChart
+                      data={(() => {
+                        const astHist = buildFixedWidthHistogram(
+                          result.per_learner.map((l) => Math.round(l.avg_ast_similarity * 100)),
+                          100,
+                          15,
+                        );
+                        const structureHist = buildFixedWidthHistogram(
+                          result.per_learner.map((l) => Math.round(l.avg_structure_score * 100)),
+                          100,
+                          15,
+                        );
+                        return astHist.map((h, i) => ({
+                          range: h.range,
+                          "AST Sim": h.count,
+                          Structure: structureHist[i]?.count ?? 0,
+                        }));
+                      })()}
+                      margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                      <XAxis dataKey="range" tick={{ fontSize: 9 }} interval={0} />
+                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="AST Sim" fill="#0D9488" />
+                      <Bar dataKey="Structure" fill="#DB2777" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { label: "Submits", values: result.per_learner.map((l) => l.submission_count), color: "#F37021" },
+                  { label: "Parse Err", values: result.per_learner.map((l) => l.parse_error_count), color: "#9333EA" },
+                ].map((h) => (
+                  <div key={h.label}>
+                    <p className="text-xs font-bold text-[#0F172A] mb-2">{h.label} Distribution</p>
+                    <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                      <ResponsiveContainer width="100%" height={170}>
+                        <BarChart data={buildHistogram(h.values)} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+                          <XAxis dataKey="range" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={40} />
+                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                          <Tooltip contentStyle={{ fontSize: 11 }} />
+                          <Bar dataKey="count" fill={h.color} name="Learners" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Radar — one learner's 4 displayed columns vs the cohort
+                average, normalized to a shared 0–100 scale (rates are already
+                %, counts are scaled to % of the cohort max). */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-[#0F172A]">Feature Profile — Learner vs Cohort Avg</p>
+                <select
+                  value={radarLearnerId ?? ""}
+                  onChange={(e) => setRadarLearnerId(e.target.value)}
+                  className="text-[10px] border border-[#FED7AA] rounded-lg px-2 py-1 bg-white text-[#475569]"
+                >
+                  {result.per_learner.map((l) => (
+                    <option key={l.profile_id} value={l.profile_id}>{l.profile_id.slice(0, 8)}…</option>
+                  ))}
+                </select>
+              </div>
+              <div className="rounded-xl border border-[#FED7AA] bg-white p-2">
+                <ResponsiveContainer width="100%" height={260}>
+                  {(() => {
+                    const maxSubmits = Math.max(1, ...result.per_learner.map((l) => l.submission_count));
+                    const maxParseErr = Math.max(1, ...result.per_learner.map((l) => l.parse_error_count));
+
+                    const normalize = (l: SemanticLearnerMetrics) => [
+                      { feature: "Submits", value: Math.round((l.submission_count / maxSubmits) * 100) },
+                      { feature: "Parse Err", value: Math.round((l.parse_error_count / maxParseErr) * 100) },
+                      { feature: "AST Sim", value: Math.round(l.avg_ast_similarity * 100) },
+                      { feature: "Structure", value: Math.round(l.avg_structure_score * 100) },
+                    ];
+
+                    const n = result.per_learner.length;
+                    const sum = (f: (l: SemanticLearnerMetrics) => number) =>
+                      result.per_learner.reduce((s, l) => s + f(l), 0) / n;
+                    const cohortAvg: SemanticLearnerMetrics = {
+                      profile_id: "cohort_avg",
+                      submission_count: sum((l) => l.submission_count),
+                      parsed_count: 0,
+                      parse_error_count: sum((l) => l.parse_error_count),
+                      avg_ast_similarity: sum((l) => l.avg_ast_similarity),
+                      avg_structure_score: sum((l) => l.avg_structure_score),
+                    };
+
+                    const selectedLearner =
+                      result.per_learner.find((l) => l.profile_id === radarLearnerId) ?? result.per_learner[0];
+                    const selectedNorm = normalize(selectedLearner);
+                    const cohortNorm = normalize(cohortAvg);
+                    const radarData = selectedNorm.map((d, i) => ({
+                      feature: d.feature,
+                      Selected: d.value,
+                      "Cohort Avg": cohortNorm[i].value,
+                    }));
+
+                    return (
+                      <RadarChart data={radarData} outerRadius={80}>
+                        <PolarGrid stroke="#FED7AA" />
+                        <PolarAngleAxis dataKey="feature" tick={{ fontSize: 10 }} />
+                        <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
+                        <Radar name="Selected learner" dataKey="Selected" stroke="#F37021" fill="#F37021" fillOpacity={0.4} />
+                        <Radar name="Cohort avg" dataKey="Cohort Avg" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.25} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} />
+                      </RadarChart>
+                    );
+                  })()}
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                Values normalized to 0–100 (rates are already %; counts are scaled to % of the cohort max) so all 4 columns share one scale.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1098,9 +1423,7 @@ export default function SemanticAnalysisPage() {
                                 </td>
                                 {/* DateTime */}
                                 <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={2}>
-                                  {run.created_at
-                                    ? new Date(run.created_at).toLocaleString()
-                                    : "—"}
+                                  {run.created_at ? formatDateTime(run.created_at) : "—"}
                                 </td>
                                 {/* Run Status */}
                                 <td className="px-3 py-2.5 align-middle" colSpan={1}>

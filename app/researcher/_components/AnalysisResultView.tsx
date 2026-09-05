@@ -1,6 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 // ---------------------------------------------------------------------------
 // Exported types
@@ -206,6 +222,9 @@ export type ArtifactPayload = {
   artifact_source: "result_version" | "static_fallback" | "local_disk" | "result_db";
   live_result?: SequentialLiveResult | null;
   risk_classification?: SequenceRiskClassification | null;
+  // Raw event-type sequence per learner (the actual LSTM/GRU input), keyed by
+  // profile_id — only populated for the result_db (live) path.
+  sequence_by_learner?: Record<string, string[]> | null;
   research_constraints?: ResearchConstraints | null;
   dataset_summary?: DatasetSummary | null;
   sequence_construction?: SequenceConstruction | null;
@@ -298,23 +317,6 @@ function UnavailableSection({ title }: { title: string }) {
   );
 }
 
-function BarRow({ label, count, pct, maxCount }: { label: string; count: number; pct?: number; maxCount: number }) {
-  const widthPct = maxCount > 0 ? Math.max(2, Math.round((count / maxCount) * 100)) : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="font-mono text-[#475569] truncate pr-2">{label}</span>
-        <span className="text-[#64748B] whitespace-nowrap">
-          {count}{pct !== undefined ? ` (${Math.round(pct * 100)}%)` : ""}
-        </span>
-      </div>
-      <div className="h-2 w-full bg-[#F1F5F9] rounded-full overflow-hidden">
-        <div className="h-full bg-[#F37021] rounded-full" style={{ width: `${widthPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Live (real, per-run) Sequential Analysis result — from mst_pipeline_run_results
 // ---------------------------------------------------------------------------
@@ -323,22 +325,66 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-function RiskBadge({ label }: { label: "success" | "at_risk" | null }) {
-  if (label === null) return <span className="text-[#94A3B8]">—</span>;
-  const cls = label === "success"
-    ? "bg-green-100 text-green-700 border-green-200"
-    : "bg-red-100 text-red-700 border-red-200";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
-      {label === "success" ? "Success" : "At-risk"}
-    </span>
-  );
+// Master Sequence Code — a single-letter shorthand for each event-to-event
+// transition seen in this dataset's vocab, so a long raw sequence like
+// "sql_run → sql_error → sql_run → ... → session_end" can be read at a
+// glance as e.g. "F-E-F-C-B-A" instead. Defined by the researcher; any
+// transition not yet in this table (e.g. cross-session boundaries, or rarer
+// in-session transitions the top-15 cohort bigram list didn't surface)
+// encodes as "?" until a code is added for it.
+const SEQUENCE_CODE_MAP: Record<string, string> = {
+  "submit_answer→session_end": "A",
+  "sql_success→submit_answer": "B",
+  "sql_success→sql_run": "C",
+  "session_end→sql_run": "D",
+  "sql_error→submit_answer": "E",
+  "sql_error→sql_run": "F",
+  "sql_run→sql_error": "G",
+  "sql_run→sql_success": "H",
+};
+
+function codeForTransition(from: string, to: string): string {
+  return SEQUENCE_CODE_MAP[`${from}→${to}`] ?? "?";
 }
 
-function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; risk?: SequenceRiskClassification | null }) {
-  const maxEventCount = Math.max(1, ...data.event_type_frequencies.map((e) => e.count));
-  const maxBinCount = Math.max(1, ...data.sequence_length_distribution.map((b) => b.count));
+// Encodes a raw event sequence as its chain of transition codes (one letter
+// per consecutive pair) — e.g. ["sql_run","sql_error","sql_run"] → "F-E".
+function encodeSequence(sequence: string[]): string {
+  if (sequence.length < 2) return "";
+  const codes: string[] = [];
+  for (let i = 0; i < sequence.length - 1; i++) {
+    codes.push(codeForTransition(sequence[i], sequence[i + 1]));
+  }
+  return codes.join("-");
+}
+
+// Per-learner Master Sequence Code mix — % of that learner's transitions
+// (consecutive event pairs) that fall under each A-H code, so the radar uses
+// the same code system as the Sequence (model input) column and Event
+// Bigrams table above, rather than a separate event-type breakdown.
+function computeTransitionCodeProfile(seq: string[], codes: string[]): { feature: string; value: number }[] {
+  const total = Math.max(1, seq.length - 1);
+  const counts: Record<string, number> = {};
+  for (const c of codes) counts[c] = 0;
+  for (let i = 0; i < seq.length - 1; i++) {
+    const code = codeForTransition(seq[i], seq[i + 1]);
+    if (counts[code] !== undefined) counts[code] += 1;
+  }
+  return codes.map((c) => ({ feature: c, value: Math.round((counts[c] / total) * 100) }));
+}
+
+function SequentialLiveResultView({
+  data,
+  risk,
+  sequences,
+}: {
+  data: SequentialLiveResult;
+  risk?: SequenceRiskClassification | null;
+  sequences?: Record<string, string[]> | null;
+}) {
   const maxBigramCount = Math.max(1, ...data.event_bigrams.map((b) => b.count));
+  const learnerIds = sequences ? Object.keys(sequences) : [];
+  const [radarLearnerId, setRadarLearnerId] = useState<string | null>(learnerIds[0] ?? null);
 
   return (
     <>
@@ -362,11 +408,19 @@ function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; 
         {data.event_type_frequencies.length === 0 ? (
           <p className="text-xs text-[#94A3B8] italic">No events recorded.</p>
         ) : (
-          <div className="space-y-2.5">
-            {data.event_type_frequencies.map((e) => (
-              <BarRow key={e.event_type} label={e.event_type} count={e.count} pct={e.pct} maxCount={maxEventCount} />
-            ))}
-          </div>
+          <ResponsiveContainer width="100%" height={Math.max(120, data.event_type_frequencies.length * 32)}>
+            <BarChart
+              data={data.event_type_frequencies.map((e) => ({ ...e, pct: Math.round(e.pct * 100) }))}
+              layout="vertical"
+              margin={{ top: 4, right: 24, left: 8, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+              <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+              <YAxis type="category" dataKey="event_type" tick={{ fontSize: 10 }} width={120} />
+              <Tooltip contentStyle={{ fontSize: 11 }} />
+              <Bar dataKey="count" fill="#F37021" name="Count" />
+            </BarChart>
+          </ResponsiveContainer>
         )}
       </SectionCard>
 
@@ -374,11 +428,18 @@ function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; 
         {data.sequence_length_distribution.length === 0 ? (
           <p className="text-xs text-[#94A3B8] italic">No sessions with events.</p>
         ) : (
-          <div className="space-y-2.5">
-            {data.sequence_length_distribution.map((b) => (
-              <BarRow key={b.bin} label={`${b.bin}–${b.bin + 4} events`} count={b.count} maxCount={maxBinCount} />
-            ))}
-          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart
+              data={data.sequence_length_distribution.map((b) => ({ range: `${b.bin}-${b.bin + 4}`, count: b.count }))}
+              margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#FED7AA" />
+              <XAxis dataKey="range" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 11 }} />
+              <Bar dataKey="count" fill="#0EA5E9" name="Sessions" />
+            </BarChart>
+          </ResponsiveContainer>
         )}
       </SectionCard>
 
@@ -390,25 +451,33 @@ function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; 
             <table className="w-full text-[11px] border-collapse">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <th className="text-center px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Code</th>
                   <th className="text-left px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">From</th>
                   <th className="text-left px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">To</th>
                   <th className="text-right px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Count</th>
                 </tr>
               </thead>
               <tbody>
-                {data.event_bigrams.slice(0, 15).map((b, i) => (
-                  <tr key={`${b.from}-${b.to}-${i}`} className="border-b border-[#F1F5F9]">
-                    <td className="px-2 py-1.5 font-mono text-[#475569]">{b.from}</td>
-                    <td className="px-2 py-1.5 font-mono text-[#475569]">{b.to}</td>
-                    <td className="px-2 py-1.5 text-right text-[#0F172A]">
-                      {b.count}
-                      <span
-                        className="inline-block ml-2 h-1.5 bg-[#FED7AA] rounded-full align-middle"
-                        style={{ width: `${Math.max(4, Math.round((b.count / maxBigramCount) * 40))}px` }}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {data.event_bigrams
+                  .slice(0, 15)
+                  .slice()
+                  .sort((a, b) => codeForTransition(a.from, a.to).localeCompare(codeForTransition(b.from, b.to)))
+                  .map((b, i) => (
+                    <tr key={`${b.from}-${b.to}-${i}`} className="border-b border-[#F1F5F9]">
+                      <td className="px-2 py-1.5 text-center font-mono font-bold text-[#F37021]">
+                        {codeForTransition(b.from, b.to)}
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-[#475569]">{b.from}</td>
+                      <td className="px-2 py-1.5 font-mono text-[#475569]">{b.to}</td>
+                      <td className="px-2 py-1.5 text-right text-[#0F172A]">
+                        {b.count}
+                        <span
+                          className="inline-block ml-2 h-1.5 bg-[#FED7AA] rounded-full align-middle"
+                          style={{ width: `${Math.max(4, Math.round((b.count / maxBigramCount) * 40))}px` }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
             {data.event_bigrams.length > 15 && (
@@ -419,6 +488,39 @@ function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; 
           </div>
         )}
       </SectionCard>
+
+      {/* Master Sequence Code — full cohort totals, computed directly from
+          every learner's raw sequence (not just the top-15 cohort bigrams
+          above), so codes like C/D that don't make the top-15 cut still show
+          their true count here. */}
+      {sequences && learnerIds.length > 0 && (
+        <SectionCard title="Master Sequence Code — Cohort Totals" subtitle="Transition count per code, across all learners">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart
+              data={(() => {
+                const codes = Object.values(SEQUENCE_CODE_MAP).sort();
+                const counts: Record<string, number> = {};
+                for (const c of codes) counts[c] = 0;
+                for (const id of learnerIds) {
+                  const seq = sequences[id] ?? [];
+                  for (let i = 0; i < seq.length - 1; i++) {
+                    const code = codeForTransition(seq[i], seq[i + 1]);
+                    if (counts[code] !== undefined) counts[code] += 1;
+                  }
+                }
+                return codes.map((code) => ({ code, count: counts[code] }));
+              })()}
+              margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <XAxis dataKey="code" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 11 }} />
+              <Bar dataKey="count" fill="#F37021" name="Transitions" />
+            </BarChart>
+          </ResponsiveContainer>
+        </SectionCard>
+      )}
 
       {/* AI Model Layer — LSTM (E3) / GRU (E4) predictions. Their input is
           Sequential features, so they live here rather than on the Behavioral
@@ -433,34 +535,172 @@ function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; 
             {risk.models_used.e4_gru && <> · GRU: {pct(risk.models_used.e4_gru.cv_metrics.accuracy)}</>}
             {" "}(small-n — likely overfit, not a generalization guarantee)
           </div>
+
+          <div className="mt-3">
+            <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Success Probability by Learner</p>
+            <div className="rounded-xl border border-[#E2E8F0] bg-white p-2">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  data={risk.predictions.map((p) => ({
+                    learner: p.profile_id.slice(0, 6),
+                    LSTM: p.lstm_probability_success !== null ? Math.round(p.lstm_probability_success * 100) : undefined,
+                    GRU: p.gru_probability_success !== null ? Math.round(p.gru_probability_success * 100) : undefined,
+                  }))}
+                  margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis dataKey="learner" tick={{ fontSize: 10 }} interval={0} angle={-45} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%" />
+                  <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value) => `${value}%`} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {risk.models_used.e3_lstm && <Bar dataKey="LSTM" fill="#F37021" name="LSTM (%)" />}
+                  {risk.models_used.e4_gru && <Bar dataKey="GRU" fill="#0EA5E9" name="GRU (%)" />}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <p className="text-xs font-bold text-[#0F172A] mb-2">Predicted Label Summary</p>
+            <div className="rounded-xl border border-[#E2E8F0] bg-white p-2">
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart
+                  data={(() => {
+                    const rows: { model: string; success: number; at_risk: number }[] = [];
+                    if (risk.models_used.e3_lstm) {
+                      const lstmPreds = risk.predictions.filter((p) => p.lstm_predicted_label !== null);
+                      const lstmSuccess = lstmPreds.filter((p) => p.lstm_predicted_label === "success").length;
+                      rows.push({ model: "LSTM", success: lstmSuccess, at_risk: lstmPreds.length - lstmSuccess });
+                    }
+                    if (risk.models_used.e4_gru) {
+                      const gruPreds = risk.predictions.filter((p) => p.gru_predicted_label !== null);
+                      const gruSuccess = gruPreds.filter((p) => p.gru_predicted_label === "success").length;
+                      rows.push({ model: "GRU", success: gruSuccess, at_risk: gruPreds.length - gruSuccess });
+                    }
+                    return rows;
+                  })()}
+                  layout="vertical"
+                  margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="model" tick={{ fontSize: 11 }} width={40} />
+                  <Tooltip contentStyle={{ fontSize: 11 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="success" stackId="a" fill="#16A34A" name="Success" />
+                  <Bar dataKey="at_risk" stackId="a" fill="#DC2626" name="At-risk" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] mt-2">
             <table className="w-full text-[11px]">
               <thead className="bg-[#F8FAFC] text-[#94A3B8] uppercase tracking-wide">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                  <th className="text-center px-3 py-2 font-semibold">LSTM (E3)</th>
-                  <th className="text-right px-3 py-2 font-semibold">Proba</th>
-                  <th className="text-center px-3 py-2 font-semibold">GRU (E4)</th>
-                  <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                  <th className="text-right px-3 py-2 font-semibold">LSTM (E3)</th>
+                  <th className="text-right px-3 py-2 font-semibold">GRU (E4)</th>
+                  {sequences && <th className="text-left px-3 py-2 font-semibold">Sequence (model input)</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9]">
-                {risk.predictions.map((p) => (
-                  <tr key={p.profile_id}>
-                    <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
-                    <td className="px-3 py-2 text-center"><RiskBadge label={p.lstm_predicted_label} /></td>
-                    <td className="px-3 py-2 text-right text-[#0F172A]">
-                      {p.lstm_probability_success !== null ? pct(p.lstm_probability_success) : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-center"><RiskBadge label={p.gru_predicted_label} /></td>
-                    <td className="px-3 py-2 text-right text-[#0F172A]">
-                      {p.gru_probability_success !== null ? pct(p.gru_probability_success) : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {risk.predictions.map((p) => {
+                  const seq = sequences?.[p.profile_id] ?? [];
+                  const full = seq.join(" → ");
+                  return (
+                    <tr key={p.profile_id}>
+                      <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
+                      <td className="px-3 py-2 text-right">
+                        {p.lstm_probability_success !== null ? (
+                          <span className={p.lstm_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                            {pct(p.lstm_probability_success)}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {p.gru_probability_success !== null ? (
+                          <span className={p.gru_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                            {pct(p.gru_probability_success)}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      {sequences && (
+                        <td className="px-3 py-2" title={full || "No events recorded."}>
+                          {seq.length === 0 ? (
+                            <span className="text-[#64748B]">—</span>
+                          ) : (
+                            <div className="font-mono text-[11px] font-bold text-[#F37021]">{encodeSequence(seq)}</div>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </SectionCard>
+      )}
+
+      {/* Radar — one learner's Master Sequence Code mix (% of their own
+          transitions falling under each A-H code) vs the cohort average.
+          This is a summary derived from the raw sequence, not the literal
+          LSTM/GRU input (which is the tokenized sequence itself) — shown for
+          the same "feature profile at a glance" purpose as the
+          Behavioral/Semantic radar charts. */}
+      {sequences && learnerIds.length > 0 && (
+        <SectionCard title="Feature Profile — Learner vs Cohort Avg (Transition Code Mix)">
+          <div className="flex items-center justify-end mb-2">
+            <select
+              value={radarLearnerId ?? ""}
+              onChange={(e) => setRadarLearnerId(e.target.value)}
+              className="text-[10px] border border-[#E2E8F0] rounded-lg px-2 py-1 bg-white text-[#475569]"
+            >
+              {learnerIds.map((id) => (
+                <option key={id} value={id}>{id.slice(0, 8)}…</option>
+              ))}
+            </select>
+          </div>
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-2">
+            <ResponsiveContainer width="100%" height={260}>
+              {(() => {
+                const codes = Object.values(SEQUENCE_CODE_MAP).sort();
+                const selectedSeq = sequences[radarLearnerId ?? learnerIds[0]] ?? [];
+                const selectedProfile = computeTransitionCodeProfile(selectedSeq, codes);
+
+                const cohortProfile = codes.map((_, i) => {
+                  const avg = learnerIds.reduce(
+                    (sum, id) => sum + computeTransitionCodeProfile(sequences[id] ?? [], codes)[i].value,
+                    0,
+                  ) / learnerIds.length;
+                  return Math.round(avg);
+                });
+
+                const radarData = selectedProfile.map((d, i) => ({
+                  feature: d.feature,
+                  Selected: d.value,
+                  "Cohort Avg": cohortProfile[i],
+                }));
+
+                return (
+                  <RadarChart data={radarData} outerRadius={80}>
+                    <PolarGrid stroke="#E2E8F0" />
+                    <PolarAngleAxis dataKey="feature" tick={{ fontSize: 10 }} />
+                    <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
+                    <Radar name="Selected learner" dataKey="Selected" stroke="#F37021" fill="#F37021" fillOpacity={0.4} />
+                    <Radar name="Cohort avg" dataKey="Cohort Avg" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.25} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value) => `${value}%`} />
+                  </RadarChart>
+                );
+              })()}
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[10px] text-[#94A3B8] mt-1">
+            Each axis (A-H) = % of that learner&apos;s transitions matching that Master Sequence Code — a summary
+            view, not the literal LSTM/GRU input (which reads the full tokenized sequence, not this aggregated mix).
+          </p>
         </SectionCard>
       )}
     </>
@@ -480,7 +720,13 @@ export function AnalysisResultView({ artifact }: Props) {
   // and persisted to mst_pipeline_run_results — distinct from the Phase 4 pilot
   // demo artifact rendered by the rest of this component.
   if (artifact.artifact_source === "result_db" && artifact.live_result) {
-    return <SequentialLiveResultView data={artifact.live_result} risk={artifact.risk_classification} />;
+    return (
+      <SequentialLiveResultView
+        data={artifact.live_result}
+        risk={artifact.risk_classification}
+        sequences={artifact.sequence_by_learner}
+      />
+    );
   }
 
   const {
