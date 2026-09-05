@@ -333,13 +333,23 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                 Per learner{risk && " — Feature values + Predicted Risk (AI Model Layer)"}
               </p>
               {risk && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
-                  ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
-                  {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
+                  <p>
+                    ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
+                    {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
+                    {risk.models_used.e2_random_forest && (
+                      <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
+                    )}
+                    {" "}(small-n — likely overfit, not a generalization guarantee)
+                  </p>
+                  <p className="font-mono text-[10px] text-red-600">
+                    LR features: {risk.models_used.e1_logistic_regression.feature_names.join(", ")}
+                  </p>
                   {risk.models_used.e2_random_forest && (
-                    <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
+                    <p className="font-mono text-[10px] text-red-600">
+                      RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
+                    </p>
                   )}
-                  {" "}(small-n — likely overfit, not a generalization guarantee)
                 </div>
               )}
               <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
