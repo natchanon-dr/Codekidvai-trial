@@ -362,24 +362,21 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               </div>
             </div>
 
-            {/* AI Model Layer — LR (E1) / RF (E2) / LSTM (E3) / GRU (E4) predictions */}
+            {/* AI Model Layer — LR (E1) / RF (E2) predictions.
+                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
+                since their input is Sequential features, not Behavioral. RF is
+                shown on both this page and Semantic Analysis since it consumes
+                both feature sets jointly. */}
             {risk && (
               <div>
                 <p className="text-xs font-bold text-[#0F172A] mb-2">
-                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count},
-                  {" "}LSTM/GRU applied to {risk.sequence_applied_count})
+                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
                 </p>
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
                   ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
                   {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
                   {risk.models_used.e2_random_forest && (
                     <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
-                  )}
-                  {risk.models_used.e3_lstm && (
-                    <> · LSTM: {pct(risk.models_used.e3_lstm.cv_metrics.accuracy)}</>
-                  )}
-                  {risk.models_used.e4_gru && (
-                    <> · GRU: {pct(risk.models_used.e4_gru.cv_metrics.accuracy)}</>
                   )}
                   {" "}(small-n — likely overfit, not a generalization guarantee)
                 </div>
@@ -392,10 +389,6 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                         <th className="text-right px-3 py-2 font-semibold">Proba</th>
                         <th className="text-center px-3 py-2 font-semibold">RF (E2)</th>
                         <th className="text-right px-3 py-2 font-semibold">Proba</th>
-                        <th className="text-center px-3 py-2 font-semibold">LSTM (E3)</th>
-                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
-                        <th className="text-center px-3 py-2 font-semibold">GRU (E4)</th>
-                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#FED7AA]">
@@ -407,14 +400,6 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                           <td className="px-3 py-2 text-center"><RiskBadge label={p.rf_predicted_label} /></td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">
                             {p.rf_probability_success !== null ? pct(p.rf_probability_success) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-center"><RiskBadge label={p.lstm_predicted_label} /></td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">
-                            {p.lstm_probability_success !== null ? pct(p.lstm_probability_success) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-center"><RiskBadge label={p.gru_predicted_label} /></td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">
-                            {p.gru_probability_success !== null ? pct(p.gru_probability_success) : "—"}
                           </td>
                         </tr>
                       ))}

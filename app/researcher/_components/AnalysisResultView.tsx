@@ -184,9 +184,28 @@ export type SequentialLiveResult = {
   event_bigrams: Array<{ from: string; to: string; count: number }>;
 };
 
+export type SequenceRiskPrediction = {
+  profile_id: string;
+  lstm_predicted_label: "success" | "at_risk" | null;
+  lstm_probability_success: number | null;
+  gru_predicted_label: "success" | "at_risk" | null;
+  gru_probability_success: number | null;
+};
+
+export type SequenceRiskClassification = {
+  learner_count: number;
+  sequence_applied_count: number;
+  models_used: {
+    e3_lstm: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+    e4_gru: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+  };
+  predictions: SequenceRiskPrediction[];
+};
+
 export type ArtifactPayload = {
   artifact_source: "result_version" | "static_fallback" | "local_disk" | "result_db";
   live_result?: SequentialLiveResult | null;
+  risk_classification?: SequenceRiskClassification | null;
   research_constraints?: ResearchConstraints | null;
   dataset_summary?: DatasetSummary | null;
   sequence_construction?: SequenceConstruction | null;
@@ -300,7 +319,23 @@ function BarRow({ label, count, pct, maxCount }: { label: string; count: number;
 // Live (real, per-run) Sequential Analysis result — from mst_pipeline_run_results
 // ---------------------------------------------------------------------------
 
-function SequentialLiveResultView({ data }: { data: SequentialLiveResult }) {
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+function RiskBadge({ label }: { label: "success" | "at_risk" | null }) {
+  if (label === null) return <span className="text-[#94A3B8]">—</span>;
+  const cls = label === "success"
+    ? "bg-green-100 text-green-700 border-green-200"
+    : "bg-red-100 text-red-700 border-red-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
+      {label === "success" ? "Success" : "At-risk"}
+    </span>
+  );
+}
+
+function SequentialLiveResultView({ data, risk }: { data: SequentialLiveResult; risk?: SequenceRiskClassification | null }) {
   const maxEventCount = Math.max(1, ...data.event_type_frequencies.map((e) => e.count));
   const maxBinCount = Math.max(1, ...data.sequence_length_distribution.map((b) => b.count));
   const maxBigramCount = Math.max(1, ...data.event_bigrams.map((b) => b.count));
@@ -384,6 +419,50 @@ function SequentialLiveResultView({ data }: { data: SequentialLiveResult }) {
           </div>
         )}
       </SectionCard>
+
+      {/* AI Model Layer — LSTM (E3) / GRU (E4) predictions. Their input is
+          Sequential features, so they live here rather than on the Behavioral
+          Analysis page (which shows LR/RF instead). */}
+      {risk && (
+        <SectionCard
+          title={`Predicted Risk — AI Model Layer (${risk.learner_count} learners, LSTM/GRU applied to ${risk.sequence_applied_count})`}
+        >
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            ⚠ {risk.models_used.e3_lstm?.pilot_warning ?? risk.models_used.e4_gru?.pilot_warning} CV accuracy
+            {risk.models_used.e3_lstm && <> — LSTM: {pct(risk.models_used.e3_lstm.cv_metrics.accuracy)}</>}
+            {risk.models_used.e4_gru && <> · GRU: {pct(risk.models_used.e4_gru.cv_metrics.accuracy)}</>}
+            {" "}(small-n — likely overfit, not a generalization guarantee)
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] mt-2">
+            <table className="w-full text-[11px]">
+              <thead className="bg-[#F8FAFC] text-[#94A3B8] uppercase tracking-wide">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                  <th className="text-center px-3 py-2 font-semibold">LSTM (E3)</th>
+                  <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                  <th className="text-center px-3 py-2 font-semibold">GRU (E4)</th>
+                  <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F1F5F9]">
+                {risk.predictions.map((p) => (
+                  <tr key={p.profile_id}>
+                    <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
+                    <td className="px-3 py-2 text-center"><RiskBadge label={p.lstm_predicted_label} /></td>
+                    <td className="px-3 py-2 text-right text-[#0F172A]">
+                      {p.lstm_probability_success !== null ? pct(p.lstm_probability_success) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center"><RiskBadge label={p.gru_predicted_label} /></td>
+                    <td className="px-3 py-2 text-right text-[#0F172A]">
+                      {p.gru_probability_success !== null ? pct(p.gru_probability_success) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
     </>
   );
 }
@@ -401,7 +480,7 @@ export function AnalysisResultView({ artifact }: Props) {
   // and persisted to mst_pipeline_run_results — distinct from the Phase 4 pilot
   // demo artifact rendered by the rest of this component.
   if (artifact.artifact_source === "result_db" && artifact.live_result) {
-    return <SequentialLiveResultView data={artifact.live_result} />;
+    return <SequentialLiveResultView data={artifact.live_result} risk={artifact.risk_classification} />;
   }
 
   const {

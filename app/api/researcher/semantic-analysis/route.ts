@@ -306,10 +306,36 @@ async function handleDetailMode(
     );
   }
 
+  // RF (E2) predictions, when a completed risk_classification run exists for
+  // this dataset. RF consumes Behavioral + Semantic features jointly, so it
+  // is shown here as well as on the Behavioral Analysis page — Semantic has
+  // no standalone model of its own (thesis Table 3.1: Semantic Features -> RF).
+  const { data: riskRun } = await supabaseAdmin
+    .from("mst_pipeline_runs")
+    .select("id")
+    .eq("dataset_id", datasetId)
+    .eq("run_type", "risk_classification")
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let riskClassification: unknown = null;
+  if (riskRun) {
+    const { data: riskResultRow } = await supabaseAdmin
+      .from("mst_pipeline_run_results")
+      .select("result")
+      .eq("run_id", riskRun.id as string)
+      .eq("analysis_type", "risk_classification")
+      .maybeSingle();
+    riskClassification = riskResultRow?.result ?? null;
+  }
+
   return NextResponse.json({
     result: resultRow.result,
     schema_version: resultRow.schema_version,
     created_at: resultRow.created_at,
+    risk_classification: riskClassification,
   });
 }
 

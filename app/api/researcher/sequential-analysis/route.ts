@@ -732,11 +732,36 @@ async function handleDetailMode(
       .maybeSingle();
 
     if (!resultErr && resultRow) {
+      // LSTM (E3) / GRU (E4) predictions, when a completed risk_classification
+      // run exists for this dataset — their input is Sequential features, so
+      // they live here rather than on the Behavioral Analysis page.
+      const { data: riskRun } = await supabaseAdmin
+        .from("mst_pipeline_runs")
+        .select("id")
+        .eq("dataset_id", datasetId)
+        .eq("run_type", "risk_classification")
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let riskClassification: unknown = null;
+      if (riskRun) {
+        const { data: riskResultRow } = await supabaseAdmin
+          .from("mst_pipeline_run_results")
+          .select("result")
+          .eq("run_id", riskRun.id as string)
+          .eq("analysis_type", "risk_classification")
+          .maybeSingle();
+        riskClassification = riskResultRow?.result ?? null;
+      }
+
       return NextResponse.json({
         artifact_source: "result_db",
         live_result: resultRow.result,
         schema_version: resultRow.schema_version,
         created_at: resultRow.created_at,
+        risk_classification: riskClassification,
       });
     }
   }
