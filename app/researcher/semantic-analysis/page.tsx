@@ -152,6 +152,20 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+// Small tag under a Feature Values column header showing which model
+// consumes that column. Submits/Parse Err are diagnostic-only (not fed to
+// RF); only AST Sim/Structure are actual RF feature inputs.
+function ModelTag({ models }: { models: string[] }) {
+  if (models.length === 0) return null;
+  return (
+    <div className="mt-0.5 flex justify-end gap-1 normal-case font-normal">
+      {models.map((m) => (
+        <span key={m} className="px-1 rounded bg-[#FED7AA] text-[#92400E] text-[9px] font-semibold">{m}</span>
+      ))}
+    </div>
+  );
+}
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -309,8 +323,8 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold">Learner</th>
                       <th className="text-right px-3 py-2 font-semibold">Submits</th>
-                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
-                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
+                      <th className="text-right px-3 py-2 font-semibold">AST Sim<ModelTag models={risk?.models_used.e2_random_forest ? ["RF"] : []} /></th>
+                      <th className="text-right px-3 py-2 font-semibold">Structure<ModelTag models={risk?.models_used.e2_random_forest ? ["RF"] : []} /></th>
                       <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
                     </tr>
                   </thead>
