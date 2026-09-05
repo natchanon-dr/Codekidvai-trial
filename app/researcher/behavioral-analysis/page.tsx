@@ -173,18 +173,6 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-function RiskBadge({ label }: { label: "success" | "at_risk" | null }) {
-  if (label === null) return <span className="text-[#94A3B8]">—</span>;
-  const cls = label === "success"
-    ? "bg-green-100 text-green-700 border-green-200"
-    : "bg-red-100 text-red-700 border-red-200";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
-      {label === "success" ? "Success" : "At-risk"}
-    </span>
-  );
-}
-
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -334,9 +322,26 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               </div>
             </div>
 
-            {/* Per-learner table */}
+            {/* Per-learner table — Behavioral Feature values, followed by the
+                AI Model Layer's predictions for the same learner in one row.
+                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
+                since their input is Sequential features, not Behavioral. RF is
+                shown on both this page and Semantic Analysis since it consumes
+                both feature sets jointly. */}
             <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">Per learner</p>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">
+                Per learner{risk && " — Feature values + Predicted Risk (AI Model Layer)"}
+              </p>
+              {risk && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
+                  ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
+                  {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
+                  {risk.models_used.e2_random_forest && (
+                    <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
+                  )}
+                  {" "}(small-n — likely overfit, not a generalization guarantee)
+                </div>
+              )}
               <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
@@ -346,115 +351,49 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                       <th className="text-right px-3 py-2 font-semibold">Success</th>
                       <th className="text-right px-3 py-2 font-semibold">Error</th>
                       <th className="text-right px-3 py-2 font-semibold">Submit</th>
+                      {risk && (
+                        <>
+                          <th className="text-right px-3 py-2 font-semibold">LR (%)</th>
+                          <th className="text-right px-3 py-2 font-semibold">RF (%)</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#FED7AA]">
-                    {result.per_learner.map((l) => (
-                      <tr key={l.profile_id}>
-                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_sessions}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.attempt_success_rate)}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.error_rate)}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.submission_rate)}</td>
-                      </tr>
-                    ))}
+                    {result.per_learner.map((l) => {
+                      const p = risk?.predictions.find((pr) => pr.profile_id === l.profile_id);
+                      return (
+                        <tr key={l.profile_id}>
+                          <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_sessions}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.attempt_success_rate)}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.error_rate)}</td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.submission_rate)}</td>
+                          {risk && (
+                            <>
+                              <td className="px-3 py-2 text-right">
+                                {p ? (
+                                  <span className={p.lr_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                    {pct(p.lr_probability_success)}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {p && p.rf_probability_success !== null ? (
+                                  <span className={p.rf_predicted_label === "success" ? "text-green-700" : "text-red-700"}>
+                                    {pct(p.rf_probability_success)}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
-
-            {/* AI Model Layer — LR (E1) / RF (E2) predictions.
-                LSTM (E3) / GRU (E4) live on the Sequential Analysis page instead,
-                since their input is Sequential features, not Behavioral. RF is
-                shown on both this page and Semantic Analysis since it consumes
-                both feature sets jointly. */}
-            {risk && (
-              <div>
-                <p className="text-xs font-bold text-[#0F172A] mb-2">
-                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
-                </p>
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
-                  <p>
-                    ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
-                    {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
-                    {risk.models_used.e2_random_forest && (
-                      <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
-                    )}
-                    {" "}(small-n — likely overfit, not a generalization guarantee)
-                  </p>
-                  <p className="font-mono text-[10px] text-red-600">
-                    LR features: {risk.models_used.e1_logistic_regression.feature_names.join(", ")}
-                  </p>
-                  {risk.models_used.e2_random_forest && (
-                    <p className="font-mono text-[10px] text-red-600">
-                      RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
-                    </p>
-                  )}
-                </div>
-
-                {/* Feature Values — the actual model input, one column per feature */}
-                {(() => {
-                  const featureCols = risk.models_used.e2_random_forest?.feature_names
-                    ?? risk.models_used.e1_logistic_regression.feature_names;
-                  return (
-                    <div className="mb-3">
-                    <p className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-1">Feature Values (model input)</p>
-                    <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
-                      <table className="w-full text-[11px]">
-                        <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                          <tr>
-                            <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#FFF7ED]">Learner</th>
-                            {featureCols.map((f) => (
-                              <th key={f} className="text-right px-3 py-2 font-semibold whitespace-nowrap">{f}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#FED7AA]">
-                          {risk.predictions.map((p) => (
-                            <tr key={p.profile_id}>
-                              <td className="px-3 py-2 font-mono text-[#475569] sticky left-0 bg-white">{p.profile_id.slice(0, 8)}…</td>
-                              {featureCols.map((f) => (
-                                <td key={f} className="px-3 py-2 text-right text-[#0F172A]">
-                                  {p.feature_values[f] !== undefined ? p.feature_values[f] : "—"}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
-                        <th className="text-center px-3 py-2 font-semibold">LR (E1)</th>
-                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
-                        <th className="text-center px-3 py-2 font-semibold">RF (E2)</th>
-                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#FED7AA]">
-                      {risk.predictions.map((p) => (
-                        <tr key={p.profile_id}>
-                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
-                          <td className="px-3 py-2 text-center"><RiskBadge label={p.lr_predicted_label} /></td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(p.lr_probability_success)}</td>
-                          <td className="px-3 py-2 text-center"><RiskBadge label={p.rf_predicted_label} /></td>
-                          <td className="px-3 py-2 text-right text-[#0F172A]">
-                            {p.rf_probability_success !== null ? pct(p.rf_probability_success) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
