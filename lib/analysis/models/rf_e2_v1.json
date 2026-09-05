@@ -1,0 +1,689 @@
+{
+  "schema_version": "1.0.0",
+  "model_type": "random_forest",
+  "thesis_experiment": "E2",
+  "feature_names": [
+    "total_sessions",
+    "total_attempts",
+    "attempt_success_rate",
+    "avg_session_duration_seconds",
+    "submission_rate",
+    "error_rate",
+    "avg_attempts_per_session",
+    "avg_ast_similarity",
+    "avg_structure_score"
+  ],
+  "n_estimators": 25,
+  "trees": [
+    [
+      {
+        "feature": 2,
+        "threshold": 0.3400000035762787,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.3150000125169754,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 5,
+        "threshold": 0.6850000023841858,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.3150000125169754,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.6
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.64
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.3150000125169754,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.4
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.6
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.30000001192092896,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.30000001192092896,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.6
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.1899999976158142,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.52
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.6
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 5,
+        "threshold": 0.7000000178813934,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.76
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.72
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.6
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 2,
+        "threshold": 0.3150000125169754,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.52
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 8,
+        "threshold": 0.8050000071525574,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.56
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ],
+    [
+      {
+        "feature": 7,
+        "threshold": 0.6449999958276749,
+        "left": 1,
+        "right": 2,
+        "leaf": false,
+        "proba_class1": 0.48
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 0.0
+      },
+      {
+        "feature": -1,
+        "threshold": null,
+        "left": null,
+        "right": null,
+        "leaf": true,
+        "proba_class1": 1.0
+      }
+    ]
+  ],
+  "feature_importances": {
+    "total_sessions": 0.0,
+    "total_attempts": 0.0,
+    "attempt_success_rate": 0.32,
+    "avg_session_duration_seconds": 0.0,
+    "submission_rate": 0.0,
+    "error_rate": 0.08,
+    "avg_attempts_per_session": 0.0,
+    "avg_ast_similarity": 0.32,
+    "avg_structure_score": 0.28
+  },
+  "cv_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "training_n": 25,
+  "pilot_only": true,
+  "pilot_warning": "Trained on n=25 learners, below thesis minimum of 60. Illustrative pipeline validation only."
+}

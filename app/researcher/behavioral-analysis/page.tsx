@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { BehavioralCompareModal } from "@/app/researcher/_components/BehavioralCompareModal";
 import { TaskTypeIcon } from "@/lib/task-type-utils";
 import type { BehavioralDatasetRecord, BehavioralRunRecord } from "@/app/api/researcher/behavioral-analysis/route";
 
@@ -11,6 +12,7 @@ import type { BehavioralDatasetRecord, BehavioralRunRecord } from "@/app/api/res
 // Constants
 // ---------------------------------------------------------------------------
 
+const MAX_COMPARE = 3;
 const PAGE_SIZE = 10;
 
 const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
@@ -32,6 +34,14 @@ type DetailTarget = {
   datasetCode: string;
   datasetName: string;
   run: BehavioralRunRecord;
+};
+
+type SelectedRun = {
+  datasetId: string;
+  runId: string;
+  runNumber: string;
+  datasetCode: string;
+  datasetName: string;
 };
 
 type ListResponse = {
@@ -100,10 +110,132 @@ function StatusBadge({ status }: { status: string }) {
 // Inline detail modal
 // ---------------------------------------------------------------------------
 
+type BehavioralLearnerMetrics = {
+  profile_id: string;
+  total_sessions: number;
+  total_attempts: number;
+  correct_attempts: number;
+  attempt_success_rate: number;
+  avg_session_duration_seconds: number;
+  total_events: number;
+  submission_count: number;
+  submission_rate: number;
+  error_attempt_count: number;
+  error_rate: number;
+  avg_attempts_per_session: number;
+};
+
+type BehavioralResult = {
+  schema_version: string;
+  computed_at: string;
+  feature_version: string;
+  implemented_feature_count: number;
+  deferred_feature_count: number;
+  deferred_features: string[];
+  learner_count: number;
+  per_learner: BehavioralLearnerMetrics[];
+  aggregate: {
+    avg_total_sessions: number;
+    avg_attempt_success_rate: number;
+    avg_error_rate: number;
+    avg_submission_rate: number;
+    avg_session_duration_seconds: number;
+  };
+};
+
+type RiskPrediction = {
+  profile_id: string;
+  lr_predicted_label: "success" | "at_risk";
+  lr_probability_success: number;
+  rf_predicted_label: "success" | "at_risk" | null;
+  rf_probability_success: number | null;
+};
+
+type RiskClassificationResult = {
+  learner_count: number;
+  rf_applied_count: number;
+  models_used: {
+    e1_logistic_regression: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string };
+    e2_random_forest: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+  };
+  predictions: RiskPrediction[];
+};
+
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+function RiskBadge({ label }: { label: "success" | "at_risk" | null }) {
+  if (label === null) return <span className="text-[#94A3B8]">—</span>;
+  const cls = label === "success"
+    ? "bg-green-100 text-green-700 border-green-200"
+    : "bg-red-100 text-red-700 border-red-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
+      {label === "success" ? "Success" : "At-risk"}
+    </span>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] font-semibold">{label}</p>
+      <p className="text-sm font-bold text-[#0F172A] mt-0.5">{value}</p>
+    </div>
+  );
+}
+
 function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onClose: () => void }) {
+  const [result, setResult] = useState<BehavioralResult | null>(null);
+  const [risk, setRisk] = useState<RiskClassificationResult | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDetail() {
+      setDetailLoading(true);
+      setDetailError(null);
+      setResult(null);
+      setRisk(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const params = new URLSearchParams({
+        mode: "detail",
+        dataset_id: target.datasetId,
+        run_id: target.runId,
+      });
+
+      const res = await fetch(`/api/researcher/behavioral-analysis?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (cancelled) return;
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Failed to load result." }));
+        setDetailError((j as { error?: string }).error ?? "Failed to load result.");
+        setDetailLoading(false);
+        return;
+      }
+
+      const j = await res.json() as { result: BehavioralResult; risk_classification: RiskClassificationResult | null };
+      setResult(j.result);
+      setRisk(j.risk_classification);
+      setDetailLoading(false);
+    }
+
+    void loadDetail();
+    return () => { cancelled = true; };
+  }, [target.datasetId, target.runId]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-lg p-6 space-y-4">
+      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -155,12 +287,117 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
           )}
         </div>
 
-        {/* Placeholder */}
-        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
-          <p className="text-sm text-[#64748B]">
-            Behavioral analysis results will appear here after running the pipeline.
-          </p>
-        </div>
+        {/* Result */}
+        {detailLoading && (
+          <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+            <p className="text-sm text-[#64748B]">Loading analysis result…</p>
+          </div>
+        )}
+
+        {!detailLoading && detailError && (
+          <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+            <p className="text-sm text-[#64748B]">{detailError}</p>
+          </div>
+        )}
+
+        {!detailLoading && !detailError && result && (
+          <div className="space-y-4">
+            {/* Feature coverage banner */}
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              feature_version <span className="font-mono font-semibold">{result.feature_version}</span>
+              {" "}&mdash; {result.implemented_feature_count} of{" "}
+              {result.implemented_feature_count + result.deferred_feature_count} behavioral features implemented.
+              {result.deferred_features.length > 0 && (
+                <> Deferred: <span className="font-mono">{result.deferred_features.join(", ")}</span></>
+              )}
+            </div>
+
+            {/* Aggregate stats */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">
+                Aggregate ({result.learner_count} learners)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <StatCard label="Avg sessions" value={String(result.aggregate.avg_total_sessions)} />
+                <StatCard label="Success rate" value={pct(result.aggregate.avg_attempt_success_rate)} />
+                <StatCard label="Error rate" value={pct(result.aggregate.avg_error_rate)} />
+                <StatCard label="Submission rate" value={pct(result.aggregate.avg_submission_rate)} />
+                <StatCard label="Avg duration (s)" value={String(result.aggregate.avg_session_duration_seconds)} />
+              </div>
+            </div>
+
+            {/* Per-learner table */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Per learner</p>
+              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                      <th className="text-right px-3 py-2 font-semibold">Sessions</th>
+                      <th className="text-right px-3 py-2 font-semibold">Success</th>
+                      <th className="text-right px-3 py-2 font-semibold">Error</th>
+                      <th className="text-right px-3 py-2 font-semibold">Submit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FED7AA]">
+                    {result.per_learner.map((l) => (
+                      <tr key={l.profile_id}>
+                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.total_sessions}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.attempt_success_rate)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.error_rate)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.submission_rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* AI Model Layer — LR (E1) / RF (E2) predictions */}
+            {risk && (
+              <div>
+                <p className="text-xs font-bold text-[#0F172A] mb-2">
+                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
+                </p>
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
+                  ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
+                  {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
+                  {risk.models_used.e2_random_forest && (
+                    <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)} (small-n — likely overfit, not a generalization guarantee)</>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                        <th className="text-center px-3 py-2 font-semibold">LR (E1)</th>
+                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                        <th className="text-center px-3 py-2 font-semibold">RF (E2)</th>
+                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#FED7AA]">
+                      {risk.predictions.map((p) => (
+                        <tr key={p.profile_id}>
+                          <td className="px-3 py-2 font-mono text-[#475569]">{p.profile_id.slice(0, 8)}…</td>
+                          <td className="px-3 py-2 text-center"><RiskBadge label={p.lr_predicted_label} /></td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">{pct(p.lr_probability_success)}</td>
+                          <td className="px-3 py-2 text-center"><RiskBadge label={p.rf_predicted_label} /></td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">
+                            {p.rf_probability_success !== null ? pct(p.rf_probability_success) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-end pt-1">
           <button
@@ -206,6 +443,10 @@ export default function BehavioralAnalysisPage() {
   // Table state
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+
+  // Compare
+  const [selectedRuns, setSelectedRuns] = useState<SelectedRun[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Modals
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
@@ -323,6 +564,30 @@ export default function BehavioralAnalysisPage() {
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleSelectRun(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
+    setSelectedRuns((prev) => {
+      const exists = prev.find((s) => s.runId === run.id);
+      if (exists) return prev.filter((s) => s.runId !== run.id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+      const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+      return [
+        ...prev,
+        {
+          datasetId: ds.id,
+          runId: run.id,
+          runNumber,
+          datasetCode: ds.code,
+          datasetName: ds.name,
+        },
+      ];
+    });
+  }
+
+  function openCompare() {
+    setCompareOpen(true);
   }
 
   function openDetail(ds: BehavioralDatasetRecord, run: BehavioralRunRecord) {
@@ -632,6 +897,25 @@ export default function BehavioralAnalysisPage() {
               Clear All
             </button>
           )}
+
+          <div className="flex-1" />
+
+          {/* Selected count + Compare */}
+          <div className="self-end flex items-center gap-2 pb-[2px]">
+            {selectedRuns.length > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FED7AA] text-[#92400E]">
+                {selectedRuns.length} selected
+              </span>
+            )}
+            <button
+              onClick={openCompare}
+              disabled={selectedRuns.length < 2}
+              title={selectedRuns.length < 2 ? "Select at least 2 runs to compare" : `Compare ${selectedRuns.length} runs`}
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#F37021] text-white hover:bg-[#D95F10] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Compare
+            </button>
+          </div>
         </section>
 
         {/* ── Dataset Table ── */}
@@ -785,11 +1069,28 @@ export default function BehavioralAnalysisPage() {
                             const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
                             const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
                             const canView = run.artifact_availability !== "unavailable";
+                            const isSelected = selectedRuns.some((s) => s.runId === run.id);
+                            const selectionBlocked = selectedRuns.length >= MAX_COMPARE && !isSelected;
+                            const checkboxDisabled = !run.is_comparable || selectionBlocked;
+                            const checkboxTitle = !run.is_comparable
+                              ? (run.not_comparable_reason ?? "Not comparable")
+                              : selectionBlocked
+                                ? `Max ${MAX_COMPARE} runs selected`
+                                : undefined;
 
                             return (
                               <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
-                                {/* Indent spacer */}
-                                <td className="pl-8 pr-2 py-2.5 align-middle" />
+                                {/* Checkbox (indented) */}
+                                <td className="pl-8 pr-2 py-2.5 align-middle">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={checkboxDisabled}
+                                    title={checkboxTitle}
+                                    onChange={() => toggleSelectRun(ds, run)}
+                                    className="w-3.5 h-3.5 accent-[#F37021] disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
                                 {/* Run# */}
                                 <td className="px-3 py-2.5 align-middle" colSpan={2}>
                                   <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
@@ -915,6 +1216,15 @@ export default function BehavioralAnalysisPage() {
       {/* Detail Modal */}
       {detailTarget && (
         <BehavioralDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
+
+      {/* Compare Modal */}
+      {compareOpen && token && (
+        <BehavioralCompareModal
+          selected={selectedRuns}
+          token={token}
+          onClose={() => setCompareOpen(false)}
+        />
       )}
 
       {/* Run Confirm Modal */}

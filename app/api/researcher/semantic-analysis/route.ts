@@ -74,7 +74,7 @@ function resolveArtifact(
     return {
       availability: "available",
       source: "local_disk",
-      isComparable: false,
+      isComparable: true,
       reason: null,
     };
   }
@@ -267,17 +267,50 @@ async function handleListMode(): Promise<NextResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// Mode B — detail (not yet implemented for semantic)
+// Mode B — detail: read the persisted analysis result for this run
 // ---------------------------------------------------------------------------
 
 async function handleDetailMode(
-  _datasetId: string,
-  _runId: string,
+  datasetId: string,
+  runId: string,
 ): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "No semantic analysis artifact available yet." },
-    { status: 404 },
-  );
+  const { data: run, error: runErr } = await supabaseAdmin
+    .from("mst_pipeline_runs")
+    .select("id, status")
+    .eq("id", runId)
+    .eq("dataset_id", datasetId)
+    .maybeSingle();
+
+  if (runErr) {
+    return NextResponse.json({ error: "Failed to load run." }, { status: 500 });
+  }
+  if (!run) {
+    return NextResponse.json({ error: "Run not found." }, { status: 404 });
+  }
+
+  const { data: resultRow, error: resultErr } = await supabaseAdmin
+    .from("mst_pipeline_run_results")
+    .select("result, schema_version, created_at")
+    .eq("run_id", runId)
+    .eq("analysis_type", "semantic")
+    .maybeSingle();
+
+  if (resultErr) {
+    return NextResponse.json({ error: "Failed to load analysis result." }, { status: 500 });
+  }
+
+  if (!resultRow) {
+    return NextResponse.json(
+      { error: "No semantic analysis artifact available yet." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({
+    result: resultRow.result,
+    schema_version: resultRow.schema_version,
+    created_at: resultRow.created_at,
+  });
 }
 
 // ---------------------------------------------------------------------------

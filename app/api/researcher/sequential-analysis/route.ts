@@ -719,6 +719,28 @@ async function handleDetailMode(
     return NextResponse.json(buildStaticPayload());
   }
 
+  // Real, per-run result computed by the worker (lib/analysis/sequential.ts) and
+  // persisted to mst_pipeline_run_results. Takes priority over the local-disk demo
+  // fallback below — a live DB result is per-run and trustworthy, whereas the
+  // local-disk fallback returns the same static notebook artifact for every run.
+  if (status === "completed") {
+    const { data: resultRow, error: resultErr } = await supabaseAdmin
+      .from("mst_pipeline_run_results")
+      .select("result, schema_version, created_at")
+      .eq("run_id", runId)
+      .eq("analysis_type", "sequential")
+      .maybeSingle();
+
+    if (!resultErr && resultRow) {
+      return NextResponse.json({
+        artifact_source: "result_db",
+        live_result: resultRow.result,
+        schema_version: resultRow.schema_version,
+        created_at: resultRow.created_at,
+      });
+    }
+  }
+
   // Phase 5 M5.10 — local disk fallback for any completed run with no DB artifact.
   // Reads NB05–NB09 output files from notebooks/ and reports/phase4/ on disk.
   // Enables the researcher to view LSTM/GRU results for any mock pipeline run

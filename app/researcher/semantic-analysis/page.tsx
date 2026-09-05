@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { SemanticCompareModal } from "@/app/researcher/_components/SemanticCompareModal";
 import { TaskTypeIcon } from "@/lib/task-type-utils";
 import type { SemanticDatasetRecord, SemanticRunRecord } from "@/app/api/researcher/semantic-analysis/route";
 
@@ -11,6 +12,7 @@ import type { SemanticDatasetRecord, SemanticRunRecord } from "@/app/api/researc
 // Constants
 // ---------------------------------------------------------------------------
 
+const MAX_COMPARE = 3;
 const PAGE_SIZE = 10;
 
 const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
@@ -32,6 +34,14 @@ type DetailTarget = {
   datasetCode: string;
   datasetName: string;
   run: SemanticRunRecord;
+};
+
+type SelectedRun = {
+  datasetId: string;
+  runId: string;
+  runNumber: string;
+  datasetCode: string;
+  datasetName: string;
 };
 
 type ListResponse = {
@@ -100,10 +110,88 @@ function StatusBadge({ status }: { status: string }) {
 // Inline detail modal
 // ---------------------------------------------------------------------------
 
+type SemanticLearnerMetrics = {
+  profile_id: string;
+  submission_count: number;
+  parsed_count: number;
+  parse_error_count: number;
+  avg_ast_similarity: number;
+  avg_structure_score: number;
+};
+
+type SemanticResult = {
+  computation_scope: string;
+  dynamic_analysis: string;
+  deferred_reason: string;
+  learner_count: number;
+  submission_count: number;
+  parsed_count: number;
+  parse_error_count: number;
+  avg_ast_similarity: number;
+  avg_structure_score: number;
+  per_learner: SemanticLearnerMetrics[];
+};
+
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] font-semibold">{label}</p>
+      <p className="text-sm font-bold text-[#0F172A] mt-0.5">{value}</p>
+    </div>
+  );
+}
+
 function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClose: () => void }) {
+  const [result, setResult] = useState<SemanticResult | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDetail() {
+      setDetailLoading(true);
+      setDetailError(null);
+      setResult(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const params = new URLSearchParams({
+        mode: "detail",
+        dataset_id: target.datasetId,
+        run_id: target.runId,
+      });
+
+      const res = await fetch(`/api/researcher/semantic-analysis?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (cancelled) return;
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Failed to load result." }));
+        setDetailError((j as { error?: string }).error ?? "Failed to load result.");
+        setDetailLoading(false);
+        return;
+      }
+
+      const j = await res.json() as { result: SemanticResult };
+      setResult(j.result);
+      setDetailLoading(false);
+    }
+
+    void loadDetail();
+    return () => { cancelled = true; };
+  }, [target.datasetId, target.runId]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-lg p-6 space-y-4">
+      <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-xl w-full max-w-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -155,12 +243,69 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
           )}
         </div>
 
-        {/* Placeholder */}
-        <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
-          <p className="text-sm text-[#64748B]">
-            Semantic analysis results will appear here after running the pipeline.
-          </p>
-        </div>
+        {/* Result */}
+        {detailLoading && (
+          <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+            <p className="text-sm text-[#64748B]">Loading analysis result…</p>
+          </div>
+        )}
+
+        {!detailLoading && detailError && (
+          <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-4 py-8 text-center">
+            <p className="text-sm text-[#64748B]">{detailError}</p>
+          </div>
+        )}
+
+        {!detailLoading && !detailError && result && (
+          <div className="space-y-4">
+            {/* Scope banner */}
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              computation_scope <span className="font-mono font-semibold">{result.computation_scope}</span>
+              {" "}&mdash; dynamic_analysis: <span className="font-mono">{result.dynamic_analysis}</span>. {result.deferred_reason}
+            </div>
+
+            {/* Aggregate stats */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">
+                Aggregate ({result.learner_count} learners, {result.submission_count} submissions)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <StatCard label="Avg AST similarity" value={pct(result.avg_ast_similarity)} />
+                <StatCard label="Avg structure score" value={pct(result.avg_structure_score)} />
+                <StatCard label="Parse errors" value={`${result.parse_error_count} / ${result.submission_count}`} />
+              </div>
+            </div>
+
+            {/* Per-learner table */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Per learner</p>
+              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                      <th className="text-right px-3 py-2 font-semibold">Submits</th>
+                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
+                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
+                      <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FED7AA]">
+                    {result.per_learner.map((l) => (
+                      <tr key={l.profile_id}>
+                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end pt-1">
           <button
@@ -206,6 +351,10 @@ export default function SemanticAnalysisPage() {
   // Table state
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+
+  // Compare
+  const [selectedRuns, setSelectedRuns] = useState<SelectedRun[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Modals
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
@@ -323,6 +472,30 @@ export default function SemanticAnalysisPage() {
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleSelectRun(ds: SemanticDatasetRecord, run: SemanticRunRecord) {
+    setSelectedRuns((prev) => {
+      const exists = prev.find((s) => s.runId === run.id);
+      if (exists) return prev.filter((s) => s.runId !== run.id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
+      const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
+      return [
+        ...prev,
+        {
+          datasetId: ds.id,
+          runId: run.id,
+          runNumber,
+          datasetCode: ds.code,
+          datasetName: ds.name,
+        },
+      ];
+    });
+  }
+
+  function openCompare() {
+    setCompareOpen(true);
   }
 
   function openDetail(ds: SemanticDatasetRecord, run: SemanticRunRecord) {
@@ -632,6 +805,25 @@ export default function SemanticAnalysisPage() {
               Clear All
             </button>
           )}
+
+          <div className="flex-1" />
+
+          {/* Selected count + Compare */}
+          <div className="self-end flex items-center gap-2 pb-[2px]">
+            {selectedRuns.length > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FED7AA] text-[#92400E]">
+                {selectedRuns.length} selected
+              </span>
+            )}
+            <button
+              onClick={openCompare}
+              disabled={selectedRuns.length < 2}
+              title={selectedRuns.length < 2 ? "Select at least 2 runs to compare" : `Compare ${selectedRuns.length} runs`}
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#F37021] text-white hover:bg-[#D95F10] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Compare
+            </button>
+          </div>
         </section>
 
         {/* ── Dataset Table ── */}
@@ -785,11 +977,28 @@ export default function SemanticAnalysisPage() {
                             const globalIndex = ds.runs.findIndex((r) => r.id === run.id);
                             const runNumber = String(ds.runs.length - globalIndex).padStart(3, "0");
                             const canView = run.artifact_availability !== "unavailable";
+                            const isSelected = selectedRuns.some((s) => s.runId === run.id);
+                            const selectionBlocked = selectedRuns.length >= MAX_COMPARE && !isSelected;
+                            const checkboxDisabled = !run.is_comparable || selectionBlocked;
+                            const checkboxTitle = !run.is_comparable
+                              ? (run.not_comparable_reason ?? "Not comparable")
+                              : selectionBlocked
+                                ? `Max ${MAX_COMPARE} runs selected`
+                                : undefined;
 
                             return (
                               <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
-                                {/* Indent spacer */}
-                                <td className="pl-8 pr-2 py-2.5 align-middle" />
+                                {/* Checkbox (indented) */}
+                                <td className="pl-8 pr-2 py-2.5 align-middle">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={checkboxDisabled}
+                                    title={checkboxTitle}
+                                    onChange={() => toggleSelectRun(ds, run)}
+                                    className="w-3.5 h-3.5 accent-[#F37021] disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
                                 {/* Run# */}
                                 <td className="px-3 py-2.5 align-middle" colSpan={2}>
                                   <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
@@ -915,6 +1124,15 @@ export default function SemanticAnalysisPage() {
       {/* Detail Modal */}
       {detailTarget && (
         <SemanticDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
+
+      {/* Compare Modal */}
+      {compareOpen && token && (
+        <SemanticCompareModal
+          selected={selectedRuns}
+          token={token}
+          onClose={() => setCompareOpen(false)}
+        />
       )}
 
       {/* Run Confirm Modal */}

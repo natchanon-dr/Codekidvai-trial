@@ -167,8 +167,26 @@ type SeedStabilityExp = { accuracy_mean: number; f1_mean: number; roc_auc_mean: 
 type SeedStabilityModel = { exp_a_seq_only: SeedStabilityExp; exp_b_seq_plus_tag: SeedStabilityExp };
 type SeedStability = { lstm: SeedStabilityModel; gru: SeedStabilityModel };
 
+export type SequentialLiveResult = {
+  schema_version: string;
+  computed_at: string;
+  computation_scope: string;
+  ml_model_inference: string;
+  deferred_reason: string;
+  learner_count: number;
+  session_count: number;
+  total_events: number;
+  avg_sequence_length: number;
+  max_sequence_length: number;
+  min_sequence_length: number;
+  event_type_frequencies: Array<{ event_type: string; count: number; pct: number }>;
+  sequence_length_distribution: Array<{ bin: number; count: number }>;
+  event_bigrams: Array<{ from: string; to: string; count: number }>;
+};
+
 export type ArtifactPayload = {
-  artifact_source: "result_version" | "static_fallback" | "local_disk";
+  artifact_source: "result_version" | "static_fallback" | "local_disk" | "result_db";
+  live_result?: SequentialLiveResult | null;
   research_constraints?: ResearchConstraints | null;
   dataset_summary?: DatasetSummary | null;
   sequence_construction?: SequenceConstruction | null;
@@ -261,6 +279,115 @@ function UnavailableSection({ title }: { title: string }) {
   );
 }
 
+function BarRow({ label, count, pct, maxCount }: { label: string; count: number; pct?: number; maxCount: number }) {
+  const widthPct = maxCount > 0 ? Math.max(2, Math.round((count / maxCount) * 100)) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="font-mono text-[#475569] truncate pr-2">{label}</span>
+        <span className="text-[#64748B] whitespace-nowrap">
+          {count}{pct !== undefined ? ` (${Math.round(pct * 100)}%)` : ""}
+        </span>
+      </div>
+      <div className="h-2 w-full bg-[#F1F5F9] rounded-full overflow-hidden">
+        <div className="h-full bg-[#F37021] rounded-full" style={{ width: `${widthPct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live (real, per-run) Sequential Analysis result — from mst_pipeline_run_results
+// ---------------------------------------------------------------------------
+
+function SequentialLiveResultView({ data }: { data: SequentialLiveResult }) {
+  const maxEventCount = Math.max(1, ...data.event_type_frequencies.map((e) => e.count));
+  const maxBinCount = Math.max(1, ...data.sequence_length_distribution.map((b) => b.count));
+  const maxBigramCount = Math.max(1, ...data.event_bigrams.map((b) => b.count));
+
+  return (
+    <>
+      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+        &#9888; ml_model_inference: <span className="font-mono font-semibold">{data.ml_model_inference}</span>
+        {" "}&mdash; {data.deferred_reason}
+      </div>
+
+      <SectionCard title="Sequence Overview" subtitle={`computation_scope: ${data.computation_scope}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <StatCell label="Learners" value={data.learner_count} />
+          <StatCell label="Sessions" value={data.session_count} />
+          <StatCell label="Total events" value={data.total_events} />
+          <StatCell label="Avg sequence length" value={data.avg_sequence_length} />
+          <StatCell label="Max sequence length" value={data.max_sequence_length} />
+          <StatCell label="Min sequence length" value={data.min_sequence_length} />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Event Type Frequencies" subtitle="Count of each event type across all sessions">
+        {data.event_type_frequencies.length === 0 ? (
+          <p className="text-xs text-[#94A3B8] italic">No events recorded.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {data.event_type_frequencies.map((e) => (
+              <BarRow key={e.event_type} label={e.event_type} count={e.count} pct={e.pct} maxCount={maxEventCount} />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Sequence Length Distribution" subtitle="Session event-count, binned in groups of 5">
+        {data.sequence_length_distribution.length === 0 ? (
+          <p className="text-xs text-[#94A3B8] italic">No sessions with events.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {data.sequence_length_distribution.map((b) => (
+              <BarRow key={b.bin} label={`${b.bin}–${b.bin + 4} events`} count={b.count} maxCount={maxBinCount} />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Event Bigrams" subtitle="Top event-to-event transitions (A &#8594; B)">
+        {data.event_bigrams.length === 0 ? (
+          <p className="text-xs text-[#94A3B8] italic">No transitions recorded.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <th className="text-left px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">From</th>
+                  <th className="text-left px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">To</th>
+                  <th className="text-right px-2 py-1.5 font-bold text-[#64748B] uppercase tracking-wide">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.event_bigrams.slice(0, 15).map((b, i) => (
+                  <tr key={`${b.from}-${b.to}-${i}`} className="border-b border-[#F1F5F9]">
+                    <td className="px-2 py-1.5 font-mono text-[#475569]">{b.from}</td>
+                    <td className="px-2 py-1.5 font-mono text-[#475569]">{b.to}</td>
+                    <td className="px-2 py-1.5 text-right text-[#0F172A]">
+                      {b.count}
+                      <span
+                        className="inline-block ml-2 h-1.5 bg-[#FED7AA] rounded-full align-middle"
+                        style={{ width: `${Math.max(4, Math.round((b.count / maxBigramCount) * 40))}px` }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {data.event_bigrams.length > 15 && (
+              <p className="text-[10px] text-[#94A3B8] mt-2">
+                Showing top 15 of {data.event_bigrams.length} transitions.
+              </p>
+            )}
+          </div>
+        )}
+      </SectionCard>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Exported component
 // ---------------------------------------------------------------------------
@@ -270,6 +397,13 @@ type Props = {
 };
 
 export function AnalysisResultView({ artifact }: Props) {
+  // Live, per-run result computed by the real worker (lib/analysis/sequential.ts)
+  // and persisted to mst_pipeline_run_results — distinct from the Phase 4 pilot
+  // demo artifact rendered by the rest of this component.
+  if (artifact.artifact_source === "result_db" && artifact.live_result) {
+    return <SequentialLiveResultView data={artifact.live_result} />;
+  }
+
   const {
     dataset_summary: ds,
     sequence_construction: sc,

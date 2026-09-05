@@ -20,6 +20,7 @@ const VALID_RUN_TYPES = new Set<PipelineRunType>([
   "sequential",
   "semantic",
   "assessment",
+  "risk_classification",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -176,7 +177,11 @@ export async function POST(
     }
   }
 
-  // Build initial analysis_steps for full_pipeline
+  // Build initial analysis_steps.
+  // full_pipeline pre-populates one step per analysis; individual run types
+  // (e.g. "behavioral") still need exactly one step for themselves — without
+  // this, the worker's step loop has nothing to iterate and the run is
+  // marked "completed" without ever calling the analysis executor.
   const analysisSteps: AnalysisStep[] =
     runType === "full_pipeline"
       ? FULL_PIPELINE_ANALYSES.map((a) => ({
@@ -186,7 +191,15 @@ export async function POST(
           completed_at: null,
           error: null,
         }))
-      : null!; // individual run types do not pre-populate steps
+      : [
+          {
+            analysis: runType,
+            status: "pending",
+            started_at: null,
+            completed_at: null,
+            error: null,
+          },
+        ];
 
   const configuration = (raw.configuration as Record<string, unknown> | undefined) ?? null;
   const initiatedBy = (raw.initiated_by as string | undefined) ?? null;
@@ -207,7 +220,7 @@ export async function POST(
       dataset_id: id,
       run_type: runType,
       status: "pending",
-      analysis_steps: runType === "full_pipeline" ? analysisSteps : null,
+      analysis_steps: analysisSteps,
       configuration: configuration ?? null,
       initiated_by: initiatedBy ?? null,
       idempotency_key: idempotencyKey,
