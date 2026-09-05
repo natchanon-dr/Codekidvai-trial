@@ -149,14 +149,21 @@ type RiskPrediction = {
   lr_probability_success: number;
   rf_predicted_label: "success" | "at_risk" | null;
   rf_probability_success: number | null;
+  lstm_predicted_label: "success" | "at_risk" | null;
+  lstm_probability_success: number | null;
+  gru_predicted_label: "success" | "at_risk" | null;
+  gru_probability_success: number | null;
 };
 
 type RiskClassificationResult = {
   learner_count: number;
   rf_applied_count: number;
+  sequence_applied_count: number;
   models_used: {
     e1_logistic_regression: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string };
     e2_random_forest: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+    e3_lstm: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
+    e4_gru: { cv_metrics: { accuracy: number; f1: number }; pilot_warning: string } | null;
   };
   predictions: RiskPrediction[];
 };
@@ -355,20 +362,28 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
               </div>
             </div>
 
-            {/* AI Model Layer — LR (E1) / RF (E2) predictions */}
+            {/* AI Model Layer — LR (E1) / RF (E2) / LSTM (E3) / GRU (E4) predictions */}
             {risk && (
               <div>
                 <p className="text-xs font-bold text-[#0F172A] mb-2">
-                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count})
+                  Predicted Risk — AI Model Layer ({risk.learner_count} learners, RF applied to {risk.rf_applied_count},
+                  {" "}LSTM/GRU applied to {risk.sequence_applied_count})
                 </p>
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2">
                   ⚠ {risk.models_used.e1_logistic_regression.pilot_warning} CV accuracy — LR:{" "}
                   {pct(risk.models_used.e1_logistic_regression.cv_metrics.accuracy)}
                   {risk.models_used.e2_random_forest && (
-                    <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)} (small-n — likely overfit, not a generalization guarantee)</>
+                    <> · RF: {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}</>
                   )}
+                  {risk.models_used.e3_lstm && (
+                    <> · LSTM: {pct(risk.models_used.e3_lstm.cv_metrics.accuracy)}</>
+                  )}
+                  {risk.models_used.e4_gru && (
+                    <> · GRU: {pct(risk.models_used.e4_gru.cv_metrics.accuracy)}</>
+                  )}
+                  {" "}(small-n — likely overfit, not a generalization guarantee)
                 </div>
-                <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <div className="overflow-x-auto rounded-xl border border-[#FED7AA]">
                   <table className="w-full text-[11px]">
                     <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
                       <tr>
@@ -376,6 +391,10 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                         <th className="text-center px-3 py-2 font-semibold">LR (E1)</th>
                         <th className="text-right px-3 py-2 font-semibold">Proba</th>
                         <th className="text-center px-3 py-2 font-semibold">RF (E2)</th>
+                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                        <th className="text-center px-3 py-2 font-semibold">LSTM (E3)</th>
+                        <th className="text-right px-3 py-2 font-semibold">Proba</th>
+                        <th className="text-center px-3 py-2 font-semibold">GRU (E4)</th>
                         <th className="text-right px-3 py-2 font-semibold">Proba</th>
                       </tr>
                     </thead>
@@ -388,6 +407,14 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                           <td className="px-3 py-2 text-center"><RiskBadge label={p.rf_predicted_label} /></td>
                           <td className="px-3 py-2 text-right text-[#0F172A]">
                             {p.rf_probability_success !== null ? pct(p.rf_probability_success) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-center"><RiskBadge label={p.lstm_predicted_label} /></td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">
+                            {p.lstm_probability_success !== null ? pct(p.lstm_probability_success) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-center"><RiskBadge label={p.gru_predicted_label} /></td>
+                          <td className="px-3 py-2 text-right text-[#0F172A]">
+                            {p.gru_probability_success !== null ? pct(p.gru_probability_success) : "—"}
                           </td>
                         </tr>
                       ))}
