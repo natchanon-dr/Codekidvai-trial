@@ -173,20 +173,6 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-// Small tag under a Feature Values column header showing which model(s)
-// consume that column (e.g. "LR" only uses 7 of the 9 columns; "RF" uses
-// all 9, once Semantic is available).
-function ModelTag({ models }: { models: string[] }) {
-  if (models.length === 0) return null;
-  return (
-    <div className="mt-0.5 flex justify-end gap-1 normal-case font-normal">
-      {models.map((m) => (
-        <span key={m} className="px-1 rounded bg-[#FED7AA] text-[#92400E] text-[9px] font-semibold">{m}</span>
-      ))}
-    </div>
-  );
-}
-
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -347,17 +333,17 @@ function BehavioralDetailModal({ target, onClose }: { target: DetailTarget; onCl
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#FFF7ED]">Learner</th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Sessions<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Success<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Error<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Submit<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Avg Duration (s)<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts/Session<ModelTag models={risk ? ["LR", "RF"] : []} /></th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Sessions</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Success</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Error</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Submit</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Avg Duration (s)</th>
+                      <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Attempts/Session</th>
                       {risk?.models_used.e2_random_forest && (
                         <>
-                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">AST Sim<ModelTag models={["RF"]} /></th>
-                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Structure<ModelTag models={["RF"]} /></th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">AST Sim</th>
+                          <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Structure</th>
                         </>
                       )}
                     </tr>

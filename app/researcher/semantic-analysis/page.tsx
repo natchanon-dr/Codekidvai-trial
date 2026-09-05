@@ -152,20 +152,6 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-// Small tag under a Feature Values column header showing which model
-// consumes that column. Submits/Parse Err are diagnostic-only (not fed to
-// RF); only AST Sim/Structure are actual RF feature inputs.
-function ModelTag({ models }: { models: string[] }) {
-  if (models.length === 0) return null;
-  return (
-    <div className="mt-0.5 flex justify-end gap-1 normal-case font-normal">
-      {models.map((m) => (
-        <span key={m} className="px-1 rounded bg-[#FED7AA] text-[#92400E] text-[9px] font-semibold">{m}</span>
-      ))}
-    </div>
-  );
-}
-
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#FED7AA] bg-white px-3 py-2.5">
@@ -316,15 +302,13 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                 standalone model of its own (thesis Table 3.1: Semantic
                 Features -> RF). */}
             <div>
-              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Per learner</p>
               <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold">Learner</th>
                       <th className="text-right px-3 py-2 font-semibold">Submits</th>
-                      <th className="text-right px-3 py-2 font-semibold">AST Sim<ModelTag models={risk?.models_used.e2_random_forest ? ["RF"] : []} /></th>
-                      <th className="text-right px-3 py-2 font-semibold">Structure<ModelTag models={risk?.models_used.e2_random_forest ? ["RF"] : []} /></th>
                       <th className="text-right px-3 py-2 font-semibold">Parse Err</th>
                     </tr>
                   </thead>
@@ -333,9 +317,34 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                       <tr key={l.profile_id}>
                         <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
                         <td className="px-3 py-2 text-right text-[#0F172A]">{l.submission_count}</td>
+                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Feature Values — only the columns RF actually consumes
+                (avg_ast_similarity, avg_structure_score). Submits/Parse Err
+                above are descriptive context, not model input. */}
+            <div>
+              <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values (model input)</p>
+              <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Learner</th>
+                      <th className="text-right px-3 py-2 font-semibold">AST Sim</th>
+                      <th className="text-right px-3 py-2 font-semibold">Structure</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FED7AA]">
+                    {result.per_learner.map((l) => (
+                      <tr key={l.profile_id}>
+                        <td className="px-3 py-2 font-mono text-[#475569]">{l.profile_id.slice(0, 8)}…</td>
                         <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_ast_similarity)}</td>
                         <td className="px-3 py-2 text-right text-[#0F172A]">{pct(l.avg_structure_score)}</td>
-                        <td className="px-3 py-2 text-right text-[#0F172A]">{l.parse_error_count}</td>
                       </tr>
                     ))}
                   </tbody>
