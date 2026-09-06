@@ -411,18 +411,6 @@ function SemanticDetailModal({ target, onClose }: { target: DetailTarget; onClos
                 its own (thesis Table 3.1: Semantic Features -> RF). */}
             <div>
               <p className="text-xs font-bold text-[#0F172A] mb-2">Feature Values &amp; Predicted Risk</p>
-              {risk?.models_used.e2_random_forest && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 mb-2 space-y-1">
-                  <p>
-                    ⚠ {risk.models_used.e2_random_forest.pilot_warning} CV accuracy — RF:{" "}
-                    {pct(risk.models_used.e2_random_forest.cv_metrics.accuracy)}
-                    {" "}(small-n — likely overfit, not a generalization guarantee)
-                  </p>
-                  <p className="font-mono text-[10px] text-red-600">
-                    RF features: {risk.models_used.e2_random_forest.feature_names.join(", ")}
-                  </p>
-                </div>
-              )}
               <div className="rounded-xl border border-[#FED7AA] overflow-hidden">
                 <table className="w-full text-[11px]">
                   <thead className="bg-[#FFF7ED] text-[#94A3B8] uppercase tracking-wide">
