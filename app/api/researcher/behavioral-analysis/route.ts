@@ -8,7 +8,7 @@ import { requireAdminOrResearcher } from "@/lib/api-auth";
 
 export type ArtifactAvailability = "available" | "static_fallback" | "unavailable";
 
-export type SemanticRunRecord = {
+export type BehavioralRunRecord = {
   id: string;
   dataset_id: string;
   run_type: string;
@@ -32,7 +32,7 @@ export type SemanticRunRecord = {
   not_comparable_reason: string | null;
 };
 
-export type SemanticDatasetRecord = {
+export type BehavioralDatasetRecord = {
   id: string;
   code: string;
   name: string;
@@ -45,11 +45,11 @@ export type SemanticDatasetRecord = {
   session_count: number;
   learner_count: number;
   usage_status: "used" | "not_used";
-  runs: SemanticRunRecord[];
+  runs: BehavioralRunRecord[];
 };
 
 // ---------------------------------------------------------------------------
-// resolveArtifact — simplified (no static/local disk fallback for semantic)
+// resolveArtifact — simplified (no static/local disk fallback for behavioral)
 // ---------------------------------------------------------------------------
 
 function resolveArtifact(
@@ -95,7 +95,7 @@ function resolveArtifact(
 }
 
 // ---------------------------------------------------------------------------
-// Mode A — list datasets + semantic runs from DB
+// Mode A — list datasets + behavioral runs from DB
 // ---------------------------------------------------------------------------
 
 async function handleListMode(): Promise<NextResponse> {
@@ -139,7 +139,7 @@ async function handleListMode(): Promise<NextResponse> {
       "id, dataset_id, run_type, status, result_version, configuration, analysis_steps, started_at, completed_at, error_summary, created_at",
     )
     .in("dataset_id", datasetIds)
-    .eq("run_type", "semantic")
+    .eq("run_type", "behavioral")
     .order("created_at", { ascending: false });
 
   if (runErr) {
@@ -179,7 +179,7 @@ async function handleListMode(): Promise<NextResponse> {
     }
   }
 
-  const runsByDataset: Record<string, SemanticRunRecord[]> = {};
+  const runsByDataset: Record<string, BehavioralRunRecord[]> = {};
   for (const run of runs ?? []) {
     const did = run.dataset_id as string;
     if (!runsByDataset[did]) runsByDataset[did] = [];
@@ -189,7 +189,7 @@ async function handleListMode(): Promise<NextResponse> {
     const resolved = resolveArtifact(status, resultVersion);
 
     const analysisStepsRaw = run.analysis_steps;
-    let analysisSteps: SemanticRunRecord["analysis_steps"] = null;
+    let analysisSteps: BehavioralRunRecord["analysis_steps"] = null;
     if (Array.isArray(analysisStepsRaw)) {
       analysisSteps = (analysisStepsRaw as unknown[]).map((s) => {
         const step = s as Record<string, unknown>;
@@ -222,7 +222,7 @@ async function handleListMode(): Promise<NextResponse> {
     });
   }
 
-  const datasetRecords: SemanticDatasetRecord[] = dsRows.map((d) => {
+  const datasetRecords: BehavioralDatasetRecord[] = dsRows.map((d) => {
     const batchIds = d.class_id ? (classBatchIds[d.class_id as string] ?? []) : [];
     const sessionCount = batchIds.reduce((sum, bid) => sum + (sessionCountByBatch[bid] ?? 0), 0);
     const learnerSet = batchIds.reduce((acc, bid) => {
@@ -292,7 +292,7 @@ async function handleDetailMode(
     .from("mst_pipeline_run_results")
     .select("result, schema_version, created_at")
     .eq("run_id", runId)
-    .eq("analysis_type", "semantic")
+    .eq("analysis_type", "behavioral")
     .maybeSingle();
 
   if (resultErr) {
@@ -301,15 +301,14 @@ async function handleDetailMode(
 
   if (!resultRow) {
     return NextResponse.json(
-      { error: "No semantic analysis artifact available yet." },
+      { error: "No behavioral analysis artifact available yet." },
       { status: 404 },
     );
   }
 
-  // RF (E2) predictions, when a completed risk_classification run exists for
-  // this dataset. RF consumes Behavioral + Semantic features jointly, so it
-  // is shown here as well as on the Behavioral Analysis page — Semantic has
-  // no standalone model of its own (thesis Table 3.1: Semantic Features -> RF).
+  // AI Model Layer (LR/RF) predictions, when a completed risk_classification
+  // run exists for this dataset. Optional — the Behavioral result above is
+  // still returned on its own if no risk classification has been run yet.
   const { data: riskRun } = await supabaseAdmin
     .from("mst_pipeline_runs")
     .select("id")

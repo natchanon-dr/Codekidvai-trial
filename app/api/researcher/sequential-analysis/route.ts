@@ -552,6 +552,7 @@ async function handleListMode(): Promise<NextResponse> {
       "id, dataset_id, run_type, status, result_version, configuration, analysis_steps, started_at, completed_at, error_summary, created_at",
     )
     .in("dataset_id", datasetIds)
+    .eq("run_type", "sequential")
     .order("created_at", { ascending: false });
 
   if (runErr) {
@@ -681,6 +682,60 @@ async function handleListMode(): Promise<NextResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// Raw per-learner event-type sequence, chronological across all their
+// sessions — same construction as risk-classification.ts's
+// fetchLearnerSequences (session started_at order, then event_order within a
+// session), duplicated here rather than imported to keep this API route
+// lightweight (risk-classification.ts also pulls in the LR/RF/LSTM/GRU model
+// JSON artifacts, which this route has no other reason to bundle).
+// ---------------------------------------------------------------------------
+
+async function fetchLearnerSequencesPreview(datasetId: string): Promise<Record<string, string[]>> {
+  const { data: dataset } = await supabaseAdmin
+    .from("mst_datasets")
+    .select("task_set_id")
+    .eq("id", datasetId)
+    .maybeSingle();
+
+  const taskSetId = dataset?.task_set_id as string | undefined;
+  if (!taskSetId) return {};
+
+  const { data: sessions } = await supabaseAdmin
+    .from("trn_learning_sessions")
+    .select("session_id, profile_id, started_at")
+    .eq("batch_id", taskSetId)
+    .not("profile_id", "is", null)
+    .order("started_at", { ascending: true });
+
+  if (!sessions || sessions.length === 0) return {};
+  const sessionIds = sessions.map((s) => s.session_id as string);
+
+  const { data: events } = await supabaseAdmin
+    .from("trn_event_logs")
+    .select("session_id, event_type")
+    .in("session_id", sessionIds)
+    .order("session_id", { ascending: true })
+    .order("event_order", { ascending: true });
+
+  const eventsBySession = new Map<string, string[]>();
+  for (const e of events ?? []) {
+    const sid = e.session_id as string;
+    const list = eventsBySession.get(sid) ?? [];
+    list.push(e.event_type as string);
+    eventsBySession.set(sid, list);
+  }
+
+  const sequenceByProfile: Record<string, string[]> = {};
+  for (const s of sessions) {
+    const profileId = s.profile_id as string;
+    const seq = eventsBySession.get(s.session_id as string) ?? [];
+    if (!sequenceByProfile[profileId]) sequenceByProfile[profileId] = [];
+    sequenceByProfile[profileId].push(...seq);
+  }
+  return sequenceByProfile;
+}
+
+// ---------------------------------------------------------------------------
 // Mode B — detail artifact for a specific run
 // ---------------------------------------------------------------------------
 
@@ -717,6 +772,59 @@ async function handleDetailMode(
 
   if (resolved.source === "static_fallback") {
     return NextResponse.json(buildStaticPayload());
+  }
+
+  // Real, per-run result computed by the worker (lib/analysis/sequential.ts) and
+  // persisted to mst_pipeline_run_results. Takes priority over the local-disk demo
+  // fallback below — a live DB result is per-run and trustworthy, whereas the
+  // local-disk fallback returns the same static notebook artifact for every run.
+  if (status === "completed") {
+    const { data: resultRow, error: resultErr } = await supabaseAdmin
+      .from("mst_pipeline_run_results")
+      .select("result, schema_version, created_at")
+      .eq("run_id", runId)
+      .eq("analysis_type", "sequential")
+      .maybeSingle();
+
+    if (!resultErr && resultRow) {
+      // LSTM (E3) / GRU (E4) predictions, when a completed risk_classification
+      // run exists for this dataset — their input is Sequential features, so
+      // they live here rather than on the Behavioral Analysis page.
+      const { data: riskRun } = await supabaseAdmin
+        .from("mst_pipeline_runs")
+        .select("id")
+        .eq("dataset_id", datasetId)
+        .eq("run_type", "risk_classification")
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let riskClassification: unknown = null;
+      if (riskRun) {
+        const { data: riskResultRow } = await supabaseAdmin
+          .from("mst_pipeline_run_results")
+          .select("result")
+          .eq("run_id", riskRun.id as string)
+          .eq("analysis_type", "risk_classification")
+          .maybeSingle();
+        riskClassification = riskResultRow?.result ?? null;
+      }
+
+      // Raw event sequence per learner — the actual LSTM/GRU input, shown
+      // alongside their prediction so the UI can display "by learner" instead
+      // of only the cohort-level frequencies/bigrams above.
+      const sequenceByLearner = await fetchLearnerSequencesPreview(datasetId);
+
+      return NextResponse.json({
+        artifact_source: "result_db",
+        live_result: resultRow.result,
+        schema_version: resultRow.schema_version,
+        created_at: resultRow.created_at,
+        risk_classification: riskClassification,
+        sequence_by_learner: sequenceByLearner,
+      });
+    }
   }
 
   // Phase 5 M5.10 — local disk fallback for any completed run with no DB artifact.

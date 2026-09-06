@@ -75,7 +75,8 @@ export type PipelineRunType =
   | "behavioral"
   | "sequential"
   | "semantic"
-  | "assessment";
+  | "assessment"
+  | "risk_classification";
 
 export type PipelineRunStatus =
   | "pending"

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "model_type": "logistic_regression",
+  "thesis_experiment": "E1",
+  "feature_names": [
+    "total_sessions",
+    "total_attempts",
+    "attempt_success_rate",
+    "avg_session_duration_seconds",
+    "submission_rate",
+    "error_rate",
+    "avg_attempts_per_session"
+  ],
+  "coefficients": [
+    0.5027165863660793,
+    -0.2079647695885662,
+    1.372335444531043,
+    0.5211023041769368,
+    -0.04073721741083909,
+    -1.3635563313548529,
+    -0.4958599205917714
+  ],
+  "intercept": -2.5113854711380417,
+  "cv_metrics": {
+    "accuracy": 0.76,
+    "precision": 0.7,
+    "recall": 1.0,
+    "f1": 0.8235
+  },
+  "training_n": 25,
+  "pilot_only": true,
+  "pilot_warning": "Trained on n=25 learners, below thesis minimum of 60. Illustrative pipeline validation only."
+}

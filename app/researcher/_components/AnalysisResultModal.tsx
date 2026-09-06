@@ -87,15 +87,23 @@ export function AnalysisResultModal({
             </p>
             <p className="text-xs text-[#64748B]">
               Run: {runNumber ? `#${runNumber}` : `${runId.slice(0, 8)}…`} &#183; Read-only
-              {artifactSource === "static_fallback" && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                  Pilot &#8212; static artifact
+              {data?.artifact_source === "result_db" ? (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
+                  Live result
                 </span>
-              )}
-              {artifactSource === "local_disk" && (
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
-                  Local disk artifact
-                </span>
+              ) : (
+                <>
+                  {artifactSource === "static_fallback" && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                      Pilot &#8212; static artifact
+                    </span>
+                  )}
+                  {artifactSource === "local_disk" && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                      Local disk artifact
+                    </span>
+                  )}
+                </>
               )}
             </p>
           </div>

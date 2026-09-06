@@ -1,5 +1,5 @@
 import type { WorkerDb, WorkerRunRow, AnalysisStepRow } from "./db.js";
-import { executeStep, NonRetryableAnalysisError, DEFERRED_STEPS, DEFERRED_REASONS } from "./step-executors.js";
+import { executeStep, NonRetryableAnalysisError, PhaseDeferredError, DEFERRED_STEPS, DEFERRED_REASONS } from "./step-executors.js";
 import type { Logger } from "./logger.js";
 
 export interface ShutdownSignal {
@@ -117,6 +117,29 @@ export async function processRun(
           onHeartbeat: () => db.extendLease(runId, workerId, LEASE_SECONDS).then(() => void 0),
         });
       } catch (err) {
+        // A step can defer itself at runtime (e.g. "semantic" on a block-based
+        // dataset) rather than being statically listed in DEFERRED_STEPS. Treat
+        // this the same as a pre-declared deferred step: mark it "deferred" and
+        // move on — it must not fail the whole run.
+        if (err instanceof PhaseDeferredError) {
+          steps[i] = {
+            ...steps[i],
+            status: "deferred",
+            deferred_reason: err.reason,
+            error: null,
+            completed_at: new Date().toISOString(),
+          };
+          await db.persistSteps(runId, workerId, steps);
+          log.info({
+            event: "step_deferred",
+            run_id: runId,
+            step: stepName,
+            reason: err.reason,
+            worker_id: workerId,
+          });
+          continue;
+        }
+
         const isNonRetryable = err instanceof NonRetryableAnalysisError;
         const errorSummary = sanitizeError(err);
         steps[i] = {
