@@ -40,17 +40,27 @@ every artifact/manifest that references these column and model names.
 ## 2. New thesis-facing meaning: Traditional Auto Grading
 
 The traditional automated-grading baseline: **Final Result Only →
-Correct/Incorrect**. This is the target research architecture's baseline
-comparison point against the BSSA-based models, per the updated thesis
-methodology. It has **not been implemented yet**.
+Correct/Incorrect**. Per the locked architecture (see
+`docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md`), this is the
+**Method** used by **Final Result Analysis**, one of the five parallel
+Analysis paths. **There is no separate "TAG Analysis" nav item — TAG lives
+inside Final Result Analysis.**
 
-- Placeholder nav tile: `app/researcher/dashboard/page.tsx`, step 14, titled
-  "TAG Analysis" — description spells out the full name and the collision,
-  `available: false` ("Coming Soon"). No route/page/backend exists yet.
+- Live page + route: `app/researcher/final-result-analysis/page.tsx` +
+  `app/api/researcher/final-result-analysis/route.ts` — dataset table
+  (mirrors Sequential Analysis's browsing concept) with a live TAG summary
+  per dataset, read from `trn_submissions.is_passed` / `final_score` (the
+  real recorded outcome — not a proxy_behavioral label, not a trained
+  model). No pipeline-run lifecycle (no Run/pending/running/Compare) —
+  TAG has nothing to train.
 - Placeholder row in the model comparison table: `app/researcher/model-
   results/page.tsx`'s `TARGET_MODEL_ORDER`, entry `"Traditional Auto
   Grading"` — rendered via `NotYetRunRow` ("Not yet run — no trained model
-  artifact exists.") since no model has been trained.
+  artifact exists.") since Final Result Analysis's live TAG summary is not
+  wired into that artifact's model-comparison table (deliberately —
+  computing an "accuracy" for TAG against the pipeline's at-risk target
+  would require a separate join against the frozen split/label ledger;
+  see the route's header comment).
 
 ## Rule going forward
 
@@ -61,7 +71,11 @@ methodology. It has **not been implemented yet**.
 - In any **existing** legacy code/artifact, "TAG" continues to mean
   **Temporal Assessment Graph** unless a specific, approved milestone
   renames it (with a full inventory + migration of dependent artifacts).
-- Do not introduce a third meaning ("BSSI" or otherwise) for either concept.
+- **BSSI** (Behavioral–Sequential–Semantic Integration) and **BSSM**
+  (Behavioral–Sequential–Semantic Model) are the locked terms for the
+  integration analysis path and its future predictive model — see
+  `docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md`. These are unrelated
+  to either meaning of "TAG" above; do not conflate them.
 - If you are unsure which meaning applies at a given call site, check this
   file first, then check the surrounding artifact/table name
   (`tag_manifest_v1.json`, `tag_node_count`, "TAG-based LR" → legacy;

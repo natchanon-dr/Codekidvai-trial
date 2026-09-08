@@ -61,27 +61,27 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 4 — M5.31A placeholder only. "TAG" here means Traditional Auto Grading
-  // (Final Result Only -> Correct/Incorrect baseline), the NEW thesis-facing
-  // meaning. This is DISTINCT from the legacy/internal "TAG" = Temporal
-  // Assessment Graph already used in Sequential Analysis (tag_node_count,
-  // tag_edge_count, tag_entropy, TAG-based LR, EXP-B). See docs/
-  // TAG_TERMINOLOGY.md and the terminology note in app/researcher/
-  // model-results/page.tsx for that legacy meaning. No model/backend has
-  // been built for this yet — do not wire a route here until Traditional
-  // Auto Grading is actually implemented.
+  // 4 — M5.31-R1: Final Result Analysis, one of the five parallel Analysis
+  // paths (see docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md). Method:
+  // Traditional Auto Grading (TAG) — Final Result Only -> Correct/Incorrect.
+  // "TAG" here is the NEW thesis-facing meaning, DISTINCT from the
+  // legacy/internal "TAG" = Temporal Assessment Graph used in Sequential
+  // Analysis (tag_node_count, tag_edge_count, tag_entropy, TAG-based LR,
+  // EXP-B). See docs/TAG_TERMINOLOGY.md. There is no separate "TAG
+  // Analysis" nav item — TAG lives inside this page. It reports the real
+  // recorded trn_submissions.is_passed outcome live — not a proxy label,
+  // not a trained model.
   {
     stepNumber: 4,
-    title: "TAG Analysis",
-    description: "Traditional Auto Grading (TAG) baseline — Final Result Only → Correct/Incorrect. Not yet implemented; distinct from the legacy Temporal Assessment Graph used in Sequential Analysis.",
-    href: "/researcher/tag-analysis",
+    title: "Final Result Analysis",
+    description: "Traditional Auto Grading (TAG) — Final Result Only → Correct/Incorrect. Distinct from the legacy Temporal Assessment Graph used in Sequential Analysis.",
+    href: "/researcher/final-result-analysis",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6M9 8h1M5 4.5h14a1.5 1.5 0 011.5 1.5v13.5a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5V6A1.5 1.5 0 015 4.5z" />
       </svg>
     ),
-    available: false,
-    disabledLabel: "Coming Soon",
+    available: true,
   },
   // 5
   {
@@ -135,23 +135,28 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 9 — M5.31A placeholder only. BSSA = Behavioral–Sequential–Semantic
-  // Analysis. Do NOT invent or display a combined BSSA score here — the
-  // Feature Analytics page's "Combined / Full BSSA" group already reports
-  // status honestly as not_implemented (no full BSSA pipeline artifact
-  // exists in Phase 4). This tile is reserved for that integration view.
+  // 9 — M5.31-R1: BSSI Analysis, one of the five parallel Analysis paths.
+  // BSSI = Behavioral–Sequential–Semantic Integration (feature/evidence
+  // construction, NOT itself a predictive model). BSSM = the predictive
+  // model operating on BSSI Features (not yet defined/trained — see
+  // docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md). This page shows
+  // domain availability + a model×domain usage matrix derived from the
+  // frozen Phase 4 artifact. It does NOT invent or display a combined
+  // BSSI/BSSM score — the "Combined / Full BSSI" section reports status
+  // honestly as not_implemented (no full BSSI pipeline artifact exists in
+  // Phase 4 yet). BSSI must not depend on the six single-domain models'
+  // predictions — this page only reads feature-domain availability.
   {
     stepNumber: 9,
-    title: "BSSA Integration",
-    description: "Behavioral–Sequential–Semantic Analysis (BSSA) integration status. Not yet implemented — no combined BSSA pipeline artifact exists in Phase 4.",
-    href: "/researcher/bssa-integration",
+    title: "BSSI Analysis",
+    description: "Behavioral–Sequential–Semantic Integration (BSSI) status — domain availability and model usage. No combined BSSI/BSSM pipeline artifact exists in Phase 4 yet.",
+    href: "/researcher/bssi-analysis",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m0-15a3 3 0 100 6 3 3 0 000-6zm0 15a3 3 0 100-6 3 3 0 000 6zm-7.5-7.5a3 3 0 106 0 3 3 0 00-6 0zm15 0a3 3 0 10-6 0 3 3 0 006 0z" />
       </svg>
     ),
-    available: false,
-    disabledLabel: "Coming Soon",
+    available: true,
   },
   // 10
   {
