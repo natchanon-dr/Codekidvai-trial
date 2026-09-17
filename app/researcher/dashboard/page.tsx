@@ -83,11 +83,13 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 5
+  // 5 — M5.31-R4: Behavioral Features -> LR/RF (models not yet trained).
+  // No longer mixes in Sequential/legacy-TAG content — see
+  // docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md.
   {
     stepNumber: 5,
     title: "Behavioral Analysis",
-    description: "Examine learner behavioral patterns, BSSA feature profiles, and sequence-level engagement indicators.",
+    description: "Behavioral Features (attempts, errors, retries, engagement) → LR / RF. 8 of 14 Phase 4 features implemented; models not yet trained.",
     href: "/researcher/behavioral-analysis",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">

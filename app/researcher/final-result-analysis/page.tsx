@@ -11,20 +11,24 @@
 // Assessment Graph used in Sequential Analysis / Model Results' seed
 // stability section. See docs/TAG_TERMINOLOGY.md for the full inventory.
 //
-// UI concept: intentionally matches Sequential Analysis's dataset table
-// (list mst_datasets, filter by batch/activity/task, expand row) per user
-// request to keep a consistent Analysis-page browsing concept. UNLIKE
-// Sequential Analysis there is NO pipeline-run lifecycle here — no
-// Run/pending/running/Continue/Stop and no Compare — because TAG has no
-// model to train. Every row already carries its full live TAG summary
-// (trn_submissions.is_passed / final_score), not a proxy_behavioral label
-// and not a trained model prediction.
+// M5.31-R1b: per explicit user instruction, this now follows the SAME
+// "1 Dataset -> N independent Analysis runs" pattern as Sequential
+// Analysis — dataset row -> expand -> Runs list -> View Result per run.
+// Unlike Sequential, a run here has no model to train: pressing "Run"
+// computes a snapshot synchronously (real trn_submissions.is_passed /
+// final_score outcome) and the run lands on "completed" immediately —
+// there is no pending/running progress window in practice, but the same
+// status vocabulary is kept for consistency with the other Analysis
+// pages. Requires migration 028 (adds 'final_result' to the run_type /
+// analysis_type CHECK constraints).
 // ---------------------------------------------------------------------------
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { FinalResultDetailModal } from "@/app/researcher/_components/FinalResultDetailModal";
+import { StatusBadge } from "@/app/researcher/_components/AnalysisPrimitives";
 import { TaskTypeIcon } from "@/lib/task-type-utils";
 
 const PAGE_SIZE = 10;
@@ -36,13 +40,13 @@ const DATASET_TASK_LABEL: Record<string, string> = {
   er_diagram: "ER Diagram",
 };
 
-type TagSummary = {
-  total_sessions: number;
-  submitted_sessions: number;
-  graded_sessions: number;
-  passed_sessions: number;
-  failed_sessions: number;
-  pass_rate: number | null;
+type FinalResultRunRecord = {
+  id: string;
+  dataset_id: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  error_summary: string | null;
 };
 
 type TagDatasetRecord = {
@@ -57,7 +61,8 @@ type TagDatasetRecord = {
   created_at: string;
   session_count: number;
   learner_count: number;
-  tag_summary: TagSummary;
+  usage_status: "used" | "not_used";
+  runs: FinalResultRunRecord[];
 };
 
 type ListResponse = {
@@ -98,10 +103,6 @@ function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
-function pct(n: number | null): string {
-  return n === null ? "—" : `${Math.round(n * 100)}%`;
-}
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -114,6 +115,7 @@ export default function FinalResultAnalysisPage() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,6 +128,9 @@ export default function FinalResultAnalysisPage() {
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [resultTarget, setResultTarget] = useState<{ runId: string; datasetCode: string } | null>(null);
+  const [runningDatasetId, setRunningDatasetId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -147,6 +152,7 @@ export default function FinalResultAnalysisPage() {
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
+      setToken(session.access_token);
     }
     void init();
   }, [router]);
@@ -187,6 +193,28 @@ export default function FinalResultAnalysisPage() {
   }, [router]);
 
   useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
+
+  async function runAnalysis(datasetId: string) {
+    if (!token || runningDatasetId) return;
+    setRunningDatasetId(datasetId);
+    setRunError(null);
+    try {
+      const res = await fetch("/api/researcher/final-result-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dataset_id: datasetId }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Request failed" }));
+        setRunError((j as { error?: string }).error ?? "Failed to run analysis.");
+        return;
+      }
+      setExpandedIds((prev) => new Set(prev).add(datasetId));
+      void loadData();
+    } finally {
+      setRunningDatasetId(null);
+    }
+  }
 
   const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
     if (search) {
@@ -279,7 +307,7 @@ export default function FinalResultAnalysisPage() {
         <div>
           <h1 className="text-xl font-bold text-[#0F172A]">Final Result Analysis</h1>
           <p className="text-sm text-[#64748B] mt-0.5">
-            Traditional Auto Grading (TAG) — Final Result Only → Correct/Incorrect
+            Dataset &#8594; Run &#8594; Final Result records (Traditional Auto Grading)
           </p>
           <p className="text-[11px] text-amber-700 mt-1 italic">
             &quot;TAG&quot; here means Traditional Auto Grading, not the Temporal Assessment Graph used in Sequential Analysis / Model Results.
@@ -291,6 +319,10 @@ export default function FinalResultAnalysisPage() {
             <p>{data.data_warning}</p>
             <p>{data.note}</p>
           </div>
+        )}
+
+        {runError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">{runError}</div>
         )}
 
         {/* ── Filters (Sequential Analysis icon-only style) ── */}
@@ -415,10 +447,8 @@ export default function FinalResultAnalysisPage() {
                     { label: "Task Type", align: "center" },
                     { label: "Sessions",  align: "center" },
                     { label: "Learners",  align: "center" },
-                    { label: "Graded",    align: "center" },
-                    { label: "Passed",    align: "center" },
-                    { label: "Failed",    align: "center" },
-                    { label: "Pass Rate", align: "center" },
+                    { label: "Usage",     align: "center" },
+                    { label: "Runs",      align: "center" },
                     { label: "",          align: "center" },
                   ].map(({ label, align }, i) => (
                     <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
@@ -430,13 +460,11 @@ export default function FinalResultAnalysisPage() {
               <tbody>
                 {pagedDatasets.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="text-center py-10 text-[#94A3B8] text-sm">No datasets found.</td>
+                    <td colSpan={10} className="text-center py-10 text-[#94A3B8] text-sm">No datasets found.</td>
                   </tr>
                 )}
                 {pagedDatasets.map((ds) => {
                   const isExpanded = expandedIds.has(ds.id);
-                  const s = ds.tag_summary;
-                  const ungraded = s.total_sessions - s.graded_sessions;
                   return (
                     <Fragment key={ds.id}>
                       <tr
@@ -481,41 +509,90 @@ export default function FinalResultAnalysisPage() {
                           <span className="font-mono text-xs text-[#475569]">{ds.learner_count}</span>
                         </td>
                         <td className="px-2 py-3.5 text-center align-middle">
-                          <span className="font-mono text-xs text-[#475569]">{s.graded_sessions}</span>
+                          {ds.usage_status === "used" ? (
+                            <span title="Used" className="inline-flex items-center justify-center text-amber-500">
+                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                            </span>
+                          ) : (
+                            <span title="Not used" className="inline-flex items-center justify-center text-[#CBD5E1]">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true"><circle cx="12" cy="12" r="9" /></svg>
+                            </span>
+                          )}
                         </td>
                         <td className="px-2 py-3.5 text-center align-middle">
-                          <span className="font-mono text-xs text-green-700">{s.passed_sessions}</span>
-                        </td>
-                        <td className="px-2 py-3.5 text-center align-middle">
-                          <span className="font-mono text-xs text-red-600">{s.failed_sessions}</span>
-                        </td>
-                        <td className="px-2 py-3.5 text-center align-middle">
-                          <span className="font-mono text-xs font-semibold text-[#0F172A]">{pct(s.pass_rate)}</span>
+                          <span className="inline-flex items-center justify-center min-w-[2rem] font-mono text-xs font-semibold text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2 py-0.5">
+                            {ds.runs.length}
+                          </span>
                         </td>
                         <td className="px-3 py-3.5 text-center align-middle">
-                          <svg
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                            strokeLinecap="round" strokeLinejoin="round"
-                            className={`w-4 h-4 text-[#94A3B8] transition-transform mx-auto ${isExpanded ? "rotate-180" : ""}`}
-                            aria-hidden="true"
-                          >
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); void runAnalysis(ds.id); }}
+                              disabled={runningDatasetId === ds.id}
+                              title="Run Final Result Analysis"
+                              className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] disabled:opacity-40 transition-colors"
+                              aria-label="Run Final Result Analysis"
+                            >
+                              {runningDatasetId === ds.id ? (
+                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                              ) : (
+                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden="true"><path d="M5 3l14 9-14 9V3z" /></svg>
+                              )}
+                            </button>
+                            <svg
+                              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                              strokeLinecap="round" strokeLinejoin="round"
+                              className={`w-4 h-4 text-[#94A3B8] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              aria-hidden="true"
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </div>
                         </td>
                       </tr>
 
                       {isExpanded && (
-                        <tr className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
-                          <td colSpan={12} className="px-8 py-3">
-                            <div className="flex flex-wrap items-center gap-4 text-xs text-[#475569]">
-                              <span>Submitted: <strong className="text-[#0F172A]">{s.submitted_sessions}</strong> / {s.total_sessions}</span>
-                              <span>Ungraded: <strong className="text-[#0F172A]">{ungraded}</strong></span>
-                              <span className="text-[#94A3B8] italic">
-                                Real recorded outcome from trn_submissions.is_passed — not a proxy_behavioral label, not a trained model.
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
+                        ds.runs.length === 0 ? (
+                          <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
+                            <td colSpan={10} className="pl-10 py-3 text-[#94A3B8] text-xs italic">
+                              No runs yet — press ▶ Run to compute a Final Result snapshot for this dataset.
+                            </td>
+                          </tr>
+                        ) : (
+                          ds.runs.map((run, idx) => {
+                            const runNumber = String(ds.runs.length - idx).padStart(3, "0");
+                            return (
+                              <tr key={run.id} className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                                <td className="pl-8 pr-2 py-2.5 align-middle" colSpan={2}>
+                                  <span className="font-mono text-xs font-semibold text-[#F37021]">#{runNumber}</span>
+                                </td>
+                                <td className="px-3 py-2.5 align-middle text-xs text-[#64748B]" colSpan={3}>
+                                  {new Date(run.created_at).toLocaleString()}
+                                </td>
+                                <td className="px-3 py-2.5 align-middle" colSpan={2}>
+                                  <StatusBadge status={run.status} />
+                                </td>
+                                <td className="px-2 py-2.5 align-middle text-[10px] text-red-600" colSpan={2}>
+                                  {run.error_summary ?? ""}
+                                </td>
+                                <td className="px-3 py-2.5 text-center align-middle">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setResultTarget({ runId: run.id, datasetCode: ds.code }); }}
+                                    disabled={run.status !== "completed"}
+                                    title={run.status === "completed" ? "View Result" : "No result available"}
+                                    className="p-1 rounded hover:bg-[#FED7AA] text-[#F37021] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="View Result"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M2 12s3.636-7 10-7 10 7 10 7-3.636 7-10 7-10-7-10-7z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
                       )}
                     </Fragment>
                   );
@@ -550,6 +627,15 @@ export default function FinalResultAnalysisPage() {
           )}
         </section>
       </main>
+
+      {resultTarget && token && (
+        <FinalResultDetailModal
+          runId={resultTarget.runId}
+          datasetCode={resultTarget.datasetCode}
+          token={token}
+          onClose={() => setResultTarget(null)}
+        />
+      )}
     </div>
   );
 }

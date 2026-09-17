@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
+import { parquetReadObjects } from "hyparquet";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminOrResearcher } from "@/lib/api-auth";
 import summary from "@/lib/research-artifacts/phase4/phase4_ui_summary_v1.json";
@@ -126,10 +127,18 @@ export function resolveArtifact(
 // Static artifact payload (used for Mode B pilot fallback)
 // ---------------------------------------------------------------------------
 
-function buildStaticPayload() {
+async function buildStaticPayload() {
   const activeEventCount = Object.keys(vocabulary.event_type_vocab).filter(
     (key) => !vocabulary.block_events_reserved.includes(key),
   ).length;
+
+  // M5.31-R5b: same "By Learner" per-sequence predictions as buildLocalPayload.
+  const NB_DIR = path.join(process.cwd(), "notebooks");
+  const [lstmPredictions, gruPredictions] = await Promise.all([
+    tryPredictions(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_predictions_v1.parquet")),
+    tryPredictions(path.join(NB_DIR, "models", "sequence", "gru", "gru_predictions_v1.parquet")),
+  ]);
+  const byLearner = buildByLearner(lstmPredictions, gruPredictions);
 
   return {
     artifact_source: "static_fallback" as const,
@@ -142,6 +151,14 @@ function buildStaticPayload() {
       data_warning: summary.data_warning,
     },
     dataset_summary: summary.dataset_summary,
+    by_learner: byLearner,
+    by_learner_note:
+      "Per-sequence LSTM/GRU predictions (primary seed 42) from the frozen Phase 4 pilot " +
+      "(lstm_predictions_v1.parquet / gru_predictions_v1.parquet). Student IDs here " +
+      "(\"S0001\", \"S0005\", ...) are anonymized IDs INTERNAL to that frozen pilot cohort " +
+      "(NB05-09) — a DIFFERENT identity space from the live dataset's participant codes " +
+      "shown elsewhere (e.g. Final Result Analysis's \"KMITL-S69056025\"). Do not treat " +
+      "these as the same people.",
     sequence_construction: {
       schema_version: sequenceManifest.schema_version,
       created_at_utc: sequenceManifest.created_at_utc,
@@ -223,6 +240,110 @@ function buildStaticPayload() {
 }
 
 // ---------------------------------------------------------------------------
+// M5.31-R5b — "By Learner" per-sequence predictions (LSTM/GRU).
+//
+// lstm_predictions_v1.parquet / gru_predictions_v1.parquet contain
+// per-sequence predictions (experiment x seed x sequence_id) that were
+// never read server-side before (previously listed as a known limitation:
+// "blocked: offline parquet artifact not loaded server-side"). This adds
+// that missing read using the hyparquet library (pure-JS, no native deps).
+//
+// IMPORTANT — identity space warning: sequence_id here is formatted
+// "S0001::T001" (learner S0001, task T001) — an anonymized ID INTERNAL to
+// the frozen Phase 4 pilot cohort (10-ish learners, NB05-09), NOT the same
+// identity space as the live mst_datasets/mst_profiles participant_code
+// or academy_member_id used elsewhere (e.g. Final Result Analysis's
+// "KMITL-S69056025" codes). Do NOT imply these are the same people — the
+// frozen artifact predates and is disconnected from the live dataset
+// currently used for testing (e.g. MAQT0003). This is surfaced explicitly
+// in the UI note, not silently merged with live participant identities.
+// ---------------------------------------------------------------------------
+
+type PredictionRow = {
+  experiment: string; // "seq_only" (EXP-A) | "seq_tag" (EXP-B)
+  seed: string;
+  sequence_id: string; // "S0001::T001"
+  y_pred_prob: number;
+  y_pred: string;
+  y_true: string;
+};
+
+async function tryPredictions(p: string): Promise<PredictionRow[] | null> {
+  try {
+    const fsAsync = await import("node:fs/promises");
+    const buf = await fsAsync.readFile(p);
+    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const rows = await parquetReadObjects({ file: arrayBuffer as ArrayBuffer });
+    return (rows as Array<Record<string, unknown>>).map((r) => ({
+      experiment: String(r.experiment),
+      seed: String(r.seed),
+      sequence_id: String(r.sequence_id),
+      y_pred_prob: Number(r.y_pred_prob),
+      y_pred: String(r.y_pred),
+      y_true: String(r.y_true),
+    }));
+  } catch {
+    return null;
+  }
+}
+
+export type LearnerSequenceResult = {
+  task_id: string;
+  sequence_id: string;
+  y_pred: string;
+  y_true: string;
+  correct: boolean;
+  y_pred_prob: number;
+};
+
+export type LearnerModelSummary = {
+  seq_only: { total: number; correct: number; sequences: LearnerSequenceResult[] } | null;
+  seq_tag: { total: number; correct: number; sequences: LearnerSequenceResult[] } | null;
+};
+
+export type LearnerRow = {
+  student_id: string; // e.g. "S0001" — Phase 4 pilot-internal anonymized ID
+  lstm: LearnerModelSummary;
+  gru: LearnerModelSummary;
+};
+
+const PRIMARY_SEED = "42";
+
+function buildByLearner(lstmRows: PredictionRow[] | null, gruRows: PredictionRow[] | null): LearnerRow[] | null {
+  if (!lstmRows && !gruRows) return null;
+
+  function summarize(rows: PredictionRow[] | null, experiment: string): Map<string, { total: number; correct: number; sequences: LearnerSequenceResult[] }> {
+    const map = new Map<string, { total: number; correct: number; sequences: LearnerSequenceResult[] }>();
+    for (const r of rows ?? []) {
+      if (r.seed !== PRIMARY_SEED || r.experiment !== experiment) continue;
+      const [studentId, taskId] = r.sequence_id.split("::");
+      if (!studentId) continue;
+      const entry = map.get(studentId) ?? { total: 0, correct: 0, sequences: [] };
+      const correct = r.y_pred === r.y_true;
+      entry.total += 1;
+      if (correct) entry.correct += 1;
+      entry.sequences.push({ task_id: taskId ?? "?", sequence_id: r.sequence_id, y_pred: r.y_pred, y_true: r.y_true, correct, y_pred_prob: r.y_pred_prob });
+      map.set(studentId, entry);
+    }
+    return map;
+  }
+
+  const lstmSeqOnly = summarize(lstmRows, "seq_only");
+  const lstmSeqTag = summarize(lstmRows, "seq_tag");
+  const gruSeqOnly = summarize(gruRows, "seq_only");
+  const gruSeqTag = summarize(gruRows, "seq_tag");
+
+  const studentIds = [...new Set([...lstmSeqOnly.keys(), ...lstmSeqTag.keys(), ...gruSeqOnly.keys(), ...gruSeqTag.keys()])].sort();
+  if (studentIds.length === 0) return null;
+
+  return studentIds.map((studentId) => ({
+    student_id: studentId,
+    lstm: { seq_only: lstmSeqOnly.get(studentId) ?? null, seq_tag: lstmSeqTag.get(studentId) ?? null },
+    gru: { seq_only: gruSeqOnly.get(studentId) ?? null, seq_tag: gruSeqTag.get(studentId) ?? null },
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Phase 5 M5.10 — local disk fallback for mock pipeline runs
 // Reads NB05–NB09 artifacts from notebooks/ and reports/phase4/ on disk.
 // Returns null when no comparison CSV is found (pipeline hasn't run yet).
@@ -273,7 +394,7 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
     try { return JSON.parse(await fsAsync.readFile(p, "utf-8")); }
     catch { return null; }
   }
-  const [seqManifest, lstmMetrics, gruMetrics, vocabJson, scalerJson, tagJson, lstmCfg, gruCfg, lstmManifestJson, compManifestJson] =
+  const [seqManifest, lstmMetrics, gruMetrics, vocabJson, scalerJson, tagJson, lstmCfg, gruCfg, lstmManifestJson, compManifestJson, lstmPredictions, gruPredictions] =
     await Promise.all([
       tryJson(path.join(NB_DIR, "data", "sequences", "sequence_manifest_v1.json")),
       tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_metrics_v1.json")),
@@ -287,7 +408,12 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       // Phase 5 M5.21: lstm_manifest for test_class_dist; comparison_manifest for validation counts
       tryJson(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_manifest_v1.json")),
       tryJson(path.join(NB_DIR, "models", "sequence", "comparison", "comparison_manifest_v1.json")),
+      // M5.31-R5b: per-sequence predictions for the "By Learner" section
+      tryPredictions(path.join(NB_DIR, "models", "sequence", "lstm", "lstm_predictions_v1.parquet")),
+      tryPredictions(path.join(NB_DIR, "models", "sequence", "gru",  "gru_predictions_v1.parquet")),
     ]);
+
+  const byLearner = buildByLearner(lstmPredictions, gruPredictions);
 
   // ── PNG charts as base64 data URLs ────────────────────────────────────────
   // Checks RPT_DIR (project root reports/phase4/) first, then NB_RPT_DIR
@@ -397,6 +523,14 @@ async function buildLocalPayload(): Promise<Record<string, unknown> | null> {
       data_warning: "PILOT ONLY — Local disk artifacts from mock pipeline run. Not thesis results.",
     },
     dataset_summary: datasetSummary,
+    by_learner: byLearner,
+    by_learner_note:
+      "Per-sequence LSTM/GRU predictions (primary seed 42) from the frozen Phase 4 pilot " +
+      "(lstm_predictions_v1.parquet / gru_predictions_v1.parquet). Student IDs here " +
+      "(\"S0001\", \"S0005\", ...) are anonymized IDs INTERNAL to that frozen pilot cohort " +
+      "(NB05-09) — a DIFFERENT identity space from the live dataset's participant codes " +
+      "shown elsewhere (e.g. Final Result Analysis's \"KMITL-S69056025\"). Do not treat " +
+      "these as the same people.",
     sequence_construction: mf ? {
       schema_version: mf.schema_version ?? "seq_v1",
       created_at_utc: mf.created_at_utc ?? null,
@@ -716,7 +850,7 @@ async function handleDetailMode(
   const resolved = resolveArtifact(status, resultVersion, datasetCode);
 
   if (resolved.source === "static_fallback") {
-    return NextResponse.json(buildStaticPayload());
+    return NextResponse.json(await buildStaticPayload());
   }
 
   // Phase 5 M5.10 — local disk fallback for any completed run with no DB artifact.
