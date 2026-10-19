@@ -1,0 +1,82 @@
+# TAG Terminology Collision — Read Before Touching Anything Named "TAG"
+
+This repo uses the acronym **TAG** for two unrelated concepts. They must never
+be merged, renamed into each other, or treated as interchangeable without
+explicit user approval. This file is the single source of truth for the
+distinction; inline comments elsewhere point back here.
+
+## 1. Legacy / internal meaning: Temporal Assessment Graph
+
+Graph-structural features extracted from a learner's event trajectory, used
+as an additional feature block for the Sequential Analysis models.
+
+- Feature columns: `tag_node_count`, `tag_edge_count`, `tag_entropy`, and
+  other `tag_graph_features` entries.
+- Model: **TAG-based LR** (`TAG-based Logistic Regression`), a graph-only
+  baseline distinct from the Behavioral LR.
+- Experiment tracks on LSTM/GRU:
+  - **EXP-A** = "Sequence only" (no TAG features).
+  - **EXP-B** = "Sequence + TAG[graph]" (sequence + Temporal Assessment Graph
+    features).
+- Where it lives in code (non-exhaustive):
+  - `app/researcher/behavioral-analysis/page.tsx` — currently mixes this into
+    the Behavioral taxonomy display (flagged for cleanup in a later
+    milestone, not fixed by M5.31A).
+  - `app/api/researcher/sequential-analysis/route.ts` — artifact wiring for
+    TAG-based LR and EXP-A/EXP-B.
+  - `app/researcher/_components/AnalysisResultView.tsx` — `TagStructure`
+    type, "TAG Structure (Temporal Assessment Graph)" section.
+  - `lib/research-artifacts/phase4/tag_manifest_v1.json`.
+  - `app/researcher/model-results/page.tsx` — Seed Stability section, labeled
+    with an explicit footnote: *"TAG here = Temporal Assessment Graph
+    (graph-structural features), not Traditional Auto Grading."*
+  - `app/researcher/analytics-summary/page.tsx` — BSSA Feature-Group
+    Inventory group `"TAG-based (Temporal Assessment Graph)"`.
+
+**Do not mass-rename this without explicit approval.** It is frozen Phase 4
+pipeline terminology; renaming it retroactively would require re-validating
+every artifact/manifest that references these column and model names.
+
+## 2. New thesis-facing meaning: Traditional Auto Grading
+
+The traditional automated-grading baseline: **Final Result Only →
+Correct/Incorrect**. Per the locked architecture (see
+`docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md`), this is the
+**Method** used by **Final Result Analysis**, one of the five parallel
+Analysis paths. **There is no separate "TAG Analysis" nav item — TAG lives
+inside Final Result Analysis.**
+
+- Live page + route: `app/researcher/final-result-analysis/page.tsx` +
+  `app/api/researcher/final-result-analysis/route.ts` — dataset table
+  (mirrors Sequential Analysis's browsing concept) with a live TAG summary
+  per dataset, read from `trn_submissions.is_passed` / `final_score` (the
+  real recorded outcome — not a proxy_behavioral label, not a trained
+  model). No pipeline-run lifecycle (no Run/pending/running/Compare) —
+  TAG has nothing to train.
+- Placeholder row in the model comparison table: `app/researcher/model-
+  results/page.tsx`'s `TARGET_MODEL_ORDER`, entry `"Traditional Auto
+  Grading"` — rendered via `NotYetRunRow` ("Not yet run — no trained model
+  artifact exists.") since Final Result Analysis's live TAG summary is not
+  wired into that artifact's model-comparison table (deliberately —
+  computing an "accuracy" for TAG against the pipeline's at-risk target
+  would require a separate join against the frozen split/label ledger;
+  see the route's header comment).
+
+## Rule going forward
+
+- In any **new** thesis-facing Researcher UI, spell out **"Traditional Auto
+  Grading"** in full wherever a bare "TAG" could be ambiguous. Only use the
+  bare acronym "TAG" once the full name has already been introduced in the
+  same view.
+- In any **existing** legacy code/artifact, "TAG" continues to mean
+  **Temporal Assessment Graph** unless a specific, approved milestone
+  renames it (with a full inventory + migration of dependent artifacts).
+- **BSSI** (Behavioral–Sequential–Semantic Integration) and **BSSM**
+  (Behavioral–Sequential–Semantic Model) are the locked terms for the
+  integration analysis path and its future predictive model — see
+  `docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md`. These are unrelated
+  to either meaning of "TAG" above; do not conflate them.
+- If you are unsure which meaning applies at a given call site, check this
+  file first, then check the surrounding artifact/table name
+  (`tag_manifest_v1.json`, `tag_node_count`, "TAG-based LR" → legacy;
+  "Traditional Auto Grading", "Final Result Only" → new) before editing.

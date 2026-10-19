@@ -61,11 +61,35 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 4
+  // 4 — M5.31-R1: Final Result Analysis, one of the five parallel Analysis
+  // paths (see docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md). Method:
+  // Traditional Auto Grading (TAG) — Final Result Only -> Correct/Incorrect.
+  // "TAG" here is the NEW thesis-facing meaning, DISTINCT from the
+  // legacy/internal "TAG" = Temporal Assessment Graph used in Sequential
+  // Analysis (tag_node_count, tag_edge_count, tag_entropy, TAG-based LR,
+  // EXP-B). See docs/TAG_TERMINOLOGY.md. There is no separate "TAG
+  // Analysis" nav item — TAG lives inside this page. It reports the real
+  // recorded trn_submissions.is_passed outcome live — not a proxy label,
+  // not a trained model.
   {
     stepNumber: 4,
+    title: "Final Result Analysis",
+    description: "Traditional Auto Grading (TAG) — Final Result Only → Correct/Incorrect. Distinct from the legacy Temporal Assessment Graph used in Sequential Analysis.",
+    href: "/researcher/final-result-analysis",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6M9 8h1M5 4.5h14a1.5 1.5 0 011.5 1.5v13.5a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5V6A1.5 1.5 0 015 4.5z" />
+      </svg>
+    ),
+    available: true,
+  },
+  // 5 — M5.31-R4: Behavioral Features -> LR/RF (models not yet trained).
+  // No longer mixes in Sequential/legacy-TAG content — see
+  // docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md.
+  {
+    stepNumber: 5,
     title: "Behavioral Analysis",
-    description: "Examine learner behavioral patterns, BSSA feature profiles, and sequence-level engagement indicators.",
+    description: "Behavioral Features (attempts, errors, retries, engagement) → LR / RF. 8 of 14 Phase 4 features implemented; models not yet trained.",
     href: "/researcher/behavioral-analysis",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
@@ -74,9 +98,9 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 5
+  // 6
   {
-    stepNumber: 5,
+    stepNumber: 6,
     title: "Sequential Analysis",
     description: "Sequence-aware learner behavior and temporal learning patterns across coding attempts.",
     href: "/researcher/sequential-analysis",
@@ -87,28 +111,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
-  // 6
+  // 7
   {
-    stepNumber: 6,
+    stepNumber: 7,
     title: "Semantic Analysis",
     description: "Semantic interpretation of learner solutions, responses, and generated artifacts.",
     href: "/researcher/semantic-analysis",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z" />
-      </svg>
-    ),
-    available: true,
-  },
-  // 7
-  {
-    stepNumber: 7,
-    title: "Assessment Analysis",
-    description: "Assessment evidence, rubric dimensions, and 2C3L-related analysis across learner submissions.",
-    href: "/researcher/assessment-analysis",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
       </svg>
     ),
     available: true,
@@ -126,9 +137,45 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 9
+  // 9 — M5.31-R1: BSSI Analysis, one of the five parallel Analysis paths.
+  // BSSI = Behavioral–Sequential–Semantic Integration (feature/evidence
+  // construction, NOT itself a predictive model). BSSM = the predictive
+  // model operating on BSSI Features (not yet defined/trained — see
+  // docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md). This page shows
+  // domain availability + a model×domain usage matrix derived from the
+  // frozen Phase 4 artifact. It does NOT invent or display a combined
+  // BSSI/BSSM score — the "Combined / Full BSSI" section reports status
+  // honestly as not_implemented (no full BSSI pipeline artifact exists in
+  // Phase 4 yet). BSSI must not depend on the six single-domain models'
+  // predictions — this page only reads feature-domain availability.
   {
     stepNumber: 9,
+    title: "BSSI Analysis",
+    description: "Behavioral–Sequential–Semantic Integration (BSSI) status — domain availability and model usage. No combined BSSI/BSSM pipeline artifact exists in Phase 4 yet.",
+    href: "/researcher/bssi-analysis",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m0-15a3 3 0 100 6 3 3 0 000-6zm0 15a3 3 0 100-6 3 3 0 000 6zm-7.5-7.5a3 3 0 106 0 3 3 0 00-6 0zm15 0a3 3 0 10-6 0 3 3 0 006 0z" />
+      </svg>
+    ),
+    available: true,
+  },
+  // 10
+  {
+    stepNumber: 10,
+    title: "Assessment Analysis",
+    description: "Assessment evidence, rubric dimensions, and 2C3L-related analysis across learner submissions.",
+    href: "/researcher/assessment-analysis",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+      </svg>
+    ),
+    available: true,
+  },
+  // 11
+  {
+    stepNumber: 11,
     title: "Model Results",
     description: "View Phase 4 pilot model comparison: Dummy, LR, RF, TAG-LR, LSTM, GRU — pipeline validation only.",
     href: "/researcher/model-results",
@@ -139,9 +186,9 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 10
+  // 12
   {
-    stepNumber: 10,
+    stepNumber: 12,
     title: "Learning Outcomes",
     description: "Track at-risk prediction outcomes, assessment rubric scores, and learning progression across pilot cohorts.",
     href: "/researcher/learning-outcomes",
@@ -152,9 +199,24 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 11
+  // 13 — M5.31A: Teacher Review already exists as a working page/route
+  // (app/researcher/teacher-review); it was simply missing from this nav.
+  // No backend/page changes here, navigation entry only.
   {
-    stepNumber: 11,
+    stepNumber: 13,
+    title: "Teacher Review",
+    description: "Review teacher-confirmed labels and overrides against pilot proxy_behavioral predictions.",
+    href: "/researcher/teacher-review",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6 text-[#F37021]">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    available: true,
+  },
+  // 14
+  {
+    stepNumber: 14,
     title: "Hypothesis Summary",
     description: "Review research hypotheses, evaluation criteria, and pilot-phase findings against the thesis research contract.",
     href: "/researcher/hypothesis-summary",
@@ -165,9 +227,9 @@ const NAV_ITEMS: NavItem[] = [
     ),
     available: true,
   },
-  // 12
+  // 15
   {
-    stepNumber: 12,
+    stepNumber: 15,
     title: "Research Summary",
     description: "Package validated research outputs — dataset profile, feature summaries, model comparison, and reproducibility metadata — into tables, figures, and captions suitable for research reporting.",
     href: "/researcher/report-summary",
