@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { getOrCreateCurrentProfile } from "@/services/profile-service";
+import { getRoleHomePath } from "@/lib/role-home";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,12 +25,7 @@ export default function LoginPage() {
         return;
       }
 
-      if (profile.role === "teacher" || profile.role === "admin") {
-        router.push("/teacher/dashboard");
-        return;
-      }
-
-      router.push("/student/dashboard");
+      router.push(getRoleHomePath(profile.role));
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Login failed.");
     } finally {
