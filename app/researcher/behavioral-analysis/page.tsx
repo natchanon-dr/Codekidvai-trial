@@ -1,109 +1,133 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+// ---------------------------------------------------------------------------
+// Behavioral Analysis — one of the five parallel Analysis paths (see
+// docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md, M5.31-R4). Input:
+// Behavioral Features. Predictive Models: LR / RF (not wired here yet — no
+// model has been trained against these features; this page shows the
+// real, live-computed feature values only).
+//
+// M5.31-R4 fix: this page was previously 100% static (hardcoded taxonomy,
+// no API call) and mixed Sequential/legacy-TAG content ("Sequence-Tensor
+// Features (EXP-A/EXP-B)", tag_node_count/tag_edge_count/tag_entropy) into
+// the Behavioral taxonomy — those belong to Sequential Analysis, not here
+// (see docs/TAG_TERMINOLOGY.md). This page now calls its own dedicated
+// route (/api/researcher/behavioral-analysis), which reuses the exact same
+// computeBehavioralResult() formula the pipeline worker uses, and shows
+// ONLY the 8 implemented Behavioral features (Dummy/LR/RF domain) — the 6
+// deferred features are listed honestly, not fabricated.
+// ---------------------------------------------------------------------------
+
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBreadcrumb";
+import { TaskTypeIcon } from "@/lib/task-type-utils";
+
+const PAGE_SIZE = 10;
+const DATASET_TASK_TYPES_IN_SCOPE = ["sql_text", "stored_procedure", "sql_block", "er_diagram"] as const;
+const DATASET_TASK_LABEL: Record<string, string> = {
+  sql_text: "SQL Query",
+  sql_block: "Query Block",
+  stored_procedure: "Stored Procedure",
+  er_diagram: "ER Diagram",
+};
+
+type BehavioralResult = {
+  implemented_feature_count: number;
+  deferred_feature_count: number;
+  deferred_features: string[];
+  learner_count: number;
+  aggregate: {
+    avg_total_sessions: number;
+    avg_attempt_success_rate: number;
+    avg_error_rate: number;
+    avg_submission_rate: number;
+    avg_session_duration_seconds: number;
+  };
+};
+
+type BehavioralDatasetRecord = {
+  id: string;
+  code: string;
+  name: string;
+  batch_type: string;
+  set_family: string;
+  task_type: string | null;
+  active: boolean;
+  created_at: string;
+  behavioral: BehavioralResult | { error: string } | null;
+};
+
+type ListResponse = {
+  note: string;
+  datasets: BehavioralDatasetRecord[];
+  filter_options: { batch_types: string[]; set_families: string[]; task_types: string[] };
+};
+
+function isResult(b: BehavioralDatasetRecord["behavioral"]): b is BehavioralResult {
+  return !!b && "aggregate" in b;
+}
 
 // ---------------------------------------------------------------------------
-// Static feature taxonomy — matches NB02 / NB03 flat_behavioral + sequence
-// feature engineering (pipeline v1). Update when Phase 5 C data is collected.
+// Icons (matching Dataset Analytics / Sequential Analysis style)
 // ---------------------------------------------------------------------------
 
-const FEATURE_GROUPS = [
-  {
-    id: "block_events",
-    label: "Block Coding Events",
-    color: "bg-violet-100 text-violet-700 border-violet-200",
-    dot: "bg-violet-500",
-    features: [
-      { name: "block_add_count",      desc: "Total block addition events in session" },
-      { name: "block_delete_count",   desc: "Total block deletion / undo events" },
-      { name: "block_move_count",     desc: "Block drag / repositioning events" },
-      { name: "block_type_entropy",   desc: "Shannon entropy over block type distribution (diversity)" },
-      { name: "unique_block_types",   desc: "Count of distinct block categories used" },
-      { name: "early_block_rate",     desc: "Fraction of blocks added in first quartile of session" },
-    ],
-  },
-  {
-    id: "sql_runs",
-    label: "SQL Execution Patterns",
-    color: "bg-sky-100 text-sky-700 border-sky-200",
-    dot: "bg-sky-500",
-    features: [
-      { name: "sql_run_count",        desc: "Total SQL execution attempts" },
-      { name: "sql_success_rate",     desc: "Fraction of SQL runs returning a result set" },
-      { name: "sql_error_rate",       desc: "Fraction of SQL runs producing syntax / runtime errors" },
-      { name: "sql_retry_count",      desc: "Re-runs on the same task after an error" },
-      { name: "first_success_latency",desc: "Time (s) from session start to first successful SQL run" },
-      { name: "query_complexity_avg", desc: "Average estimated complexity (clause count) per query" },
-    ],
-  },
-  {
-    id: "error_patterns",
-    label: "Error & Correction Patterns",
-    color: "bg-rose-100 text-rose-700 border-rose-200",
-    dot: "bg-rose-500",
-    features: [
-      { name: "error_burst_count",    desc: "Number of consecutive-error bursts (≥ 3 errors in a row)" },
-      { name: "recovery_speed_avg",   desc: "Average time (s) from error to next successful attempt" },
-      { name: "error_diversity",      desc: "Count of distinct error types encountered" },
-      { name: "self_correction_rate", desc: "Fraction of errors resolved without hint" },
-      { name: "hint_request_count",   desc: "Explicit hint / check-answer requests" },
-    ],
-  },
-  {
-    id: "temporal",
-    label: "Temporal Engagement",
-    color: "bg-amber-100 text-amber-700 border-amber-200",
-    dot: "bg-amber-500",
-    features: [
-      { name: "session_duration_s",   desc: "Total active session duration in seconds" },
-      { name: "idle_gap_max_s",       desc: "Longest continuous idle gap (proxy for disengagement)" },
-      { name: "active_fraction",      desc: "Fraction of session time with at least one event per minute" },
-      { name: "task_switch_count",    desc: "Number of times learner switched between tasks" },
-      { name: "late_session_activity",desc: "Fraction of events occurring in final quartile" },
-    ],
-  },
-  {
-    id: "sequence_features",
-    label: "Sequence-Tensor Features (EXP-A / EXP-B)",
-    color: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    dot: "bg-emerald-500",
-    features: [
-      { name: "event_token_ids",      desc: "Canonical integer tokens per event type (vocabulary_v1.json)" },
-      { name: "scaled_numerics",      desc: "Per-step numeric features normalised via scaler_v1.json" },
-      { name: "padding_mask",         desc: "Boolean mask for padded positions (max_len = 95th percentile)" },
-      { name: "tag_node_count",       desc: "[EXP-B] Number of nodes in Temporal Assessment Graph" },
-      { name: "tag_edge_count",       desc: "[EXP-B] Number of directed edges in TAG" },
-      { name: "tag_entropy",          desc: "[EXP-B] Shannon entropy over TAG node type distribution" },
-    ],
-  },
-] as const;
+function StarIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+    </svg>
+  );
+}
 
-const PIPELINE_STATUS = [
-  { label: "Canonical event vocab",  status: "ready",   note: "vocabulary_v1.json — NB05" },
-  { label: "Feature scaler",         status: "ready",   note: "scaler_v1.json — NB05" },
-  { label: "Flat feature extraction",status: "ready",   note: "NB02 flat_behavioral feature set" },
-  { label: "Sequence tensor build",  status: "ready",   note: "NB05 sequence_tensors" },
-  { label: "TAG feature extraction", status: "ready",   note: "NB08 tag_graph_features" },
-  { label: "Per-learner profiles",   status: "phase5c", note: "Requires real cohort data" },
-  { label: "Feature importance plot",status: "phase5c", note: "Requires ≥ 60 learners" },
-  { label: "SHAP explainability",    status: "phase5c", note: "Requires teacher-reviewed labels" },
-] as const;
+function DumbbellIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6.5 6.5h1v11h-1z" /><path d="M16.5 6.5h1v11h-1z" />
+      <path d="M4.5 8.5h3" /><path d="M16.5 8.5h3" />
+      <path d="M4.5 15.5h3" /><path d="M16.5 15.5h3" />
+      <path d="M7.5 12h9" />
+    </svg>
+  );
+}
+
+function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+    </svg>
+  );
+}
+
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
 
 // ---------------------------------------------------------------------------
-// Page
+// Main page
 // ---------------------------------------------------------------------------
 
 export default function BehavioralAnalysisPage() {
   const router = useRouter();
   const profileRef = useRef<HTMLDivElement>(null);
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [participantCode, setParticipantCode] = useState<string | null>(null);
+
+  const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [batchTypeFilter, setBatchTypeFilter] = useState("");
+  const [setFamilyFilter, setSetFamilyFilter] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("");
+
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     async function init() {
@@ -125,16 +149,13 @@ export default function BehavioralAnalysisPage() {
       setDisplayName(prof?.display_name ?? null);
       setEmail(user?.email ?? null);
       setParticipantCode(prof?.participant_code ?? null);
-      setLoading(false);
     }
-    init();
+    void init();
   }, [router]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -145,10 +166,64 @@ export default function BehavioralAnalysisPage() {
     router.push("/auth/login");
   }
 
-  if (loading) {
+  const loadData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/auth/login"); return; }
+
+    setLoading(true);
+    setError(null);
+
+    const res = await fetch("/api/researcher/behavioral-analysis", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({ error: "Request failed" }));
+      setError((j as { error?: string }).error ?? "Failed to load data.");
+      setLoading(false);
+      return;
+    }
+
+    setData(await res.json() as ListResponse);
+    setLoading(false);
+  }, [router]);
+
+  useEffect(() => { queueMicrotask(() => { void loadData(); }); }, [loadData]);
+
+  const filteredDatasets = (data?.datasets ?? []).filter((ds) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!ds.code.toLowerCase().includes(q) && !ds.name.toLowerCase().includes(q)) return false;
+    }
+    if (batchTypeFilter && ds.batch_type !== batchTypeFilter) return false;
+    if (setFamilyFilter && ds.set_family !== setFamilyFilter) return false;
+    if (taskTypeFilter && ds.task_type !== taskTypeFilter) return false;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDatasets.length / PAGE_SIZE));
+  const pagedDatasets = filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  if (loading && !data) {
+    return <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">Loading...</div>;
+  }
+
+  if (error && !data) {
     return (
-      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center text-sm text-[#64748B]">
-        Loading…
+      <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 max-w-md">
+          <p className="font-semibold mb-1">Error loading data</p>
+          <p>{error}</p>
+          <button onClick={() => void loadData()} className="mt-3 text-xs text-red-600 underline">Retry</button>
+        </div>
       </div>
     );
   }
@@ -199,115 +274,283 @@ export default function BehavioralAnalysisPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <ResearcherBreadcrumb current="Behavioral Analysis" />
 
         {/* Title */}
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-0 space-y-1">
-            <h1 className="text-2xl font-bold text-[#0F172A]">Behavioral Analysis</h1>
-            <p className="text-sm text-[#64748B]">
-              Learner behavioral feature taxonomy, BSSA extraction pipeline status, and
-              sequence-level engagement indicators. Per-learner profiles available after
-              Phase 5 C real-data collection.
-            </p>
-          </div>
-          <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-amber-100 text-amber-700 border-amber-200">
-            Phase 5 B — Pipeline Ready
-          </span>
-        </div>
-
-        {/* Pipeline status */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
-          <div className="px-6 py-4 border-b border-[#FED7AA]">
-            <h2 className="text-sm font-bold text-[#0F172A]">Pipeline Component Status</h2>
-          </div>
-          <div className="divide-y divide-[#F1F5F9]">
-            {PIPELINE_STATUS.map(item => (
-              <div key={item.label} className="flex items-center gap-4 px-6 py-3">
-                <span
-                  className={`shrink-0 w-2 h-2 rounded-full ${item.status === "ready" ? "bg-emerald-500" : "bg-amber-400"}`}
-                />
-                <span className="flex-1 text-sm text-[#0F172A]">{item.label}</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                  item.status === "ready"
-                    ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                    : "bg-amber-100 text-amber-700 border-amber-200"
-                }`}>
-                  {item.status === "ready" ? "Ready" : "Phase 5 C"}
-                </span>
-                <span className="text-[11px] text-[#94A3B8] font-mono text-right shrink-0 hidden sm:block">
-                  {item.note}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Feature taxonomy */}
-        <div className="space-y-4">
-          <h2 className="text-sm font-bold text-[#0F172A] uppercase tracking-wide">
-            Feature Taxonomy (pipeline v1)
-          </h2>
-
-          {FEATURE_GROUPS.map(group => (
-            <section
-              key={group.id}
-              className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden"
-            >
-              {/* Group header */}
-              <div className="flex items-center gap-2 px-6 py-3 border-b border-[#F1F5F9]">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${group.dot}`} />
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${group.color}`}>
-                  {group.label}
-                </span>
-                <span className="text-[11px] text-[#94A3B8]">{group.features.length} features</span>
-              </div>
-
-              {/* Feature rows */}
-              <div className="divide-y divide-[#F1F5F9]">
-                {group.features.map(f => (
-                  <div key={f.name} className="flex items-start gap-4 px-6 py-2.5">
-                    <span className="font-mono text-[11px] text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-1.5 py-0.5 rounded shrink-0 mt-0.5 whitespace-nowrap">
-                      {f.name}
-                    </span>
-                    <span className="text-xs text-[#475569] leading-relaxed">{f.desc}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-
-        {/* Phase 5 C notice */}
-        <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-3">
-          <h2 className="text-sm font-bold text-[#0F172A]">Phase 5 C — Interactive Analysis</h2>
-          <p className="text-xs text-[#64748B]">
-            The following visualisations will be enabled once real-cohort behavioral data is
-            collected and teacher-reviewed labels are available:
+        <div>
+          <h1 className="text-xl font-bold text-[#0F172A]">Behavioral Analysis</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">
+            Behavioral Features → LR / RF (not yet trained). 8 of 14 Phase 4 features implemented.
           </p>
-          <ul className="space-y-2">
-            {[
-              "Per-learner feature heatmap (learner × feature matrix)",
-              "Event-type frequency distribution across at-risk vs. not-at-risk groups",
-              "Block-coding entropy trajectory plots (time-series per learner)",
-              "Random Forest feature importance rankings with confidence intervals",
-              "SHAP summary plot — top-10 features driving at-risk prediction",
-            ].map((item, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-amber-200 text-[10px] font-bold text-amber-500 shrink-0 mt-0.5">
-                  {i + 1}
-                </span>
-                <span className="text-sm text-[#475569]">{item}</span>
-              </li>
-            ))}
-          </ul>
+        </div>
+
+        {data && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            {data.note}
+          </div>
+        )}
+
+        {/* ── Filters (Sequential Analysis icon-only style) ── */}
+        <section className="bg-white border border-[#FED7AA] rounded-2xl p-5 flex flex-wrap items-end gap-4">
+          {/* Search */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Search</label>
+            <div className="relative">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Code or name…"
+                aria-label="Search datasets by code or name"
+                className="pl-9 pr-3 py-2.5 border border-[#FED7AA] rounded-xl bg-[#FFF7ED] text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#F37021] w-44"
+              />
+            </div>
+          </div>
+
+          {/* Batch Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Batch</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All batches" onClick={() => { setBatchTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Main" onClick={() => { setBatchTypeFilter(batchTypeFilter === "main" ? "" : "main"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "main" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <StarIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Trial" onClick={() => { setBatchTypeFilter(batchTypeFilter === "trial" ? "" : "trial"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${batchTypeFilter === "trial" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <DumbbellIcon className="w-4 h-4" />
+              </button>
+              <button type="button" title="Pilot" onClick={() => { setBatchTypeFilter(batchTypeFilter === "pilot" ? "" : "pilot"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${batchTypeFilter === "pilot" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <PaperAirplaneIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Activity Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Activity</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All activities" onClick={() => { setSetFamilyFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              <button type="button" title="Assignment" onClick={() => { setSetFamilyFilter(setFamilyFilter === "assignment" ? "" : "assignment"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "assignment" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M9 5h6"/><path d="M9 12h6"/><path d="M9 17h4"/>
+                  <path d="M5 7.5 6.5 9 9 6"/><path d="M5 14.5 6.5 16 9 13"/>
+                  <rect x="4" y="3" width="16" height="18" rx="2"/>
+                </svg>
+              </button>
+              <button type="button" title="Lab" onClick={() => { setSetFamilyFilter(setFamilyFilter === "lab" ? "" : "lab"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 border-r border-[#FED7AA] transition-colors ${setFamilyFilter === "lab" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M10 2v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17L14 8V2"/>
+                  <path d="M8 2h8"/><path d="M7 15h10"/>
+                </svg>
+              </button>
+              <button type="button" title="Exam" onClick={() => { setSetFamilyFilter(setFamilyFilter === "exam" ? "" : "exam"); setPage(1); }}
+                className={`flex items-center justify-center px-3 py-2.5 transition-colors ${setFamilyFilter === "exam" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <path d="M14 2v6h6"/><path d="M9 14h6"/><path d="M9 18h4"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Task Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[#64748B] font-medium">Task</label>
+            <div className="flex rounded-xl border border-[#FED7AA] overflow-hidden bg-white">
+              <button type="button" title="All task types" onClick={() => { setTaskTypeFilter(""); setPage(1); }}
+                className={`px-3 py-2.5 text-xs font-semibold border-r border-[#FED7AA] transition-colors ${taskTypeFilter === "" ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                All
+              </button>
+              {DATASET_TASK_TYPES_IN_SCOPE.map((v, i) => (
+                <button key={v} type="button" title={DATASET_TASK_LABEL[v]}
+                  onClick={() => { setTaskTypeFilter(taskTypeFilter === v ? "" : v); setPage(1); }}
+                  className={`flex items-center justify-center px-3 py-2.5 ${i < DATASET_TASK_TYPES_IN_SCOPE.length - 1 ? "border-r border-[#FED7AA]" : ""} transition-colors ${taskTypeFilter === v ? "bg-[#F37021] text-white" : "text-[#64748B] hover:bg-[#FFF7ED]"}`}>
+                  <TaskTypeIcon type={v} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Clear All */}
+          {(search || batchTypeFilter || setFamilyFilter || taskTypeFilter) && (
+            <button type="button" onClick={() => { setSearch(""); setBatchTypeFilter(""); setSetFamilyFilter(""); setTaskTypeFilter(""); setPage(1); }}
+              className="self-end pb-[11px] text-xs font-semibold text-[#F37021] hover:underline">
+              Clear All
+            </button>
+          )}
         </section>
 
-        {/* Footer */}
-        <p className="text-center text-[11px] text-[#94A3B8] pb-4">
-          Read-only · Feature taxonomy v1.0 · Phase 5 B pipeline ready · Phase 5 C pending
-        </p>
+        {/* ── Dataset Table ── */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          {loading ? (
+            <p className="text-sm text-[#94A3B8] py-6 text-center">Loading…</p>
+          ) : error ? (
+            <div className="m-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700">{error}</div>
+          ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px]">
+              <thead>
+                <tr className="bg-[#FFF7ED] border-b-2 border-[#FED7AA]">
+                  {[
+                    { label: "Code",      align: "left"   },
+                    { label: "Name",      align: "left"   },
+                    { label: "Batch",     align: "center" },
+                    { label: "Activity",  align: "center" },
+                    { label: "Task Type", align: "center" },
+                    { label: "Learners",  align: "center" },
+                    { label: "Success Rate", align: "center" },
+                    { label: "Error Rate", align: "center" },
+                    { label: "Submission Rate", align: "center" },
+                    { label: "Avg Duration (s)", align: "center" },
+                    { label: "",          align: "center" },
+                  ].map(({ label, align }, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-[10px] font-bold text-[#F37021] uppercase tracking-widest whitespace-nowrap ${align === "center" ? "text-center" : "text-left"}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pagedDatasets.length === 0 && (
+                  <tr>
+                    <td colSpan={11} className="text-center py-10 text-[#94A3B8] text-sm">No datasets found.</td>
+                  </tr>
+                )}
+                {pagedDatasets.map((ds) => {
+                  const isExpanded = expandedIds.has(ds.id);
+                  const b = ds.behavioral;
+                  const hasResult = isResult(b);
+                  return (
+                    <Fragment key={ds.id}>
+                      <tr
+                        className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] transition-colors cursor-pointer"
+                        onClick={() => toggleExpanded(ds.id)}
+                      >
+                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
+                          <span className="font-mono text-[11px] font-bold text-[#F37021] bg-[#FFF7ED] border border-[#FED7AA] px-2 py-1 rounded-lg tracking-widest">
+                            {ds.code}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3.5 align-middle min-w-[140px]">
+                          <span className="text-xs text-[#0F172A] font-medium leading-snug">{ds.name}</span>
+                        </td>
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.batch_type === "main"  && <span title="Main"  className="inline-flex items-center justify-center text-[#F37021]"><StarIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "trial" && <span title="Trial" className="inline-flex items-center justify-center text-[#F37021]"><DumbbellIcon className="w-4 h-4" /></span>}
+                          {ds.batch_type === "pilot" && <span title="Pilot" className="inline-flex items-center justify-center text-[#F37021]"><PaperAirplaneIcon className="w-4 h-4" /></span>}
+                          {!["main","trial","pilot"].includes(ds.batch_type) && <span className="text-[10px] text-[#94A3B8]">{ds.batch_type || "—"}</span>}
+                        </td>
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          <span title={ds.set_family} className="inline-flex items-center justify-center text-[#64748B]">
+                            {ds.set_family === "assignment" && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg>}
+                            {ds.set_family === "lab"        && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 3h6v7l4 8H5L9 10z"/><line x1="6" y1="14" x2="18" y2="14"/></svg>}
+                            {ds.set_family === "exam"       && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
+                            {!["assignment","lab","exam"].includes(ds.set_family) && <span className="text-[10px] text-[#94A3B8]">{ds.set_family || "—"}</span>}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3.5 text-center align-middle">
+                          {ds.task_type ? (
+                            <span title={DATASET_TASK_LABEL[ds.task_type] ?? ds.task_type} className="inline-flex items-center justify-center text-[#64748B]">
+                              <TaskTypeIcon type={ds.task_type} />
+                            </span>
+                          ) : (
+                            <span title="All (Exam)" className="text-[10px] font-mono font-bold text-[#94A3B8]">EX</span>
+                          )}
+                        </td>
+                        {hasResult ? (
+                          <>
+                            <td className="px-2 py-3.5 text-center align-middle">
+                              <span className="font-mono text-xs text-[#475569]">{b.learner_count}</span>
+                            </td>
+                            <td className="px-2 py-3.5 text-center align-middle">
+                              <span className="font-mono text-xs text-green-700">{pct(b.aggregate.avg_attempt_success_rate)}</span>
+                            </td>
+                            <td className="px-2 py-3.5 text-center align-middle">
+                              <span className="font-mono text-xs text-red-600">{pct(b.aggregate.avg_error_rate)}</span>
+                            </td>
+                            <td className="px-2 py-3.5 text-center align-middle">
+                              <span className="font-mono text-xs text-[#0F172A]">{pct(b.aggregate.avg_submission_rate)}</span>
+                            </td>
+                            <td className="px-2 py-3.5 text-center align-middle">
+                              <span className="font-mono text-xs text-[#475569]">{Math.round(b.aggregate.avg_session_duration_seconds)}</span>
+                            </td>
+                          </>
+                        ) : (
+                          <td colSpan={5} className="px-3 py-3.5 text-center align-middle text-[10px] text-[#94A3B8] italic">
+                            {b && "error" in b ? b.error : "No data."}
+                          </td>
+                        )}
+                        <td className="px-3 py-3.5 text-center align-middle">
+                          <svg
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                            strokeLinecap="round" strokeLinejoin="round"
+                            className={`w-4 h-4 text-[#94A3B8] transition-transform mx-auto ${isExpanded ? "rotate-180" : ""}`}
+                            aria-hidden="true"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </td>
+                      </tr>
+
+                      {isExpanded && hasResult && (
+                        <tr className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                          <td colSpan={11} className="px-8 py-3">
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-[#475569]">
+                              <span>Avg sessions/learner: <strong className="text-[#0F172A]">{b.aggregate.avg_total_sessions}</strong></span>
+                              <span>Implemented features: <strong className="text-[#0F172A]">{b.implemented_feature_count}/14</strong></span>
+                              <span className="text-[#94A3B8] italic">
+                                Deferred ({b.deferred_feature_count}): {b.deferred_features.join(", ")}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#FED7AA] bg-[#FFF7ED]">
+              <span className="text-xs text-[#64748B]">
+                Page {page} of {totalPages} ({filteredDatasets.length} datasets)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 rounded-lg text-xs border border-[#FED7AA] bg-white text-[#F37021] hover:bg-[#FFF7ED] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

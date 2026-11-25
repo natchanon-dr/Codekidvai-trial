@@ -470,6 +470,38 @@ export default function SemanticAnalysisPage() {
           </div>
         </section>
 
+        {/* ── Semantic Predictive Models (SVM / XGBoost) ────────────── */}
+        {/* M5.31-R6: distinct from the Semantic Analysis Methods above
+            (TF-IDF/K-Means/SVD/cosine similarity, NB10-12 — descriptive,
+            already implemented). SVM/XGBoost are the Semantic Predictive
+            Models per docs/RESEARCHER_ANALYSIS_ARCHITECTURE_CONTRACT.md.
+            Neither has been trained — zero occurrences of either on this
+            page until a real model exists. Do not fabricate results. */}
+        <section className="bg-white rounded-2xl border border-[#FED7AA] overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-[#F1F5F9]">
+            <span className="text-sm font-bold text-[#0F172A]">Semantic Predictive Models</span>
+            <span className="ml-auto text-[10px] font-mono text-slate-400">SVM · XGBoost</span>
+          </div>
+          <div className="px-6 py-5 space-y-2">
+            <p className="text-xs text-[#64748B]">
+              Distinct from the Semantic Analysis Methods above (TF-IDF / K-Means / SVD / cosine
+              similarity — descriptive feature construction, already implemented). SVM and XGBoost
+              are the Semantic Predictive Models targeted by the updated methodology; neither has
+              been trained yet.
+            </p>
+            {["SVM", "XGBoost"].map((model) => (
+              <div key={model} className="flex items-center justify-between rounded-lg bg-[#FAFAFA] border border-[#F1F5F9] px-3 py-2">
+                <span className="text-xs font-semibold text-[#94A3B8]">{model}</span>
+                <span className="text-[11px] text-[#94A3B8] italic">Not yet trained — no model artifact exists.</span>
+              </div>
+            ))}
+            <p className="text-[11px] text-amber-700 italic pt-1">
+              Building these requires re-fitting NB11/NB12&apos;s TF-IDF/K-Means/scaler/SVD
+              train-only against the canonical split — not yet done (see M5.31-R7).
+            </p>
+          </div>
+        </section>
+
         {/* Footer */}
         <p className="text-center text-[11px] text-[#94A3B8] pb-4">
           Read-only · Semantic analysis v1.0 · Behavioral proxies only (no SQL text) ·{" "}

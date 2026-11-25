@@ -7,6 +7,7 @@ import { ResearcherBreadcrumb } from "@/app/researcher/_components/ResearcherBre
 import { SequentialAnalysisDetailModal } from "@/app/researcher/_components/SequentialAnalysisDetailModal";
 import { SequentialCompareModal } from "@/app/researcher/_components/SequentialCompareModal";
 import { TaskTypeIcon } from "@/lib/task-type-utils";
+import { StatusBadge } from "@/app/researcher/_components/AnalysisPrimitives";
 import type { SequentialDatasetRecord, SequentialRunRecord } from "@/app/api/researcher/sequential-analysis/route";
 
 // ---------------------------------------------------------------------------
@@ -87,25 +88,7 @@ function PaperAirplaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    completed: "bg-green-100 text-green-700 border-green-200",
-    pending: "bg-amber-100 text-amber-700 border-amber-200",
-    running: "bg-blue-100 text-blue-700 border-blue-200",
-    failed: "bg-red-100 text-red-700 border-red-200",
-    cancelled: "bg-gray-100 text-gray-600 border-gray-200",
-  };
-  const cls = colorMap[status] ?? "bg-gray-100 text-gray-600 border-gray-200";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
-      {status}
-    </span>
-  );
-}
+// StatusBadge moved to AnalysisPrimitives.tsx (M5.31-R2) — imported above.
 
 // ---------------------------------------------------------------------------
 // Main page

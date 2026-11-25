@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { getOrCreateCurrentProfile } from "@/services/profile-service";
 import { acceptResearchConsent } from "@/services/consent-service";
 import type { Profile } from "@/types/dataset";
+import { getRoleHomePath } from "@/lib/role-home";
 
 export default function ConsentPage() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function ConsentPage() {
     if (!profile || !checked) return;
     setLoading(true);
     await acceptResearchConsent(profile.profile_id);
-    router.push("/student/dashboard");
+    router.push(getRoleHomePath(profile.role));
   }
 
   return (

@@ -1,6 +1,14 @@
 "use client";
 
+import { Fragment, useState } from "react";
 import Link from "next/link";
+import {
+  SectionCard,
+  StatCell,
+  CheckBadge,
+  HashRow,
+  UnavailableSection,
+} from "./AnalysisPrimitives";
 
 // ---------------------------------------------------------------------------
 // Exported types
@@ -182,84 +190,40 @@ export type ArtifactPayload = {
   validation?: Validation | null;
   artifact_versions?: ArtifactVersions | null;
   limitations?: string[] | null;
+  by_learner?: LearnerRow[] | null;
+  by_learner_note?: string;
 };
 
 // ---------------------------------------------------------------------------
-// Private sub-components
+// M5.31-R5b — "By Learner" per-sequence LSTM/GRU predictions.
 // ---------------------------------------------------------------------------
 
-function SectionCard({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="bg-white rounded-2xl border border-[#FED7AA] px-6 py-5 space-y-4">
-      <div>
-        <h2 className="font-semibold text-[#0F172A] text-sm">{title}</h2>
-        {subtitle && <p className="text-[11px] text-[#64748B] mt-0.5">{subtitle}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
+type LearnerSequenceResult = {
+  task_id: string;
+  sequence_id: string;
+  y_pred: string;
+  y_true: string;
+  correct: boolean;
+  y_pred_prob: number;
+};
 
-function StatCell({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string | number;
-  note?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-      <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide">{label}</p>
-      <p className="text-xl font-bold text-[#0F172A] mt-0.5">{value}</p>
-      {note && <p className="text-[9px] text-[#94A3B8] mt-0.5 italic">{note}</p>}
-    </div>
-  );
-}
+type LearnerModelSummary = {
+  seq_only: { total: number; correct: number; sequences: LearnerSequenceResult[] } | null;
+  seq_tag: { total: number; correct: number; sequences: LearnerSequenceResult[] } | null;
+};
 
-function CheckBadge({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <div
-      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
-        ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-      }`}
-    >
-      <span aria-hidden="true">{ok ? "✓" : "✗"}</span>
-      <span>{label}</span>
-    </div>
-  );
-}
+type LearnerRow = {
+  student_id: string;
+  lstm: LearnerModelSummary;
+  gru: LearnerModelSummary;
+};
 
-function HashRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-0.5">
-      <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide">{label}</p>
-      <code
-        className="block text-[10px] font-mono text-[#475569] break-all leading-relaxed"
-        style={{ wordBreak: "break-all" }}
-      >
-        {value}
-      </code>
-    </div>
-  );
-}
-
-function UnavailableSection({ title }: { title: string }) {
-  return (
-    <SectionCard title={title}>
-      <p className="text-xs text-[#94A3B8] italic">Not available for this run.</p>
-    </SectionCard>
-  );
-}
+// ---------------------------------------------------------------------------
+// Shared primitives (SectionCard/StatCell/CheckBadge/HashRow/
+// UnavailableSection) moved to AnalysisPrimitives.tsx (M5.31-R2) so other
+// Analysis pages (Final Result / Behavioral / Semantic / BSSI) can reuse
+// them instead of redefining — imported at the top of this file.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Exported component
@@ -284,7 +248,18 @@ export function AnalysisResultView({ artifact }: Props) {
     limitations,
     feature_scaler: fs,
     research_constraints: rc,
+    by_learner: byLearner,
+    by_learner_note: byLearnerNote,
   } = artifact;
+
+  const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
+  function toggleStudent(id: string) {
+    setExpandedStudents((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   const lims = limitations ?? [];
   const blockedParquet = lims.filter((l) => l.includes("parquet artifact"));
@@ -980,6 +955,108 @@ confirmatory_analysis_allowed = ${String(rc.confirmatory_analysis_allowed)}`}
               </div>
             </div>
           )}
+        </SectionCard>
+      )}
+
+      {/* ── Section 9b: By Learner (per-sequence LSTM/GRU predictions) ── */}
+      {!byLearner || byLearner.length === 0 ? (
+        <UnavailableSection title="By Learner" />
+      ) : (
+        <SectionCard title="By Learner" subtitle={byLearnerNote}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-[#F8FAFC] text-[#94A3B8] uppercase tracking-wide">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold">Student</th>
+                  <th className="text-right px-3 py-2 font-semibold">LSTM (seq only)</th>
+                  <th className="text-right px-3 py-2 font-semibold">LSTM (seq+TAG)</th>
+                  <th className="text-right px-3 py-2 font-semibold">GRU (seq only)</th>
+                  <th className="text-right px-3 py-2 font-semibold">GRU (seq+TAG)</th>
+                  <th className="text-center px-3 py-2 font-semibold"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {byLearner.map((row) => {
+                  const isOpen = expandedStudents.has(row.student_id);
+                  function cell(s: { total: number; correct: number } | null) {
+                    if (!s) return <span className="text-[#94A3B8] italic">—</span>;
+                    return <span className={s.correct === s.total ? "text-green-700" : "text-[#0F172A]"}>{s.correct}/{s.total}</span>;
+                  }
+                  return (
+                    <Fragment key={row.student_id}>
+                      <tr
+                        className="border-b border-[#F1F5F9] hover:bg-[#FFFBF7] cursor-pointer transition-colors"
+                        onClick={() => toggleStudent(row.student_id)}
+                      >
+                        <td className="px-3 py-2 font-mono text-[#0F172A]">{row.student_id}</td>
+                        <td className="px-3 py-2 text-right font-mono">{cell(row.lstm.seq_only)}</td>
+                        <td className="px-3 py-2 text-right font-mono">{cell(row.lstm.seq_tag)}</td>
+                        <td className="px-3 py-2 text-right font-mono">{cell(row.gru.seq_only)}</td>
+                        <td className="px-3 py-2 text-right font-mono">{cell(row.gru.seq_tag)}</td>
+                        <td className="px-3 py-2 text-center">
+                          <svg
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                            strokeLinecap="round" strokeLinejoin="round"
+                            className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform inline-block ${isOpen ? "rotate-180" : ""}`}
+                            aria-hidden="true"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="border-b border-[#F1F5F9] bg-[#FAFAFA]">
+                          <td colSpan={6} className="px-6 py-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {([
+                                { label: "LSTM — Sequence only", data: row.lstm.seq_only },
+                                { label: "LSTM — Sequence + TAG*", data: row.lstm.seq_tag },
+                                { label: "GRU — Sequence only", data: row.gru.seq_only },
+                                { label: "GRU — Sequence + TAG*", data: row.gru.seq_tag },
+                              ] as const).map(({ label, data }) => (
+                                <div key={label}>
+                                  <p className="text-[10px] font-semibold text-[#64748B] mb-1">{label}</p>
+                                  {!data || data.sequences.length === 0 ? (
+                                    <p className="text-[10px] text-[#94A3B8] italic">No sequences.</p>
+                                  ) : (
+                                    <table className="w-full text-[10px]">
+                                      <thead className="text-[#94A3B8] uppercase tracking-wide">
+                                        <tr>
+                                          <th className="text-left py-1 font-semibold">Task</th>
+                                          <th className="text-center py-1 font-semibold">Pred</th>
+                                          <th className="text-center py-1 font-semibold">True</th>
+                                          <th className="text-center py-1 font-semibold">Result</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {data.sequences.map((seq) => (
+                                          <tr key={seq.sequence_id}>
+                                            <td className="py-0.5 font-mono text-[#64748B]">{seq.task_id}</td>
+                                            <td className="py-0.5 text-center font-mono">{seq.y_pred}</td>
+                                            <td className="py-0.5 text-center font-mono">{seq.y_true}</td>
+                                            <td className="py-0.5 text-center">
+                                              <CheckBadge ok={seq.correct} label={seq.correct ? "Correct" : "Wrong"} />
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-[#94A3B8] italic">
+            *TAG here = Temporal Assessment Graph (graph-structural features), not Traditional Auto Grading.
+          </p>
         </SectionCard>
       )}
 
