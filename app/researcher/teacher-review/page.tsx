@@ -23,14 +23,37 @@ interface LearnerBatchRecord {
 
 interface Summary {
   total_learner_batches: number;
-  teacher_reviewed: number;
+  total_participants: number;
+  teacher_reviewed: number;               // learner-batch records
+  teacher_reviewed_participants: number;  // unique participants
   pilot_only: number;
   invalid: number;
   at_risk_count: number;
   not_risk_count: number;
-  threshold_target: number;
+  threshold_target: number;               // unique participants
   threshold_pct: number;
+  participant_threshold_met: boolean;
+  group_split_target: { experimental: number; control: number };
+  group_split_verified: boolean;
   confirmatory_ready: boolean;
+}
+
+function confirmatoryGateMessage(sm: Summary): string {
+  if (sm.confirmatory_ready) {
+    return `✓ Confirmatory analysis gate open — ${sm.teacher_reviewed_participants} unique teacher-reviewed participants and a verified ${sm.group_split_target.experimental}/${sm.group_split_target.control} experimental/control split.`;
+  }
+  const reasons: string[] = [];
+  if (!sm.participant_threshold_met) {
+    reasons.push(
+      `need ${sm.threshold_target - sm.teacher_reviewed_participants} more unique teacher-reviewed participants (${sm.threshold_target} required; learner-batch records are not counted separately)`,
+    );
+  }
+  if (!sm.group_split_verified) {
+    reasons.push(
+      `the ${sm.group_split_target.experimental} experimental / ${sm.group_split_target.control} control split cannot be verified — no group assignment is recorded yet`,
+    );
+  }
+  return `⚠ Confirmatory analysis blocked — ${reasons.join("; ")}.`;
 }
 
 interface Payload {
@@ -219,11 +242,11 @@ export default function TeacherReviewResearcherPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wide mb-1">
-                    Teacher-reviewed progress
+                    Teacher-reviewed participants (unique)
                   </p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-[#0F172A]">{sm.teacher_reviewed}</span>
-                    <span className="text-sm text-[#94A3B8]">/ {sm.threshold_target} target</span>
+                    <span className="text-3xl font-bold text-[#0F172A]">{sm.teacher_reviewed_participants}</span>
+                    <span className="text-sm text-[#94A3B8]">/ {sm.threshold_target} participants target</span>
                     <span className={`text-sm font-bold ml-auto ${sm.confirmatory_ready ? "text-emerald-600" : "text-amber-600"}`}>
                       {sm.threshold_pct}%
                     </span>
@@ -242,7 +265,7 @@ export default function TeacherReviewResearcherPage() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { label: "Total learner-batches", val: sm.total_learner_batches, cls: "text-[#0F172A]" },
-                  { label: "Teacher-reviewed",       val: sm.teacher_reviewed, cls: "text-emerald-700 font-bold" },
+                  { label: "Reviewed learner-batches", val: sm.teacher_reviewed, cls: "text-emerald-700 font-bold" },
                   { label: "At-risk (reviewed)",     val: sm.at_risk_count, cls: "text-rose-700 font-bold" },
                   { label: "Not at-risk (reviewed)", val: sm.not_risk_count, cls: "text-sky-700 font-bold" },
                 ].map(({ label, val, cls }) => (
@@ -256,9 +279,7 @@ export default function TeacherReviewResearcherPage() {
               {/* Confirmatory gate */}
               <div className={`rounded-xl border px-4 py-3 ${sm.confirmatory_ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
                 <p className={`text-xs font-semibold ${sm.confirmatory_ready ? "text-emerald-700" : "text-amber-700"}`}>
-                  {sm.confirmatory_ready
-                    ? "✓ Confirmatory analysis gate open — teacher-reviewed records meet the 60-learner threshold."
-                    : `⚠ Confirmatory analysis blocked — need ${sm.threshold_target - sm.teacher_reviewed} more teacher-reviewed records (${sm.threshold_target} required).`}
+                  {confirmatoryGateMessage(sm)}
                 </p>
               </div>
             </section>

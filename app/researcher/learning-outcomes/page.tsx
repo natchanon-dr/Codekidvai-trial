@@ -390,7 +390,7 @@ export default function LearningOutcomesPage() {
           </h2>
           <p className="text-xs text-[#64748B]">
             The following analysis sections will be populated once teacher-reviewed 2C3L
-            scores are collected for ≥ 60 learner-batch records:
+            scores are collected for ≥ 60 unique participants (30 experimental / 30 control):
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {OUTCOME_PLAN.map(section => (

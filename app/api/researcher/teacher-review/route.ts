@@ -23,6 +23,10 @@ const CANONICAL_KEYS = [
 
 const AT_RISK_THRESHOLD = 65;
 
+// Thesis sample plan: 60 unique participants, 30 experimental + 30 control.
+const PARTICIPANT_TARGET = 60;
+const GROUP_SPLIT_TARGET = { experimental: 30, control: 30 } as const;
+
 interface LearnerBatchRecord {
   participant_code: string;
   batch_code: string;
@@ -194,18 +198,41 @@ function buildSummary(records: LearnerBatchRecord[]) {
   const at_risk_count  = reviewed.filter((r) => r.at_risk === 1).length;
   const not_risk_count = reviewed.filter((r) => r.at_risk === 0).length;
 
-  const threshold_target = 60;
-  const threshold_pct    = Math.min(100, Math.round((teacher_reviewed / threshold_target) * 100));
+  // M5.33 — the thesis sample plan is 60 *participants* (30 experimental /
+  // 30 control), not 60 learner-batch records: one learner in several batches
+  // must count once. A participant counts when at least one of their records
+  // carries a complete, teacher-reviewed 2C3L label.
+  const reviewedParticipantIds = new Set(
+    records.filter((r) => r.label_validity === "teacher_reviewed").map((r) => r.profile_id),
+  );
+  const teacher_reviewed_participants = reviewedParticipantIds.size;
+  const total_participants = new Set(records.map((r) => r.profile_id)).size;
+
+  const threshold_target = PARTICIPANT_TARGET;
+  const threshold_pct    = Math.min(
+    100,
+    Math.round((teacher_reviewed_participants / threshold_target) * 100),
+  );
+
+  // No experimental/control assignment is recorded in the schema yet, so the
+  // 30/30 group requirement cannot be verified and the gate must stay closed.
+  const group_split_verified = false;
+  const participant_threshold_met = teacher_reviewed_participants >= threshold_target;
 
   return {
     total_learner_batches: total,
+    total_participants,
     teacher_reviewed,
+    teacher_reviewed_participants,
     pilot_only,
     invalid,
     at_risk_count,
     not_risk_count,
     threshold_target,
     threshold_pct,
-    confirmatory_ready: teacher_reviewed >= threshold_target,
+    participant_threshold_met,
+    group_split_target: GROUP_SPLIT_TARGET,
+    group_split_verified,
+    confirmatory_ready: participant_threshold_met && group_split_verified,
   };
 }

@@ -55,7 +55,7 @@ const CONSTRAINTS = [
 
 const REQUIREMENTS_FOR_CONFIRMATORY = [
   'Teacher-reviewed 2C3L labels (label_source = "teacher_reviewed")',
-  "Minimum 60 learner-batch records with GroupShuffleSplit guarantee",
+  "Minimum 60 unique participants (30 experimental / 30 control) with a participant-level GroupShuffleSplit guarantee",
   "Expert sign-off on label validity before any hypothesis test",
   "All five 2C3L criteria scored (c1, c2, l1, l2, l3) — no empty/unmeasurable keywords",
 ] as const;
